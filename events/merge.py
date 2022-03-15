@@ -183,6 +183,29 @@ class EventsMerge(object):
         # Perform cut
         return ema.cut(**kwargs)
 
+    def interpolate(self, **kwargs):
+        """
+        Interpolate along intersecting event routes at the intersecting 
+        location (or begin point for linear events), returning the resulting 
+        interpolated point geometry.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there are no intersecting events and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Get attribute for routes if available
+        try:
+            ema = self[self.right.route]
+        except:
+            raise ValueError("Right collection does not contain a valid "
+                "routes column label.")
+        # Perform cut
+        return ema.interpolate(**kwargs)
+
+
 class EventsMergeAttribute(object):
     
     def __init__(self, parent, column):
@@ -205,11 +228,26 @@ class EventsMergeAttribute(object):
     
     @column.setter
     def column(self, label):
-        if not label in self.parent.columns:
-            raise ValueError("Invalid column label for merged events. Must be "
-                             "present in EventsMerge.columns.")
-        self._column = label
-        self._loc = self.parent.right.columns.index(label)
+        # Multiple labels provided
+        if isinstance(label, (list, tuple, np.ndarray)):
+            if not set(label).issubset(self.parent.columns):
+                raise ValueError("All column labels must be present in "
+                                 "EventsMerge.columns.")
+            # Process input
+            self._ndim = 2
+            self._ncols = len(label)
+            self._loc = [self.parent.right.columns.index(i) for i in label]
+            self._column = list(label)
+        # Single label provided
+        else:
+            if not label in self.parent.columns:
+                raise ValueError("Invalid column label for merged events. Must "
+                                 "be present in EventsMerge.columns.")
+            # Process input
+            self._ndim = 1
+            self._ncols = 1
+            self._loc = [self.parent.right.columns.index(label)]
+            self._column = label
         
     @property
     def traces(self):
@@ -223,15 +261,33 @@ class EventsMergeAttribute(object):
     def loc(self):
         return self._loc
 
-    def _to_series(self, arr):
-        sr = pd.Series(
-            data=arr,
-            index=self.parent.left.df.index,
-            name=self.column
-        )
-        return sr
+    @property
+    def ncols(self):
+        return self._ncols
 
-    def _agg(self, func, empty=None, **kwargs):
+    @property
+    def ndim(self):
+        return self._ndim
+
+    def _to_pandas(self, arr, as_series=False):
+        # Create pandas object
+        if as_series:
+            obj = pd.Series(
+                data=arr,
+                index=self.parent.left.df.index,
+                name=self.column
+            )
+        else:
+            obj = pd.DataFrame(
+                data=arr,
+                index=self.parent.left.df.index,
+                columns=self.column if self._ndim != 1 else [self.column]
+            )
+            if self._ndim == 1:
+                obj = obj.iloc[:, 0]
+        return obj
+
+    def _agg(self, func, empty=None, as_array=True, squeeze=False, **kwargs):
         """
         Generic attribute aggregator.
         """
@@ -246,9 +302,9 @@ class EventsMergeAttribute(object):
                         .df.values[:, self.loc]
                 res_i = func(arr, trace, **kwargs)
             except (IndexError, KeyError) as e:
-                res_i = empty
+                res_i = np.full(self._ncols, empty) if not squeeze else empty
             res.append(res_i)
-        return res
+        return np.array(res) if as_array else res
 
     def agg(self, func, empty=None, **kwargs):
         """
@@ -260,8 +316,10 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         func : callable
-            Callable function which will be passed an array of intersecting 
-            events attribute values.
+            Callable function which will be passed a 2D array of intersecting 
+            events attribute values, where the first dimension is equal in 
+            length to the number of events in the matched events group and the 
+            second dimension is equal in length to self.ncols.
         empty : scalar, string, or other pd.Series-compatible value, optional
             Value to use to fill when there are no intersecting events and 
             aggregation cannot be performed. If None, values will be filled 
@@ -271,11 +329,11 @@ class EventsMergeAttribute(object):
             # Choose all intersecting events
             res = func(arr[trace.mask])
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
 
     def all(self, empty=None, **kwargs):
         """
-        Return all values from intersecting events in an array.
+        Return all values from intersecting events in a tuple.
 
         Parameters
         ----------
@@ -286,9 +344,28 @@ class EventsMergeAttribute(object):
         """
         def _func(arr, trace, **kwargs):
             # Choose all intersecting events
-            res = arr[trace.mask]
+            res = np.empty(self._ncols, dtype=object)
+            res[:] = [list(i) for i in arr[trace.mask].T]
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
+
+    def unique(self, empty=None, **kwargs):
+        """
+        Return all unique values from intersecting events in a tuple.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there are no intersecting events and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        def _func(arr, trace, **kwargs):
+            # Choose all intersecting events
+            res = np.empty(self._ncols, dtype=object)
+            res[:] = [list(set(i)) for i in arr[trace.mask].T]
+            return res
+        return self._to_pandas(self._agg(_func, empty=empty))
 
     def cut(self, empty=None, return_mls=True):
         """
@@ -306,17 +383,51 @@ class EventsMergeAttribute(object):
             Whether to return the MultiLineString associated with each cut 
             MLRRoute instead of the route itself.
         """
+        if self._ncols != 1:
+            raise ValueError("EventsMergeAttribute must represent a single "
+                             "column to perform cut.")
         def _func(arr, trace, **kwargs):
             # Choose the first intersecting event and cut the route
-            route = arr[trace.mask][0]
+            route = arr[trace.mask][0][0]
             try:
                 res = route.cut(trace.beg, trace.end)
+                res = res.mls if return_mls else res
             except AttributeError:
-                raise TypeError("EventsMergeAttribute must contain MLSRoute "
-                    "objects to be cut.")
-            return res.mls if return_mls else res
-        return self._to_series(self._agg(_func, empty=empty))
+                raise TypeError("EventsMergeAttribute must represent a single "
+                    "column and must contain MLSRoute objects to be cut.")
+            return res
+        return self._to_pandas(self._agg(
+            _func, empty=empty, as_array=False, squeeze=True), as_series=True)
     
+    def interpolate(self, empty=None, **kwargs):
+        """
+        Interpolate along intersecting event routes at the intersecting 
+        location (or begin point for linear events), returning the resulting 
+        interpolated point geometry.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there are no intersecting events and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        if self._ncols != 1:
+            raise ValueError("EventsMergeAttribute must represent a single "
+                             "column to perform interpolate.")
+        def _func(arr, trace, **kwargs):
+            # Choose the first intersecting event and cut the route
+            route = arr[trace.mask][0][0]
+            try:
+                res = route.interpolate(trace.beg, **kwargs)
+            except AttributeError:
+                raise TypeError("EventsMergeAttribute must represent a single "
+                    "column and must contain MLSRoute objects to be "
+                    "interpolated.")
+            return res
+        return self._to_pandas(self._agg(
+            _func, empty=empty, as_array=False, squeeze=True), as_series=True)
+     
     def first(self, empty=None):
         """
         Return the first event value according to the order of the provided 
@@ -333,7 +444,7 @@ class EventsMergeAttribute(object):
             # Choose the first intersecting event
             res = arr[trace.mask][0]
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
     
     def last(self, empty=None):
         """
@@ -351,7 +462,7 @@ class EventsMergeAttribute(object):
             # Choose the last intersecting event
             res = arr[trace.mask][-1]
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
 
     def value_counts(self, empty=None):
         """
@@ -366,11 +477,13 @@ class EventsMergeAttribute(object):
             with np.nan.
         """
         def _func(arr, trace, **kwargs):
-            # Choose all intersecting events
-            res = {val: count for val, count in \
-                   zip(*np.unique(arr[trace.mask], return_counts=True))}
-            return res
-        return self._to_series(self._agg(_func, empty=empty))
+            # Iterate over 2nd dimension
+            res = []
+            for arr_i in arr[trace.mask].T:
+                res.append({val: count for val, count in \
+                    zip(*np.unique(arr[trace.mask], return_counts=True))})
+            return np.array(res)
+        return self._to_pandas(self._agg(_func, empty=empty))
     
     def most(self, empty=None, dropna=False):
         """
@@ -388,17 +501,21 @@ class EventsMergeAttribute(object):
             aggregating.
         """
         def _func(arr, trace, **kwargs):
-            # Drop nan if requested
-            if dropna:
-                nanmask = ~np.isnan(arr.astype(float))
-                arr = arr[nanmask]
-                weights = trace.weights[nanmask]
-            else:
-                weights = trace.weights
-            # Aggregate and add to result
-            res = get_most(arr, weights)
-            return res
-        return self._to_series(self._agg(_func, empty=empty))
+            # Iterate over 2nd dimension
+            res = []
+            weights = trace.weights[trace.mask]
+            for arr_i in arr[trace.mask].T:
+                # Drop nan if requested
+                if dropna:
+                    nanmask = ~pd.isna(arr_i)
+                    arr_i = arr_i[nanmask]
+                    weights_i = weights[nanmask]
+                else:
+                    weights_i = weights
+                # Aggregate and add to result
+                res.append(get_most(arr_i, weights_i))
+            return np.array(res)
+        return self._to_pandas(self._agg(_func, empty=empty))
         
     def mode(self, empty=None):
         """
@@ -412,10 +529,14 @@ class EventsMergeAttribute(object):
             with np.nan.
         """
         def _func(arr, trace, **kwargs):
-            # Choose all intersecting events
-            res = get_mode(arr[trace.mask])
-            return res
-        return self._to_series(self._agg(_func, empty=empty))
+            # Iterate over 2nd dimension
+            res = []
+            weights = trace.weights[trace.mask]
+            for arr_i in arr[trace.mask].T:
+                # Choose all intersecting events
+                res.append(get_mode(arr_i))
+            return np.array(res)
+        return self._to_pandas(self._agg(_func, empty=empty))
 
     def sum(self, empty=None):
         """
@@ -430,9 +551,9 @@ class EventsMergeAttribute(object):
         """
         def _func(arr, trace, **kwargs):
             # Choose all intersecting events
-            res = sum(arr[trace.mask])
+            res = arr[trace.mask].sum(axis=0)
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
 
     def mean(self, empty=None, weighted=True, dropna=False):
         """
@@ -453,26 +574,23 @@ class EventsMergeAttribute(object):
             Whether to drop np.nan values before aggregating.
         """
         def _func(arr, trace, **kwargs):
+            # Prepare weights data congruent with array data
             if weighted:
-                # Drop nan if requested
-                if dropna:
-                    nanmask = ~np.isnan(arr.astype(float))
-                    arr = arr[nanmask]
-                    weights = trace.weights[nanmask]
-                else:
-                    weights = trace.weights
-                numer = np.multiply(arr, weights).sum(axis=0)
-                denom = weights.sum()
-                res = np.divide(numer, denom) if denom > 0 else np.nan
+                weights = np.tile(trace.weights, self._ncols) \
+                    .reshape(self._ncols, -1).T
             else:
-                # Drop nan if requested
-                arr = arr[trace.mask]
-                if dropna:
-                    nanmask = ~np.isnan(arr.astype(float))
-                    arr = arr[nanmask]
-                res = arr.mean()
+                weights = np.ones_like(arr)
+            # Drop nan if requested
+            if dropna:
+                # Zero weights where nan values occur
+                weights = np.where(np.isnan(arr.astype(float)), 0, weights)
+            # Compute means
+            numer = np.multiply(arr, weights).sum(axis=0)
+            denom = weights.sum(axis=0)
+            denom = np.where(denom==0, np.nan, denom)
+            res = np.divide(numer, denom)
             return res
-        return self._to_series(self._agg(_func, empty=empty))
+        return self._to_pandas(self._agg(_func, empty=empty))
 
 
 class EventsMergeTrace(object):

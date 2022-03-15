@@ -673,31 +673,37 @@ class EventsFrame(object):
             res = res[col_order]
         res = res.sort_values(by=self.keys+[self.beg,self.end], 
                               axis=0, ascending=True)
+
+        # Convert to geodataframe if geometry is aggregated
+        if agg_geometry:
+            res = gpd.GeoDataFrame(res, geometry=self.geom, crs=self.df.crs)
         
         # Generate events collection
         ec = EventsCollection(res, keys=self.keys, beg=self.beg, end=self.end, 
-            geom=self.geom if agg_geometry else None, closed=self.closed)
+            geom=self.geom if agg_geometry else None,
+            route='route' if agg_routes else None, 
+            closed=self.closed)
         return ec
 
     def project(self, other, buffer=100, choose='min', loc_label='LOC', 
             dist_label='DISTANCE'):
         """
         Project an input geodataframe onto the events dataframe, producing 
-        linearly referenced locations relative to events for all input 
-        geometries within a buffer area.
+        linearly referenced point locations relative to events for all input 
+        geometries within a buffered search area.
 
         Parameters
         ----------
         other : gpd.GeoDataFrame
             Geodataframe containing geometry which will be projected onto the 
             events dataframe.
-        buffer : float
+        buffer : float, default 100
             The max distance to search for input geometries to project against 
             the events' geometries. Measured in terms of the geometries' 
             coordinate reference system.
-        choose : {'min', 'max', 'all'}
-            Which geometry to choose when more than one falls within the buffer 
-            distance.
+        choose : {'min', 'max', 'all'}, default 'min'
+            Which target geometry to choose when more than one falls within the 
+            buffer distance.
 
             Options
             -------
@@ -1547,6 +1553,41 @@ class EventsCollection(EventsFrame):
         # Create merge
         em = EventsMerge(self, other)
         return em
+
+    def project_parallel(self, other, samples=3, buffer=100, match='all', 
+            choose=1, sort_locs=True):
+        """
+        Project an input geodataframe of linear geometries onto parallel events 
+        in the events dataframe, producing linearly referenced locations for all 
+        input geometries which are found to be parallel based on buffer and 
+        sampling parameters.
+        
+        Parameters
+        ----------
+        other : gpd.GeoDataFrame
+            Geodataframe containing linear geometry which will be projected onto 
+            the events dataframe.
+        samples : int, default 3
+            The number of equidistant sample points to take along each geometry 
+            being projected to check for nearby geometry.
+        buffer : float, default 100
+            The max distance to search for input geometries to project against 
+            the events' geometries. Measured in terms of the geometries' 
+            coordinate reference system.
+        match : {'all', int}, default 'all'
+            How many sample points must find a nearby target event to produce a 
+            positive match to that event, resulting in a projection.
+        choose : {int, 'all'}, default 1
+            How many target geometries to choose when more than one match 
+            occurs.
+        sort_locs : bool, default True
+            Whether begin and end location values should be sorted, ensuring 
+            that all events are increasing and monotonic.
+        """
+        # Create projector
+        pp = ParallelProjector(self, other, samples=samples, buffer=buffer)
+        # Perform match and return results
+        return pp.match(match=match, choose=choose, sort_locs=sort_locs)
     
     def retrieve(self, other, cols, choose='first', weights=False, **kwargs):
         """
@@ -1818,3 +1859,4 @@ def get_mode(arr):
 #####################
 
 from linref.events.merge import EventsMerge, EventsMergeAttribute
+from linref.events.spatial import ParallelProjector

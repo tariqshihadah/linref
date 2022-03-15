@@ -264,6 +264,10 @@ corresponding line in the provided MultiLineString.")
             # - MultiLineStrings
             elif all(isinstance(i, MultiLineString) for i in lines):
                 full_lines = lines
+        else:
+            raise TypeError("Input lines must be valid shapely linear "
+                            "geometries or list or tuple of the same. Provided "
+                            f"lines are of type {type(lines)}.")
         
         # Ensure valid breaks information provided
         # - Enforce list-data
@@ -363,6 +367,7 @@ class instances.")
 provided as a list of tuples of start and end values.")
             lengths = lengths / lengths.sum() # Normalize
             lengths = (lengths.cumsum() * delta) + rng[0]
+            lengths[-1] = rng[-1] # Snap last value to range bound
             all_breaks.append(np.concatenate([rng[0], lengths], axis=None))
         return all_breaks
     
@@ -449,6 +454,14 @@ to snap negative values to the total length of the MLS.")
         """
         Get the range index and the proportional distance along that range
         of the input route location.
+
+        Parameters
+        ----------
+        snap : {None, 'near', 'left', 'right'}, default None
+            If the input location does not fall within any ranges, snap to the 
+            nearest match based on distance, choosing the closest range to the 
+            left, right, or either side ('near'). If None, a value error will 
+            be raised when no intersecting ranges are found.
         """
         # Convert normalized values to MLS values
         if normalized:
@@ -459,7 +472,7 @@ to snap negative values to the total length of the MLS.")
             # Compute and return the index and proportional distance
             return self.rte_ranges.locate(loc, choose=choose, snap=snap)
     
-    def normalize(self, loc, by_mls=False):
+    def normalize(self, loc, by_mls=False, snap=None, **kwargs):
         """
         Normalize a location as an actual route location or the absolute 
         distance along the route's MultiLineString.
@@ -474,10 +487,16 @@ to snap negative values to the total length of the MLS.")
             terms of the actual cumulative length of the route's 
             MultiLineString. If False, interpret as route location. If True, 
             interpret as MLS location.
+        snap : {None, 'near', 'left', 'right'}, default None
+            If the input location does not fall within any ranges, snap to the 
+            nearest match based on distance, choosing the closest range to the 
+            left, right, or either side ('near'). If None, a value error will 
+            be raised when no intersecting ranges are found.
         """
         # Convert to MLS if required
         if not by_mls:
-            loc = self.convert_to_mls(loc, normalized=False)
+            loc = self.convert_to_mls(
+                loc, normalized=False, snap=snap, **kwargs)
         # Normalize location
         res = loc / self.mls_length
         return res
@@ -584,7 +603,8 @@ to snap negative values to the total length of the MLS.")
             else:
                 return self.convert_to_rte(loc=loc, normalized=True)
             
-    def interpolate(self, loc, by_mls=False, normalized=False):
+    def interpolate(self, loc, by_mls=False, normalized=False, snap=None, 
+            **kwargs):
         """
         Return a point at the specified location along the route. This can be 
         done using a normalized proportional distance along the route, or the 
@@ -608,12 +628,19 @@ to snap negative values to the total length of the MLS.")
             terms of proportional distance along the route. If False, the 
             location along the route will be interpreted according to the 
             by_mls parameter.
+        snap : {None, 'near', 'left', 'right'}, default None
+            If the input location does not fall within any ranges, snap to the 
+            nearest match based on distance, choosing the closest range to the 
+            left, right, or either side ('near'). If None, a value error will 
+            be raised when no intersecting ranges are found.
         """
-        # Convert to normalized proportional distance
-        if not normalized:
-            loc = self.normalize(loc=loc, by_mls=by_mls)
+        # Convert to mls reference
+        if normalized:
+            loc = self.convert_to_mls(loc, normalized=True, snap=snap)
+        elif not by_mls:
+            loc = self.convert_to_mls(loc, normalized=False, snap=snap)
         # Interpolate along the MultiLineString
-        point = self.mls.interpolate(loc, normalized=True)
+        point = self.mls.interpolate(loc, normalized=False)
         return point
     
     def cut(self, beg, end, by_mls=False, normalized=False):
@@ -877,6 +904,35 @@ numeric cutting point values.")
             segments.append(segment_i)
         
         return segments
+
+    def snap(self, loc, by_mls=False, normalized=False):
+        """
+        Snap a provided location value to the bounds of the route based on the 
+        provided parameters. If the location falls within the bounds of the 
+        route, the same value will be returned.
+
+        Parameters
+        ----------
+        loc : scalar
+            Location value to snap to the route bounds.
+        by_mls : boolean, default False
+            Whether to interpret the provided location along the route in 
+            terms of the actual cumulative length of the route's 
+            MultiLineString. If False, interpret as route location. If True, 
+            interpret as MLS location.
+        normalized : boolean, default False
+            Whether to interpret the provided location along the route in 
+            terms of proportional distance along the route. If False, the 
+            location along the route will be interpreted according to the 
+            by_mls parameter.
+        """
+        # Snap location by selected range collection
+        if normalized:
+            return max(min(loc, 1), 0)
+        elif by_mls:
+            return self.mls_ranges.snap(loc)
+        else:
+            return self.rte_ranges.snap(loc)
     
     def bearing(self, positive=True, invert=False):
         """
