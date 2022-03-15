@@ -1,7 +1,7 @@
 import numpy as np
 from rangel import RangeCollection
 
-def pixelate_events(
+def rasterize_events(
     events,
     values=None,
     size=1,
@@ -9,6 +9,7 @@ def pixelate_events(
     blur_style='linear',
     normalize=True,
     bounds=None,
+    fill='cut', 
     closed='left_mod',
     rc=None,
     **kwargs
@@ -53,6 +54,21 @@ def pixelate_events(
         provided, will default to the min and max location values in the events 
         data, respectively. If a predefined range collection is provided, that 
         will supersede these input parameters.
+    fill : {'none','cut','left','right'}, default 'cut'
+        How to fill a gap at the end of an event's range.
+
+        Options
+        -------
+        none : no window will be generated to fill the gap at the end of 
+            the input range.
+        cut : a truncated window will be created to fill the gap with a 
+            length less than the full window length.
+        left : the final window will be anchored on the end of the event  
+            and will extend the full window length to the left. 
+        right : the final window will be anchored on the grid defined by 
+            the step value, extending the full window length to the right, 
+            beyond the event's end value.
+    
     closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
             'neither'}, default 'left'
         Whether window intervals are closed on the left-side, right-side, 
@@ -82,7 +98,103 @@ def pixelate_events(
     Created:  2022-01-06
     Modified: 2022-01-12
     """
-    pass
+    ##################
+    # VALIDATE INPUT #
+    ##################
+    
+    # Validate blur style
+    if blur_style=='linear':
+        blur_function = lambda n: (blur - n) / blur
+    elif blur_style=='none':
+        blur_function = lambda n: 1
+    elif callable(blur_style):
+        blur_function = blur_style
+    else:
+        raise ValueError("Input blur_style must be callable or label of "
+                            "valid predefined scaling function.")            
+    
+    # Validate events
+    try:
+        events = np.asarray(events, dtype=float)
+    except ValueError:
+        raise TypeError("Could not convert input events to np.ndarray of "
+                        "dtype float.")
+    # - Determine shape and event type
+    if events.ndim == 1:
+        events = np.append(events, events).reshape(2,-1).T
+    elif events.ndim == 2 and events.shape[1] == 1:
+        events = np.append(events, events).reshape(2,-1).T
+    elif events.ndim == 2 and events.shape[1] == 2:
+        pass
+    else:
+        raise ValueError("Invalid events input. Must be array-like of "
+                         "shape (x,), (x, 1), or (x, 2).")
+    
+    # Validate values data
+    if not values is None:
+        try:
+            values = np.full(events.shape[0], float(values)) # extend scalar
+        except:
+            try:
+                values = np.asarray(values, dtype=float).flatten() # coerce
+            except:
+                raise TypeError("Could not convert input values to np.ndarray "
+                                "of dtype float.")
+        if not values.shape[0] == events.shape[0]:
+            raise ValueError("Number of event values must be equal to the "
+                            "number of events provided. Provided: "
+                            f"{events.shape[0]} events, {values.shape[0]} "
+                            "values.")
+    
+    # Validate analysis range collection
+    if rc is None:
+        if bounds is None:
+            beg = np.min(events) if bounds is None else bounds[0]
+            end = np.max(events) if bounds is None else bounds
+        else:
+            try:
+                beg, end = bounds
+            except:
+                raise ValueError("If used, bounds must be provided as "
+                                 "two-value tuple of scalars defining the "
+                                 "bounds of the analysis.")
+        # Create a new analysis range collection
+        rc = RangeCollection.from_steps(beg, end, length=size, steps=1, 
+                                        fill=fill, closed=closed)
+    elif not isinstance(rc, RangeCollection):
+        raise ValueError("Input range collection is not valid.")
+            
+    ####################
+    # PERFORM ANALYSIS #
+    ####################
+    
+    # Intersect events with analysis range collection
+    intx = rc.is_intersecting(beg=events[:,0],
+                              end=events[:,1],
+                              squeeze=False) * 1
+    
+    # Blur events
+    scale = blur_function(0)
+    data = intx * scale
+    for step in range(1, blur):
+        # Create and blur buffered data
+        scale = blur_function(step)
+        buff = np.pad(intx, ((step, step), (0, 0)), mode='constant') * scale
+        # Apply buffered data
+        forw = buff[:-step * 2, :]
+        back = buff[step * 2:, :]
+        data += forw + back
+        
+    # Normalize buffered data
+    if normalize:
+        denom = data.sum(axis=0)
+        data = np.divide(data, denom, out=np.zeros_like(data), where=denom!=0)
+    
+    # Apply values if used
+    if not values is None:
+        return np.multiply(data, values)
+    else:
+        return data
 
 def buffer_events(
     events, 
