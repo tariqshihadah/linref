@@ -279,6 +279,10 @@ class EventsFrame(object):
         return list(map(tuple, self.df.values[:, self.key_locs]))
     
     @property
+    def group_keys_unique(self):
+        return list(set(map(tuple, self.df.values[:, self.key_locs])))
+    
+    @property
     def beg(self):
         return self._beg
     
@@ -737,7 +741,7 @@ class EventsFrame(object):
             raise ValueError("No routes found in events dataframe. If valid "
                 "shapely geometries are available in the dataframe, create "
                 "routes by calling the build_routes() method on the "
-                "{self.__class__.__name__} class instance.")
+                f"{self.__class__.__name__} class instance.")
         
         # Join the other geodataframe to this one
         select_cols = self.keys + [self.route, self.geom]
@@ -822,15 +826,18 @@ class EventsFrame(object):
 
         # Merge and prepare data, return
         windows = np.concatenate(windows, axis=0)
-        dtypes = {
-            **events.dtypes,
-            'index_parent': events.index.dtype
-        }
         df = pd.DataFrame(
             data=windows,
             columns=self.keys + [self.beg, self.end, 'index_parent'],
             index=None,
-        ).astype(dtypes, copy=False)
+        )
+        # Enforce data types
+        dtypes = {
+            **events.dtypes,
+            'index_parent': events.index.dtype
+        }
+        dtypes = {col: dtypes[col] for col in df.columns}
+        df = df.astype(dtypes, copy=False)
         res = self.__class__(df, keys=self.keys, beg=self.beg, end=self.end)
         return res
 
@@ -1549,6 +1556,14 @@ class EventsCollection(EventsFrame):
         other collection as the right. This can then be used to retrieve 
         attributes from the other collection to be appended to this 
         collection's dataframe.
+        
+        Parameters
+        ----------
+        other : EventsCollection
+            Another events collection with similar keys which will be merged 
+            with this events collection, producing an EventsMerge instance 
+            which can be used to perform various overlay operations to retrieve 
+            attributes and more from the target collection.
         """
         # Create merge
         em = EventsMerge(self, other)
@@ -1589,181 +1604,74 @@ class EventsCollection(EventsFrame):
         # Perform match and return results
         return pp.match(match=match, choose=choose, sort_locs=sort_locs)
     
-    def retrieve(self, other, cols, choose='first', weights=False, **kwargs):
-        """
-        Retrieve a selection of columns from the provided EventsCollection 
-        instance by automatically intersecting each record of the target 
-        collection's dataframe with the provided collection.
-
-        Parameters
-        ----------
-        other : EventsCollection
-            An events dataframe (i.e., the provided collection) which will be 
-            automatically intersected with all records in the target 
-            collection's events dataframe.
-        cols : list of labels
-            The columns from the provided collection's dataframe to retrieve 
-            based on the automated intersecting analysis for each record in the 
-            target's events dataframe.
-        choose : {'first','last','mode','most','mean','weighted','all'}, 
-                default 'first'
-            When more than one event in the provided collection intersects with 
-            an event in the target collection, how to choose the resulting 
-            event value. Can be provided as a single value or a list of options
-            with a single value being associated with each requested column 
-            label.
-
-            Options
-            -------
-            first : Return the first event value according to the order of the 
-                provided collection's events dataframe
-            last : Return the last event value according to the order of the 
-                provided collection's events dataframe
-            mode : Return the most frequent unique event value
-            mean : Return the straight average of all event values
-            most : Return the event value associated with the greatest total 
-                overlay length
-            weighted : Return an overlay length-weighted average of all event 
-                values
-            all : Return all values from intersecting events in an array
-        weights : bool, default False
-            Whether to add a column to the resulting dataframe with arrays of 
-            weights indicating the actual length of overlap of each event in 
-            the collection when overlaid with the target collection.
-        """
-        # Define aggregators
-        _choose_ops = {
-            'first': lambda arr, weights: arr[0] if len(arr) > 0 else np.nan,
-            'last': lambda arr, weights: arr[-1] if len(arr) > 0 else np.nan,
-            'mode': lambda arr, weights: get_mode(arr) if len(arr) > 0 else np.nan,
-            'mean': lambda arr, weights: np.mean(arr) if len(arr) > 0 else np.nan,
-            'most': lambda arr, weights: get_most(arr, weights) if len(arr) > 0 else np.nan,
-            'weighted': lambda arr, weights: np.multiply(arr, weights).sum() / np.sum(weights) if len(arr) > 0 else np.nan,
-            'all': lambda arr, weights: arr if len(arr) > 0 else np.nan,
-        }
-        # Validate input
-        # - Input events
-        if not isinstance(other, self.__class__):
-            raise TypeError(f"Input 'other' must be {self.__class__.__name__} "
-                "type.")
-        # - Same number of keys
-        if not self.num_keys == other.num_keys:
-            raise ValueError("Other collection must have the same number of "
-                "keys as the target collection.")
-        # - Input retrieval columns
-        cols = other._validate_cols(cols)
-        if len(cols) == 0:
-            raise ValueError("At least one retrieve column must be provided.")
-        # - Choose parameter
-        if isinstance(choose, str):
-            choose = str(choose).lower()
-            choose = [choose for i in cols]
-        else:
-            try:
-                # Enforce valid selections
-                choose = [str(ch).lower() for ch in choose]
-                assert len(choose) == len(cols)
-            except:
-                raise ValueError("Provided choose parameter must be a single "
-                    "value or a list of values equal in length to cols.")
-        # Get choose functions
-        try:
-            _choose_funcs = [_choose_ops[ch] for ch in choose]
-        except KeyError:
-            raise ValueError("Provided choose parameter(s) must only contain "
-                f"the values {set(_choose_ops.keys())}.")
-        # Only calculate weights if it's requested or needed for aggregation
-        if (weights) or ('most' in choose) or ('weighted' in choose):
-            _calc_weights = True
-        else:
-            _calc_weights = False
-
-        # Prepare for retrieval
-        def _apply_retrieve(group_key, r):
-            try:
-                # Retrieve corresponding events group
-                eg = other.get_group(group_key, empty=False)
-                beg = r[self.beg_loc]
-                end = r[self.end_loc]
-                # Intersect with record bounds
-                mask = eg.intersecting(beg, end, mask=True, **kwargs)
-                events = eg.df[mask]
-                # Retrieve requested column data
-                res = events.iloc[:, locs].values.T #.tolist()
-
-                # Calculate weights if requested/required
-                if _calc_weights:
-                    w = eg.overlay(beg, end, normalize=False).values #.tolist()
-                else:
-                    w = np.nan
-
-                # Perform choice
-                res = [func(x, w) for x, func in zip(res, _choose_funcs)]
-                res.append(w)
-
-            except KeyError:
-                res = [np.nan for loc in locs] + [np.nan] # Extra for weights
-            return res
-
-        # Get positional indexes of requested columns
-        locs = [other.columns.index(col) for col in cols]
-        
-        # Perform retrieval using pandas apply
-        res = [_apply_retrieve(group_key, r) for group_key, r in \
-               zip(self.group_keys, self.df.values)]
-        res = pd.DataFrame(res, columns=cols + ['weights'],
-                           index=self.df.index)
-        # Remove weights column unless requested
-        if not weights:
-            res = res.drop(columns=['weights'])
-        # Return retrieved column data
-        return res
-    
     def get_group(self, keys, empty=True, **kwargs) -> EventsGroup:
         """
         Retrieve a unique group of events based on provided key values.
  
         Parameters
         ----------
-        keys : column label or tuple of column labels
+        keys : key value, tuple of key values, or list of the same
             If only one key column is defined within the collection, a single 
-            column label may be provided. Otherwise, a tuple of column labels 
-            must be provided in the same order as they appear in self.keys.
+            column value may be provided. Otherwise, a tuple of column values 
+            must be provided in the same order as they appear in self.keys. To 
+            get multiple groups, a list of key values or tuples may be 
+            provided.
         empty : bool, default True
             Whether to allow for empty events groups to be returned when the 
             provided keys are valid but are not associated with any actual 
             events. If False, these cases will return a KeyError.
         """
-        # Attempt to retrieve from log
-        keys = self._validate_keys(keys)
-        try:
-            eg = self.log[keys]
-            return eg
-        except KeyError:
-            pass
-        # Attempt to retrieve group
-        try:
-            group = self.groups.get_group(keys)
-        # - Collection is None (i.e., no defined keys)
-        except AttributeError:
-            group = self.df
-        # - Invalid group keys (i.e., empty group)
-        except KeyError as e:
-            # Deal with empty group
-            if empty:
-                group = self._build_empty()
-            else:
-                raise KeyError(f"Invalid EventsCollection keys: {keys}")
+        # Enforce multiple keys method
+        if not isinstance(keys, list):
+            keys = [keys]
+            ndim = 1
+        else:
+            ndim = len(keys)
+
+        # Iterate over keys
+        dfs = []
+        for keys_i in keys:
+            # Attempt to retrieve from log
+            keys_i = self._validate_keys(keys_i)
+            try:
+                dfs.append(self.log[keys_i].df)
+            except KeyError:
+                # Attempt to retrieve group
+                try:
+                    df = self.groups.get_group(keys_i)
+                    dfs.append(df)
+                    # Add group to log
+                    self.log[keys_i] = self._build_group(df)
+                # - Collection is None (i.e., no defined keys)
+                except AttributeError:
+                    dfs.append(self.df)
+                    break
+                # - Invalid group keys (i.e., empty group)
+                except KeyError as e:
+                    # Deal with empty group
+                    if empty:
+                        dfs.append(self._build_empty())
+                    else:
+                        raise KeyError("Invalid EventsCollection keys: "
+                                       f"{keys_i}")
         # Log and return retrieved group
-        eg = EventsGroup(df=group, beg=self.beg, end=self.end, geom=self.geom, 
-                         closed=self.closed)
-        self.log[keys] = eg
-        return eg
+        if ndim == 1:
+            return self._build_group(dfs[0])
+        else:
+            df = pd.concat(dfs)
+            try:
+                df = gpd.GeoDataFrame(
+                    df, geometry=self.geom, crs=self.df.crs)
+            except:
+                pass
+            return EventsCollection(
+                df=df, keys=self.keys, beg=self.beg, end=self.end, 
+                geom=self.geom, closed=self.closed)
 
     def get_subset(self, keys, reduce=True, **kwargs):
         """
         Retrieve a subset of the events collection based on the provided key 
-        values or slices.
+        values or slices. Returned events must satisfy all keys.
 
         Parameters
         ----------
@@ -1792,7 +1700,7 @@ class EventsCollection(EventsFrame):
                 if isinstance(val, slice):
                     new_keys.append(key)
                     mask &= self.df[key].isin(key_values[key][val])
-                elif isinstance(val, list):
+                elif isinstance(val, (list, np.ndarray)):
                     new_keys.append(key)
                     mask &= self.df[key].isin(val)
                 else:
@@ -1800,14 +1708,38 @@ class EventsCollection(EventsFrame):
                         new_keys.append(key)
                     mask &= self.df[key] == val
             except:
-                return ValueError(f"Unable to filter key '{key}' based on "
-                    "provided input value '{val}'.")
+                raise ValueError(f"Unable to filter key '{key}' based on "
+                    f"provided input value {val}.")
         
         # Produce filtered collection
         df = self.df.loc[mask, :]
         ec = EventsCollection(df, keys=new_keys, beg=self.beg, end=self.end, 
                               geom=self.geom, closed=self.closed)
         return ec
+
+    def get_matching(self, other, **kwargs):
+        """
+        Retrieve a subset of the events collection based on the unique group 
+        values present in another provided events collection.
+
+        Parameters
+        ----------
+        other : EventsCollection
+            Another events collection with matching keys which will be used to 
+            select a subset of this events collection based on its key values.
+        """
+        # Get subset of groups
+        return self.get_group(other.group_keys_unique, empty=True)
+
+    def _build_group(self, df):
+        """
+        Build a group based on the input dataframe which should be a subset of 
+        the events collection's dataframe.
+        """
+        # Build and return events group
+        return EventsGroup(df=df, beg=self.beg, end=self.end, 
+                           geom=self.geom, closed=self.closed)
+
 
 ###########
 # HELPERS #
