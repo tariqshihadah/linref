@@ -81,7 +81,11 @@ class EventsMerge(object):
         
     @property
     def traces(self):
-        return self._traces
+        try:
+            return self._traces
+        except AttributeError:
+            self.build(inplace=True)
+            return self._traces
     
     @traces.setter
     def traces(self, obj):
@@ -134,7 +138,7 @@ class EventsMerge(object):
         else:
             return copy.copy(self)
     
-    def build(self, inplace=False):
+    def build(self, inplace=True):
         """
         Perform intersects and overlays to produce EventsMergeTrace objects 
         for aggregation.
@@ -204,6 +208,50 @@ class EventsMerge(object):
                 "routes column label.")
         # Perform cut
         return ema.interpolate(**kwargs)
+
+    def count(self, empty=None, as_array=True, **kwargs):
+        """
+        Count the number of intersecting events.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Validate fill value
+        empty = np.nan if empty is None else empty
+        # Aggregate all traces
+        res = []
+        for trace in self.traces:
+            try:
+                res.append(trace.mask.sum())
+            except AttributeError:
+                res.append(empty)
+        return np.array(res) if as_array else res
+
+    def any(self, empty=None, as_array=True, **kwargs):
+        """
+        Indicate whether each record intersects with at least one event.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Validate fill value
+        empty = np.nan if empty is None else empty
+        # Aggregate all traces
+        res = []
+        for trace in self.traces:
+            try:
+                res.append(trace.mask.any())
+            except AttributeError:
+                res.append(empty)
+        return np.array(res) if as_array else res
 
 
 class EventsMergeAttribute(object):
@@ -321,7 +369,7 @@ class EventsMergeAttribute(object):
             length to the number of events in the matched events group and the 
             second dimension is equal in length to self.ncols.
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -338,7 +386,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -356,7 +404,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -376,7 +424,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         return_mls : bool, default True
@@ -408,7 +456,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -436,7 +484,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -454,7 +502,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -472,7 +520,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -493,7 +541,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         dropna : boolean, default False
@@ -524,7 +572,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -545,7 +593,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
@@ -563,7 +611,7 @@ class EventsMergeAttribute(object):
         Parameters
         ----------
         empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
+            Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         weighted : boolean, default True

@@ -419,18 +419,35 @@ class EventsFrame(object):
         # Return validated columns
         return cols
 
-    def build_routes(self, label='route'):
+    def build_routes(self, label='route', errors='raise'):
         """
         Build MLSRoute instances for each event based on available geometry 
         and begin and end locations.
+
+        Parameters
+        ----------
+        label : valid pandas column label
+            Column label to use for newly generated column populated with 
+            routes data.
+        errors : {'raise','ignore'}
+            How to address errors if they arise when producing routes. If 
+            errors are not raised, inviable records in the new column will 
+            be filled with np.nan.
         """
         # Validate
         if self.geom is None:
             raise ValueError("No geometry column label defined.")
         # Build routes
         locs = (self.beg_loc, self.end_loc, self.geom_loc)
-        routes = [MLSRoute.from_lines(geom, beg, end) for \
-            beg, end, geom in self.df.values[:, locs]]
+        routes = []
+        for beg, end, geom in self.df.values[:, locs]:
+            try:
+                routes.append(MLSRoute.from_lines(geom, beg, end))
+            except Exception as e:
+                if errors=='ignore':
+                    routes.append(np.nan)
+                else:
+                    raise e
         self.df[label] = routes
         self._route = label
 
@@ -793,6 +810,9 @@ class EventsFrame(object):
             right : the final window will be anchored on the grid defined by 
                 the step value, extending the full window length to the right, 
                 beyond the event's end value.
+            extend : the final window will be anchored on the grid defined by 
+                the step value, extending beyond the window length to the right
+                bound of the event.
         
         dissolve : bool, default False
             Whether to dissolve the events dataframe before performing the 
