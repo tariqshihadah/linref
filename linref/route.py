@@ -19,6 +19,7 @@ Modified:
 ################
 
 
+from xml.dom.minidom import Attr
 import numpy as np
 from shapely.geometry import LineString, MultiLineString
 import shapely
@@ -74,7 +75,10 @@ class MLSRoute(object):
         return self.rte_length
     
     def __str__(self):
-        return 'MLSRoute('+str(self.mls)+')'
+        return self.wkt
+
+    def __repr__(self):
+        return self.wkt
         
     @property
     def mls(self):
@@ -92,6 +96,7 @@ class MLSRoute(object):
                     "LineString.")
         # Log geometry
         self._mls = obj
+        self._wkt = None
         # Accumulate vector lengths to generate geometry breaks
         self._mls_breaks = \
             np.concatenate([[0]] + self.element_lengths).cumsum()
@@ -103,6 +108,15 @@ class MLSRoute(object):
         except IndexError:
             pass
         self._mls_ranges = rc
+
+    @property
+    def wkt(self):
+        try:
+            assert self._wkt is not None
+            return self._wkt
+        except AssertionError:
+            self._wkt = self.to_wkt()
+            return self._wkt
 
     @property
     def mls_breaks(self):
@@ -305,6 +319,56 @@ class MLSRoute(object):
         return cls(full_lines, rte_ranges=ranges, **kwargs)
 
     @classmethod
+    def from_wkt(cls, wkt, **kwargs):
+        """
+        Create an MLSRoute instance from a WKT string for a MULTILINESTRING or 
+        LINESTRING with three to four dimensions, with the last dimension 
+        being interpreted as M values.
+        
+        Parameters
+        ----------
+        wkt : str
+            WKT string representing a MULTILINESTRING or LINESTRING with three 
+            to four dimensions, with the last dimension representing the 
+            geometry's M values.
+        **kwargs
+            Keyword arguments to be input in the MLSRoute constructor.
+        """
+        # Simplify text and validate content
+        if 'MULTILINESTRING' in wkt:
+            simplified = wkt.split('((')[1] \
+                .replace('),',';').replace('(','').replace(')','')
+        elif 'LINESTRING' in wkt:
+            simplified = wkt.split('(')[1].replace(')','')
+        else:
+            raise ValueError(
+                "Provided WKT must represent multilinestring or linestring "
+                "data.")
+        # Iterate through groups of coordinates to parse M values
+        data = []
+        breaks = []
+        for coord_group in simplified.split(';'):
+            # Iterate through individual coordinates in the group
+            data_group = []
+            breaks_group = []
+            for coord in coord_group.split(', '):
+                try:
+                    coords = [float(x) for x in coord.strip().split(' ')]
+                    dims = len(coords)
+                    assert (dims > 2) & (dims < 5)
+                except AssertionError:
+                    raise ValueError(
+                        "Input WKT must have between three and four "
+                        "dimensions.")
+                data_group.append(coords[:-1])
+                breaks_group.append(coords[-1])
+            data.append(data_group)
+            breaks.append(breaks_group)
+
+        # Create MLSRoute
+        return MLSRoute(MultiLineString(data), rte_breaks=breaks, **kwargs)
+
+    @classmethod
     def concatenate(cls, routes, **kwargs):
         """
         Combine a list of MLSRoute objects into a single MLSRoute.
@@ -377,6 +441,45 @@ class MLSRoute(object):
             lengths[-1] = rng[-1] # Snap last value to range bound
             all_breaks.append(np.concatenate([rng[0], lengths], axis=None))
         return all_breaks
+
+    def to_wkt(self, decimals=None):
+        """
+        Produce a WKT string representing the object with the underlying 
+        MultiLineString appended with M values represented in the rte_breaks 
+        property.
+        """
+        # Define number formatter
+        if decimals is None:
+            fmt = lambda x: str(x)
+        elif isinstance(decimals, int):
+            fmt = lambda x: '{x:.{decimals:.0f}f}' \
+                .format(decimals=decimals, x=float(x))
+        else:
+            raise ValueError("Decimals parameter must be an integer.")
+
+        # Retrieve the base WKT for the multilinestring
+        wkt = self.mls.wkt
+        simplified = \
+            wkt.split('((')[1].replace('),',';').replace('(','').replace(')','')
+        # Iterate through groups of coordinates to append M values
+        data = []
+        zipped = zip(simplified.split(';'), self.rte_breaks)
+        for coord_group, m_group in zipped:
+            # Iterate through individual coordinates in the group
+            data_group = []
+            for coord, m in zip(coord_group.split(', '), m_group):
+                point = ' '.join(fmt(x) for x in coord.strip().split(' ') + [m])
+                data_group.append(point)
+            data.append('(' + ', '.join(data_group) + ')')
+
+        # Determine WKT prefix
+        prefix = wkt.split(' (')[0]
+        if prefix[-1] == 'Z':
+            prefix += 'M '
+        else:
+            prefix += ' M '
+        # Return combined WKT string
+        return prefix + '(' + ', '.join(data) + ')'
     
     def copy(self, deep=False):
         """

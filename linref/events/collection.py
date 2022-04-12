@@ -128,8 +128,9 @@ class EventsFrame(object):
     default_end =  ['EMP', 'END', 'TO']
     default_geom = ['geometry']
 
-    def __init__(self, df, keys=None, beg=None, end=None, geom=None, 
-                 route=None, closed='left_mod', sort=False, **kwargs):
+    def __init__(
+        self, df, keys=None, beg=None, end=None, geom=None, route=None, 
+        closed='left_mod', sort=False, **kwargs):
         # Log input values
         super(EventsFrame, self).__init__(**kwargs)
         self._df = df
