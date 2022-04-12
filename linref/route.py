@@ -351,7 +351,7 @@ class MLSRoute(object):
             # Iterate through individual coordinates in the group
             data_group = []
             breaks_group = []
-            for coord in coord_group.split(', '):
+            for coord in coord_group.split(','):
                 try:
                     coords = [float(x) for x in coord.strip().split(' ')]
                     dims = len(coords)
@@ -467,7 +467,7 @@ class MLSRoute(object):
         for coord_group, m_group in zipped:
             # Iterate through individual coordinates in the group
             data_group = []
-            for coord, m in zip(coord_group.split(', '), m_group):
+            for coord, m in zip(coord_group.split(','), m_group):
                 point = ' '.join(fmt(x) for x in coord.strip().split(' ') + [m])
                 data_group.append(point)
             data.append('(' + ', '.join(data_group) + ')')
