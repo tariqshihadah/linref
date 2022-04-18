@@ -120,9 +120,9 @@ class EventsMerge(object):
         except AttributeError:
             pass
         except AssertionError:
-            raise ValueError("Input EventsMerge target must have the same "
-                             "number of keys as the existing left target "
-                             f"({self.num_keys}).")
+            raise ValueError(
+                "Input EventsMerge target must have the same number of keys "
+                f"as the existing left target ({self.num_keys}).")
             
     def copy(self, deep=False):
         """
