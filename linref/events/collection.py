@@ -187,6 +187,21 @@ class EventsFrame(object):
             raise TypeError("Input dataframe must be pandas DataFrame class "
                 "instance.")
 
+    def df_exportable(self):
+        """
+        Return a dataframe which is optimized for exporting.
+        """
+        # Create a copy of the events dataframe
+        df = self.df.copy()
+        # Convert route data to wkt
+        try:
+            df[self.route] = \
+                df[self.route].apply(lambda x: x.wkt)
+        except:
+            # Remove route column
+            df = df.drop(columns=[self.route], errors='ignore')
+        return df
+
     @property
     def keys(self):
         """
@@ -375,6 +390,63 @@ class EventsFrame(object):
         self._route = route
         self._route_loc = self.columns.index(route) \
                 if not route is None else None
+
+    def parse_routes(self, col=None, inplace=False, errors='raise'):
+        """
+        Parse MLSRoutes data in the provided column, which contains either 
+        MLSRoute objects, WKT data for MULTILINESTRINGs or LINESTRINGs with 
+        M-values, or a mixture of both.
+
+        Parameters
+        ----------
+        col : label, optional
+            A valid column label within the events dataframe which contains the 
+            target MLSRoute data. If not provided, will attempt to retrieve a 
+            previously assigned column label from the self.route property.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        errors : {'raise','ignore'}
+            How to address errors which arise when coercing MLSRoute data 
+            during processing. If ignored, errors will result in null values 
+            in the events dataframe where errors occurred.
+        """
+        # Check column
+        if col is None:
+            try:
+                col = self._route
+            except:
+                raise ValueError("No route column label provided.")
+        # Coerce data
+        def _to_routes(x):
+            if isinstance(x, MLSRoute):
+                return x
+            elif isinstance(x, str):
+                try:
+                    return MLSRoute.from_wkt(x)
+                except Exception as e:
+                    if errors=='raise':
+                        raise e
+                    else:
+                        return
+            else:
+                if errors=='raise':
+                    raise TypeError(
+                        "Route data must be MLSRoute object or WKT valid "
+                        "string.")
+                else:
+                    return
+        routes = self.df[col].apply(_to_routes)
+        # Apply update
+        if inplace:
+            self.df[col] = routes
+            self.route = col
+            return
+        else:
+            ec = self.copy(deep=True)
+            ec.df[col] = routes
+            ec.route = col
+            return ec
 
     @property
     def closed(self):
@@ -708,7 +780,7 @@ class EventsFrame(object):
         return ec
 
     def project(self, other, buffer=100, choose='min', loc_label='LOC', 
-            dist_label='DISTANCE'):
+            dist_label='DISTANCE', **kwargs):
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -738,6 +810,9 @@ class EventsFrame(object):
             Labels to be used for created columns for projected locations on 
             target events groups and nearest point distances between target 
             geometries and events geometries.
+        **kwargs
+            Keyword arguments to be passed to the EventsFrame constructor 
+            upon completion of the projection.
         """
         # Validate input geodataframe
         if not isinstance(other, gpd.GeoDataFrame):
@@ -781,7 +856,13 @@ class EventsFrame(object):
         joined[loc_label] = locs
 
         # Prepare and return data
-        return joined.drop(columns=[self.route])
+        return self.__class__(
+            joined.drop(columns=[self.route]),
+            keys=self.keys,
+            beg=loc_label,
+            closed=self.closed,
+            **kwargs
+        )
 
     def to_windows(self, dissolve=False, **kwargs):
         """
@@ -1417,6 +1498,36 @@ class EventsCollection(EventsFrame):
                 # Single group
                 return self.get_group(keys, empty=False)
 
+    def from_similar(self, df, **kwargs):
+        """
+        Create an EventsCollection from the input dataframe, assuming the same 
+        column labels and closed parameter as the calling collection. 
+        Additional constructor keyword arguments can be passed through 
+        **kwargs.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Pandas dataframe which contains linear or point events data, 
+            formatted with standard labels. If multiple keys are detected, they 
+            will be assigned in the order in which they appear within the 
+            target dataframe. Only one of each begin and end option may be 
+            used. The geometry label is optional.
+        **kwargs
+            Additional keyword arguments to be passed to the EventsCollection 
+            constructor.
+        """
+        # Build the events collection
+        ec = self.__class__(
+            df,
+            keys=self.keys,
+            beg=self.beg,
+            end=self.end,
+            geom=self.geom,
+            closed=self.closed,
+            **kwargs)
+        return ec
+
     @classmethod
     def from_standard(cls, df, require_end=False, **kwargs):
         """
@@ -1434,6 +1545,9 @@ class EventsCollection(EventsFrame):
         end : 'EMP', 'END', 'TO'
         geom : 'geometry'
 
+        Additional constructor keyword arguments can be passed through 
+        **kwargs.
+
         Parameters
         ----------
         df : pd.DataFrame
@@ -1446,6 +1560,9 @@ class EventsCollection(EventsFrame):
             Whether to raise an error if no valid unique end column label is 
             found. If False, no end label will be used when generating the 
             collection.
+        **kwargs
+            Additional keyword arguments to be passed to the EventsCollection 
+            constructor.
         """
         # Check for standard label assignments
         keys, beg, end, geom = [], None, None, None
@@ -1591,7 +1708,7 @@ class EventsCollection(EventsFrame):
         return em
 
     def project_parallel(self, other, samples=3, buffer=100, match='all', 
-            choose=1, sort_locs=True):
+            choose=1, sort_locs=True, **kwargs):
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 
@@ -1619,11 +1736,21 @@ class EventsCollection(EventsFrame):
         sort_locs : bool, default True
             Whether begin and end location values should be sorted, ensuring 
             that all events are increasing and monotonic.
+        **kwargs
+            Keyword arguments to be passed to the EventsCollection constructor 
+            upon completion of the projection.
         """
         # Create projector
         pp = ParallelProjector(self, other, samples=samples, buffer=buffer)
-        # Perform match and return results
-        return pp.match(match=match, choose=choose, sort_locs=sort_locs)
+        # Perform match and return results in new events collection
+        return EventsCollection(
+            pp.match(match=match, choose=choose, sort_locs=sort_locs),
+            keys=self.keys,
+            beg=self.beg,
+            end=self.end,
+            closed=self.closed,
+            **kwargs
+        )
     
     def get_group(self, keys, empty=True, **kwargs) -> EventsGroup:
         """
@@ -1805,6 +1932,52 @@ def get_mode(arr):
     # Find most frequent unique value and return
     unique, counts = np.unique(arr, return_counts=True)
     return unique[np.argmax(counts)]
+
+
+####################
+# COMMON FUNCTIONS #
+####################
+
+def check_compatibility(objs, errors='raise', **kwargs):
+    """
+    Check if the input list of EventsCollections are all compatible for 
+    merging, unifying, or similar relational processes. Errors will be raised 
+    if objects are not found to be compatible with information about why they 
+    are not compatible. If requested, errors can be ignored, returning False 
+    instead. If all objects are compatible, the function will return True.
+
+    Parameters
+    ----------
+    objs : list-like of EventsCollections
+        List of EventsCollection objects to be tested against each other.
+    errors : {'raise','ignore'}
+        How to respond to errors when they arise.
+    """
+    # Ensure minimum objects provided
+    try:
+        assert len(objs) > 0
+    except AssertionError:
+        raise ValueError("Must provide at least one object for testing.")
+    try:
+        # Ensure type
+        try:
+            assert all(isinstance(obj, EventsCollection) for obj in objs)
+        except AssertionError:
+            raise TypeError("All input objects must be EventsCollections.")
+        # Ensure matching keys
+        try:
+            num_keys = objs[0].num_keys
+            for obj in objs[1:]:
+                assert obj.num_keys == num_keys
+        except AssertionError:
+            raise ValueError(
+                "All input objects must have the same number of keys.")
+    except Exception as e:
+        if errors == 'raise':
+            raise e
+        else:
+            return False
+    return True
 
 
 #####################
