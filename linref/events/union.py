@@ -95,13 +95,27 @@ class EventsUnion(object):
             groups.append(group)
         return groups
 
-    def union(self, fill_gaps=False):
+    def union(self, fill_gaps=False, suffix=True):
         """
+        Combine multiple EventsCollection instances into a single instance, 
+        creating least common intervals among all collections and maintaining 
+        all event attributes. The resulting combined events will be used to 
+        create and return an EventsCollection modeled after the first indexed 
+        collection in self.objs.
+
         Parameters
         ----------
         fill_gaps : bool, default False
-            Whether to fill gaps in merged collection with empty events. These 
-            events would not be associated with any parent collection.
+            Whether to fill gaps in the merged collection with empty events. 
+            These events would not be associated with any parent collection and 
+            would not be populated with any events attributes.
+        suffix : bool, default True
+            Whether to address repeating column labels by appending a suffix 
+            to all repeating labels indicating the order in which they appear. 
+            E.g., repeated column labels 'info' and 'info' would be converted 
+            into 'info_1' and 'info_2'. If False, no modifications will be made 
+            to column labels which may produce errors when instantiating or 
+            utilizing the resulting EventsCollection.
         """
         # Iterate over all unique group keys
         records = []
@@ -135,7 +149,20 @@ class EventsUnion(object):
             dfs += [source.iloc[index].reset_index(drop=True) \
                 for index, source in zip(indices, sources)]
             records.append(pd.concat(dfs, axis=1))
-        return pd.concat(records)
+        # Concatenate records
+        df = pd.concat(records)
+        # Address repeating column labels
+        if suffix:
+            cols = list(df)
+            counts = [cols.count(col) for col in cols]
+            suffixes = ['_' + str(cols[:i+1].count(col)) \
+                for i, col in enumerate(cols)]
+            labels = [col + (suffix if count > 1 else '') \
+                for col, suffix, count in zip(cols, suffixes, counts)]
+            df.columns = labels
+        # Create events collection based on objs[0]
+        ec = self.objs[0].from_similar(df, geom=None)
+        return ec
 
 
 #####################

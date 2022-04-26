@@ -622,7 +622,8 @@ class EventsFrame(object):
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
         fillna : optional
-            A value used to fill instances of np.nan in the target dataframe.
+            A value or dictionary used to fill instances of np.nan in the 
+            target dataframe. Consistent with the DataFrame.fillna() method.
         reorder : bool, default True
             Whether to reorder the resulting dataframe columns to match the 
             order of the collection's events dataframe.
@@ -735,9 +736,15 @@ class EventsFrame(object):
             # Get aggregation data
             lin_ranges = np.split(np.stack([begs_i, ends_i]), splitter, axis=1)
             if not agg_groups is None:
-                agg_data = agg_groups.loc[index, :].to_list()
-                agg_ranges = [[agg[i:j] for agg in agg_data] for i,j in \
-                            zip([None]+splitter, splitter+[None])]
+                try:
+                    agg_data = agg_groups.loc[index, :].to_list()
+                    agg_ranges = [[agg[i:j] for agg in agg_data] for i,j in \
+                                zip([None]+splitter, splitter+[None])]
+                except KeyError:
+                    raise KeyError(
+                        f"Unable to retrieve data group with index {index}. "
+                        "This may be due to nan data in one or more of the "
+                        "dissolving attributes.")
             else:
                 agg_ranges = iter(list, 1)
             
@@ -1518,14 +1525,14 @@ class EventsCollection(EventsFrame):
             constructor.
         """
         # Build the events collection
-        ec = self.__class__(
-            df,
+        kwargs = {**dict(
             keys=self.keys,
             beg=self.beg,
             end=self.end,
             geom=self.geom,
             closed=self.closed,
-            **kwargs)
+        ), **kwargs}
+        ec = self.__class__(df, **kwargs)
         return ec
 
     @classmethod
