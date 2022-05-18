@@ -786,7 +786,108 @@ class EventsFrame(object):
             closed=self.closed)
         return ec
 
-    def project(self, other, buffer=100, choose='min', loc_label='LOC', 
+    def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
+            dist_label='DISTANCE', **kwargs):
+        """
+        Project an input geodataframe onto the events dataframe, producing 
+        linearly referenced point locations relative to events for all input 
+        geometries within a buffered search area.
+
+        Parameters
+        ----------
+        other : gpd.GeoDataFrame
+            Geodataframe containing geometry which will be projected onto the 
+            events dataframe.
+        buffer : float, default 100
+            The max distance to search for input geometries to project against 
+            the events' geometries. Measured in terms of the geometries' 
+            coordinate reference system.
+        nearest : bool, default True
+            Whether to choose only the nearest match within the defined buffer. 
+            If False, all matches will be returned.
+        loc_label, dist_label : label
+            Labels to be used for created columns for projected locations on 
+            target events groups and nearest point distances between target 
+            geometries and events geometries.
+        **kwargs
+            Keyword arguments to be passed to the EventsFrame constructor 
+            upon completion of the projection.
+        """
+        # Validate input geodataframe
+        if not isinstance(other, gpd.GeoDataFrame):
+            raise TypeError("Other object must be gpd.GeoDataFrame instance.")
+        other = other.copy()
+
+        # Check for invalid column names
+        if self.route in other.columns:
+            raise ValueError(f"Invalid column name '{self.route}' found in "
+                "target geodataframe.")
+
+        # Ensure that geometries and routes are available
+        if self.geom is None:
+            raise ValueError("No geometry found in events dataframe. If "
+                "valid shapely geometries are available in the dataframe, "
+                f"set this with the {self.__class__.__name__}'s geom "
+                "property.")
+        elif self.route is None:
+            raise ValueError("No routes found in events dataframe. If valid "
+                "shapely geometries are available in the dataframe, create "
+                "routes by calling the build_routes() method on the "
+                f"{self.__class__.__name__} class instance.")
+        
+        # Join the other geodataframe to this one
+        select_cols = self.keys + [self.route, self.geom]
+        try:
+            if nearest:
+                joined = other.sjoin_nearest(
+                    self.df[select_cols],
+                    max_distance=buffer,
+                    how='left'
+                )
+            else:
+                warnings.warn(
+                    "Performance when nearest=False is currently limited and "
+                    "will be improved in future versions.")
+                joined = join_nearby(
+                    other, 
+                    self.df[select_cols], 
+                    buffer=buffer, 
+                    choose='all',
+                    dist_label=dist_label
+                )
+        except AttributeError:
+            # Optional dependency warning for improved performance
+            warnings.warn(
+                "Performance will be reduced for this operation when using "
+                "the current geopandas version. Upgrade to geopandas>=v0.10.0 "
+                "for improved performance.")
+            joined = join_nearby(
+                other, 
+                self.df[select_cols], 
+                buffer=buffer, 
+                choose='min' if nearest else 'all',
+                dist_label=dist_label
+            )
+
+        # Project input geometries onto event geometries
+        def _project(r):
+            try:
+                return r[self.route].project(r.geometry)
+            except AttributeError:
+                return
+        locs = joined.apply(_project, axis=1)
+        joined[loc_label] = locs
+
+        # Prepare and return data
+        return self.__class__(
+            joined.drop(columns=[self.route]),
+            keys=self.keys,
+            beg=loc_label,
+            closed=self.closed,
+            **kwargs
+        )
+
+    def project_old(self, other, buffer=100, choose='min', loc_label='LOC', 
             dist_label='DISTANCE', **kwargs):
         """
         Project an input geodataframe onto the events dataframe, producing 

@@ -22,31 +22,27 @@ def join_nearby(left, right, buffer=100, lsuffix='left', rsuffix='right',
 
     # Restore original geometry and index names
     joined.geometry = left.geometry
-    joined.rename(columns={'index_left': index_left, 'index_right': index_right}, inplace=True)
+    joined = joined.rename(
+        columns={'index_left': index_left, 'index_right': index_right})
 
     # Define distance computation function
-    def _get_distance(r):
-        # Extract geometries
-        o1, o2 = r.iloc[0], r.iloc[2]
-        
+    def _get_distance(o1, o2):
         # If geometries are valid, compute distance
         try:
             p1, p2 = nearest_points(o1, o2)
             return p1.distance(p2)
         except AttributeError:
             return -1
-    
+            
     # Compute distances
     geoms = joined[[left.geometry.name,index_right]].merge(
         right.geometry, left_on=index_right, right_index=True, how='left')
-    dists = geoms.apply(lambda r: _get_distance(r), axis=1)
-    
-    # Add computed distance field to joined geodataframe
-    joined[dist_label] = dists.values
+    points = zip(geoms.iloc[:,0], geoms.iloc[:,2])
+    joined[dist_label] = list(map(lambda x: _get_distance(*x), points))
     
     # Choose resulting records
-    joined = joined.rename_axis(index=index_left).sort_values(by=[index_left,dist_label],
-                                                              ascending=[True,True])
+    joined = joined.rename_axis(index=index_left) \
+        .sort_values(by=[index_left,dist_label], ascending=[True,True])
     joined = joined.rename_axis(index=index_left_orig)
     if choose == 'min':
         joined = joined[~joined.index.duplicated(keep='first')]
