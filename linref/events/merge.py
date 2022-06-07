@@ -317,7 +317,7 @@ class EventsMergeAttribute(object):
     def ndim(self):
         return self._ndim
 
-    def _to_pandas(self, arr, as_series=False):
+    def _to_pandas(self, arr, as_series=False, squeeze=True):
         # Create pandas object
         if as_series:
             obj = pd.Series(
@@ -331,7 +331,7 @@ class EventsMergeAttribute(object):
                 index=self.parent.left.df.index,
                 columns=self.column if self._ndim != 1 else [self.column]
             )
-            if self._ndim == 1:
+            if self._ndim == 1 and squeeze:
                 obj = obj.iloc[:, 0]
         return obj
 
@@ -512,26 +512,33 @@ class EventsMergeAttribute(object):
             return res
         return self._to_pandas(self._agg(_func, empty=empty))
 
-    def value_counts(self, empty=None):
+    def value_counts(self, expand=True):
         """
-        Return a dictionary of all unique intersecting event values and their 
+        Return a dataframe of all unique intersecting event values and their 
         occurence counts.
 
         Parameters
         ----------
-        empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there is no matching events group and 
-            aggregation cannot be performed. If None, values will be filled 
-            with np.nan.
+        expand : bool, default True
+            Whether to automatically expand the value counts data to a 
+            dataframe for single columns.
         """
         def _func(arr, trace, **kwargs):
             # Iterate over 2nd dimension
             res = []
             for arr_i in arr[trace.mask].T:
                 res.append({val: count for val, count in \
-                    zip(*np.unique(arr[trace.mask], return_counts=True))})
+                    zip(*np.unique(arr_i, return_counts=True))}) # zip(*np.unique(arr[trace.mask], return_counts=True))})
             return np.array(res)
-        return self._to_pandas(self._agg(_func, empty=empty))
+        data = self._agg(_func, empty={})
+        if self._ndim == 1:
+            if expand:
+                return pd.DataFrame(
+                    data.flatten().tolist(), index=self.parent.left.df.index)
+            else:
+                return self._to_pandas(data)
+        else:
+            return self._to_pandas(data)
     
     def most(self, empty=None, dropna=False):
         """
