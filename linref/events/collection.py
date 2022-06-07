@@ -132,7 +132,7 @@ class EventsFrame(object):
         self, df, keys=None, beg=None, end=None, geom=None, route=None, 
         closed='left_mod', sort=False, **kwargs):
         # Log input values
-        super(EventsFrame, self).__init__(**kwargs)
+        super(EventsFrame, self).__init__()
         self._df = df
         self.keys = keys
         self.beg = beg
@@ -172,8 +172,8 @@ class EventsFrame(object):
             # Sort dataframe
             self._df = df
             if self._sort:
-                self._df = df.sort_values(by=self.keys+[self.beg,self.end],
-                                          ascending=True)
+                self._sort_df()
+
             # Define the key groups
             if self.num_keys > 0:
                 self._groups = self._df.groupby(by=self.keys)
@@ -186,6 +186,13 @@ class EventsFrame(object):
         else:
             raise TypeError("Input dataframe must be pandas DataFrame class "
                 "instance.")
+
+    def _sort_df(self):
+        """
+        Sort the events dataframe by keys and begin/end columns.
+        """
+        self._df = self._df.sort_values(
+            by=self.keys + [self.beg, self.end], ascending=True)
 
     def df_exportable(self):
         """
@@ -588,6 +595,9 @@ class EventsFrame(object):
         reorder=True, merge_lines=True):
         """
         Dissolve the events dataframe on a selection of event attributes.
+
+        Note: Data will be sorted by keys and begin/end columns prior to 
+        performing the dissolve.
         
         Note: Missing data in selected attribute fields may cause problems with 
         dissolving; please use df.fillna(...) or df.dropna(...) to avoid this 
