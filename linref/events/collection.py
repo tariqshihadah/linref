@@ -172,7 +172,7 @@ class EventsFrame(object):
             # Sort dataframe
             self._df = df
             if self._sort:
-                self._sort_df()
+                self._df = self._sort_df(df)
 
             # Define the key groups
             if self.num_keys > 0:
@@ -187,11 +187,12 @@ class EventsFrame(object):
             raise TypeError("Input dataframe must be pandas DataFrame class "
                 "instance.")
 
-    def _sort_df(self):
+    def _sort_df(self, df):
         """
-        Sort the events dataframe by keys and begin/end columns.
+        Sort the given dataframe by the collection's keys and begin/end 
+        columns, returning the sorted dataframe.
         """
-        self._df = self._df.sort_values(
+        return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
 
     def df_exportable(self):
@@ -643,8 +644,8 @@ class EventsFrame(object):
             applicable when agg_geometry=True.
         """
         # Validate inputs
-        # - Create dummy dataframe
-        df = self.df.copy()
+        # - Create, sort dummy dataframe
+        df = self._sort_df(self.df.copy())
         col_order = list(df.columns)
         df['__DUMMY__'] = True # Dummy data guarantees >0 groupby keys
         # - Dissolve attributes
