@@ -158,6 +158,9 @@ class EventsFrame(object):
         text = f"{nm}({', '.join(kwargs)})"
         return text
 
+    def __iter__(self):
+        return (self.get_group(key) for key in self.group_keys_unique)
+
     @property
     def df(self):
         """
