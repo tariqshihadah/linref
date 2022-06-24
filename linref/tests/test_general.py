@@ -25,7 +25,7 @@ class TestIntersecting(TestCase):
 
     def test_intersecting(self):
         """
-        Test basic use of intersecting on EventsGroup
+        Test basic use of intersecting on EventsGroup.
         """
         ec = EventsCollection.from_standard(df_basic)
         ec_intersecting = ec['A'].intersecting(0.55, 1.05)
@@ -36,11 +36,22 @@ class TestDissolve(TestCase):
 
     def test_dissolve(self):
         """
-        Test basic use of dissolve on EventsCollection
+        Test basic use of dissolve on EventsCollection.
         """
         ec = EventsCollection.from_standard(df_basic)
         df_res = ec.dissolve(attr=['A'], aggs=['B'], agg_func=lambda l: [i.upper() for i in l]).df
         self.assertTrue(df_res.equals(df_dissolve))
+
+
+#class TestMerge(TestCase):
+#    
+#    def test_merge_mean(self):
+#        """
+#        Test the events merge feature and the mean aggregator.
+#        """
+#        # Define collections
+#        ec_window_overlap = EventsCollection.from_standard(df_window_overlap)
+#        ec_window_contiguous = EventsCollection.from_standard(df_window_contiguous)
 
 
 # Define standard unit test variables
@@ -63,6 +74,17 @@ df_dissolve = pd.DataFrame(
         'B_agg': {0: ['B', 'B'], 2: ['B', 'B', 'C'], 1: ['B'], 3: ['B', 'B', 'B'], 5: ['C'], 4: ['B', 'A']}
     }
 )
+df_window_overlap = pd.DataFrame({
+    'RID': [1,1,1,1,1],
+    'BMP': [0,1,2,3,4],
+    'EMP': [3,4,5,6,7],
+    'VAL': [1,0,1,1,2]
+})
+df_window_contiguous = pd.DataFrame({
+    'RID': [1,1,1,1,1,1,1,1,1],
+    'BMP': [0,1,2,3,4,5,6,7,8],
+    'EMP': [1,2,3,4,5,6,7,8,9],
+})
 ec_basic = EventsCollection(df_basic, keys=['RID'], beg='BMP', end='EMP')
 
 if __name__ == '__main__':

@@ -503,6 +503,14 @@ class EventsFrame(object):
         # Return validated columns
         return cols
 
+    def iter_groups(self):
+        """
+        Return an iterator which will iterate through all groups in the 
+        collection, yielding each group's key as well as the associated 
+        EventsGroup.
+        """
+        return ((key, self.get_group(key)) for key in self.group_keys_unique)
+
     def build_routes(self, label='route', errors='raise'):
         """
         Build MLSRoute instances for each event based on available geometry 
