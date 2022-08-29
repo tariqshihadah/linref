@@ -841,9 +841,15 @@ class EventsFrame(object):
         other = other.copy()
 
         # Check for invalid column names
-        if self.route in other.columns:
-            raise ValueError(f"Invalid column name '{self.route}' found in "
-                "target geodataframe.")
+        if (self.route in other.columns):
+            raise ValueError(
+                f"Invalid column name '{self.route}' found in target "
+                "geodataframe.")
+        if len(set(self.keys) & set(other.columns)) > 0:
+            invalid = set(self.keys) & set(other.columns)
+            raise ValueError(
+                f"Target geodataframe contains at least one events collection "
+                f"key column name {invalid}.")
 
         # Ensure that geometries and routes are available
         if self.geom is None:
@@ -899,7 +905,7 @@ class EventsFrame(object):
                 return
         locs = joined.apply(_project, axis=1)
         joined[loc_label] = locs
-
+        # return joined # modified to return EC 7/27/2022
         # Prepare and return data
         return self.__class__(
             joined.drop(columns=[self.route]),
@@ -1008,7 +1014,7 @@ class EventsFrame(object):
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
             value of 1.
-        fill : {'none','cut','left','right'}, default 'cut'
+        fill : {'none','cut','left','right','extend','balance'}, default 'cut'
             How to fill a gap at the end of an event's range.
 
             Options
@@ -1025,6 +1031,9 @@ class EventsFrame(object):
             extend : the final window will be anchored on the grid defined by 
                 the step value, extending beyond the window length to the right
                 bound of the event.
+            balance : if the final range is greater than or equal to half the 
+                target range length, perform the cut method; if it is less, 
+                perform the extend method.
         
         dissolve : bool, default False
             Whether to dissolve the events dataframe before performing the 
@@ -1818,7 +1827,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other):
+    def merge(self, other, closed=None):
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 
@@ -1832,6 +1841,11 @@ class EventsCollection(EventsFrame):
             with this events collection, producing an EventsMerge instance 
             which can be used to perform various overlay operations to retrieve 
             attributes and more from the target collection.
+        closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
+                'neither'}, optional
+            Whether intervals on the target events frame are closed on the 
+            left-side, right-side, both or neither. If not provided, will 
+            default to the already-set parameter on the events frame.
         """
         # Create merge
         em = EventsMerge(self, other)

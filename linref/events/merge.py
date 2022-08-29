@@ -51,7 +51,7 @@ class EventsMerge(object):
         
     def __getitem__(self, column):
         return EventsMergeAttribute(self, column)
-
+    
     def __repr__(self):
         text = (
             f"left:  {self.left}\n"
@@ -149,7 +149,7 @@ class EventsMerge(object):
                 eg = self.right.get_group(key, empty=False)
                 mask = eg.intersecting(beg, end, mask=True)
                 weights = eg.overlay(beg, end, normalize=False, arr=True)
-                return EventsMergeTrace(key, beg, end, mask, weights, 
+                return EventsMergeTrace(eg, key, beg, end, mask, weights, 
                                         success=True)
             except KeyError as e:
                 return EventsMergeTrace(success=False)
@@ -593,9 +593,26 @@ class EventsMergeAttribute(object):
             return np.array(res)
         return self._to_pandas(self._agg(_func, empty=empty))
 
+    def count(self, empty=None):
+        """
+        Return the count of all intersected event values.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        def _func(arr, trace, **kwargs):
+            # Sum count of all intersecting events
+            res = trace.mask.sum(axis=0)
+            return res
+        return self._to_pandas(self._agg(_func, empty=empty))
+
     def sum(self, empty=None):
         """
-        Return the sum of all event values.
+        Return the sum of all intersected event values.
 
         Parameters
         ----------
@@ -607,6 +624,44 @@ class EventsMergeAttribute(object):
         def _func(arr, trace, **kwargs):
             # Choose all intersecting events
             res = arr[trace.mask].sum(axis=0)
+            return res
+        return self._to_pandas(self._agg(_func, empty=empty))
+
+    def sumproduct(self, empty=None, normalized=False, dropna=False):
+        """
+        Return the sum of all event values multiplied by the weights of the 
+        intersecting events. If normalized=False, the event values will be 
+        multiplied by the actual overlapping length (e.g., multiplying a per-
+        mile value by the miles of overlap). If normalized=True, the event 
+        values will be multiplied by the normalized overlapping length (e.g., 
+        multiplying a total value by the proportion of the event overlapped).
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        normalized : boolean, default False
+            Whether the weights of the intersecting events being multiplied 
+            with the event values should be normalized by the total length of 
+            the intersecting events.
+        dropna : boolean, default False
+            Whether to drop np.nan values before aggregating.
+        """
+        def _func(arr, trace, **kwargs):
+            # Prepare weights data congruent with array data
+            if normalized:
+                weights = trace.weights / trace.eg.lengths
+            else:
+                weights = trace.weights
+            weights = np.tile(weights, self._ncols).reshape(self._ncols, -1).T
+            # Drop nan if requested
+            if dropna:
+                # Zero weights where nan values occur
+                weights = np.where(np.isnan(arr.astype(float)), 0, weights)
+            # Compute sums
+            res = np.multiply(arr, weights).sum(axis=0)
             return res
         return self._to_pandas(self._agg(_func, empty=empty))
 
@@ -650,8 +705,9 @@ class EventsMergeAttribute(object):
 
 class EventsMergeTrace(object):
     
-    def __init__(self, key=None, beg=None, end=None, mask=None, weights=None, 
+    def __init__(self, eg=None, key=None, beg=None, end=None, mask=None, weights=None, 
                  success=True):
+        self.eg = eg if not eg is None else np.nan
         self.key = key if not key is None else np.nan
         self.beg = beg if not beg is None else np.nan
         self.end = end if not end is None else np.nan
