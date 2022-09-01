@@ -2,6 +2,11 @@
 Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.
 
 # Version Notes
+## 0.0.5 (2022-09-01)
+- Added sumproduct and count aggregators to EventsMergeAttribute class
+- Performance improvements
+- Various bug fixes, minor features
+
 ## 0.0.4 (2022-06-24)
 - Minor feature additions
 - Performance improvements
