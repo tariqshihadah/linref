@@ -4,6 +4,7 @@ Module featuring EventsCollection object class for the management of linearly re
 # Version Notes
 ## 0.0.5 (2022-09-01)
 - Added sumproduct and count aggregators to EventsMergeAttribute class
+- Address deprecation of length of and iteration over multi-part geometries in shapely
 - Performance improvements
 - Various bug fixes, minor features
 
