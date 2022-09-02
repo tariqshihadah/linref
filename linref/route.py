@@ -141,7 +141,8 @@ class MLSRoute(object):
             # Coerce np.ndarray
             data = [np.asarray(x) for x in data]
             # Check data length
-            assert all(len(r)==len(l.coords) for r, l in zip(data, self._mls))
+            assert all(len(r)==len(l.coords) for \
+                r, l in zip(data, self._mls.geoms))
         except:
             raise ValueError(
                 "Route breaks data should be list of array-like of numeric "
@@ -174,7 +175,7 @@ class MLSRoute(object):
         try:
             return self._num_lines
         except AttributeError:
-            self._num_lines = len(self.mls)
+            self._num_lines = len(self.mls.geoms)
             return self._num_lines
     
     @property
@@ -404,7 +405,7 @@ class MLSRoute(object):
         """
         # Store all vectors
         lengths = []
-        for line in self.mls:
+        for line in self.mls.geoms:
             # Log vector length
             coords = line.coords
             lengths.append(np.asarray([LineString(coords[i-1:i+1]).length \
@@ -421,7 +422,7 @@ class MLSRoute(object):
             # Coerce as numpy array, check shape
             try:
                 data = np.asarray(data)
-                assert data.shape == (len(self._mls), 2)
+                assert data.shape == (len(self._mls.geoms), 2)
             except:
                 raise ValueError(
                     "Input ranges should be array-like of numeric values with "
@@ -813,7 +814,7 @@ class MLSRoute(object):
         breaks = []
         
         # Iterate over the LineStrings in the MLS
-        for num, (line, breaks_all) in enumerate(zip(self.mls,
+        for num, (line, breaks_all) in enumerate(zip(self.mls.geoms,
                  self.rte_breaks)):
             
             # Get the number of ranges in the LineString
@@ -1007,7 +1008,7 @@ def combine_mpgs(objs, cls=None):
     new = []
     for obj in objs:
         if isinstance(obj, shapely.geometry.base.BaseMultipartGeometry):
-            new.extend(list(obj))
+            new.extend(list(obj.geoms))
         elif isinstance(obj, shapely.geometry.base.BaseGeometry):
             new.extend([obj])
         else:
@@ -1025,7 +1026,7 @@ def _distribute_dimensions(mls, beg, end):
         raise ValueError("Input MLS must be MultiLineString type.")
     # Compute dimensions
     delta = end - beg
-    lengths = np.array([ls.length for ls in mls])
+    lengths = np.array([ls.length for ls in mls.geoms])
     proportions = np.cumsum(lengths / lengths.sum() * delta)
     begs = np.insert(proportions[:-1] + beg, 0, beg)
     ends = proportions + beg
