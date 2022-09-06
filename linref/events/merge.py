@@ -43,13 +43,18 @@ from functools import wraps
 
 
 class EventsMerge(object):
+    """
+    High-level object class for managing merges between two events collections 
+    and summarizing/retrieving information from these merges. Generated through 
+    collection-level merging methods such as EventsCollection.merge.
+    """
     
     def __init__(self, left, right):
         # Log parameters
         self.left = left
         self.right = right
         
-    def __getitem__(self, column):
+    def __getitem__(self, column) -> EventsMergeAttribute:
         return EventsMergeAttribute(self, column)
     
     def __repr__(self):
