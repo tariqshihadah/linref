@@ -2033,51 +2033,6 @@ class EventsCollection(EventsFrame):
                            geom=self.geom, closed=self.closed)
 
 
-###########
-# HELPERS #
-###########
-
-def get_most(arr, weights):
-    """
-    Select the item from the input array which is associated with the highest 
-    total weight from the weights array. Scores are computed by summing the 
-    weights for each unique array value.
-    
-    Parameters
-    ----------
-    arr, weights : array-like
-        Arrays of equal length of target values and weights associated with 
-        each value.
-    """
-    # Enforce numpy arrays
-    arr = np.asarray(arr)
-    weights = np.asarray(weights)
-    # Group and split sorted target array
-    sorter = np.argsort(arr)
-    unique, splitter = np.unique(arr[sorter], return_index=True)
-    splitter = splitter[1:]
-    # Split weights and aggregate
-    splits = np.split(weights[sorter], splitter)
-    scores = [x.sum() for x in splits]
-    # Return the highest scoring item
-    return unique[np.argmax(scores)]
-
-def get_mode(arr):
-    """
-    Select the item from the input array which appears most frequently.
-    
-    Parameters
-    ----------
-    arr : array-like
-        Array with target values
-    """
-    # Enforce numpy array
-    arr = np.asarray(arr)
-    # Find most frequent unique value and return
-    unique, counts = np.unique(arr, return_counts=True)
-    return unique[np.argmax(counts)]
-
-
 ####################
 # COMMON FUNCTIONS #
 ####################
