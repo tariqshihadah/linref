@@ -42,223 +42,6 @@ import copy, warnings
 from functools import wraps
 
 
-class EventsMerge(object):
-    """
-    High-level object class for managing merges between two events collections 
-    and summarizing/retrieving information from these merges. Generated through 
-    collection-level merging methods such as EventsCollection.merge.
-    """
-    
-    def __init__(self, left, right):
-        # Log parameters
-        self.left = left
-        self.right = right
-        
-    def __getitem__(self, column) -> EventsMergeAttribute:
-        return EventsMergeAttribute(self, column)
-    
-    def __repr__(self):
-        text = (
-            f"left:  {self.left}\n"
-            f"right: {self.right}\n"
-            f"(traces {'built' if hasattr(self, '_traces') else 'not built'})"
-        )
-        return text
-        
-    @property
-    def left(self):
-        return self._left
-    
-    @left.setter
-    def left(self, obj):
-        self._validate_target(obj)
-        self._left = obj
-        
-    @property
-    def right(self):
-        return self._right
-    
-    @right.setter
-    def right(self, obj):
-        # Validate and set
-        self._validate_target(obj, left=False)
-        self._right = obj
-        
-    @property
-    def traces(self):
-        try:
-            return self._traces
-        except AttributeError:
-            self.build(inplace=True)
-            return self._traces
-    
-    @traces.setter
-    def traces(self, obj):
-        if not isinstance(obj, list):
-            raise TypeError("Traces must be a list of EventsMerge_trace "
-                            "objects.")
-        self._traces = obj
-        
-    @property
-    def num_keys(self):
-        return self.left.num_keys
-        
-    @property
-    def keys(self):
-        return self.left.keys
-    
-    @property
-    def columns(self):
-        return self.right.columns
-        
-    def _validate_target(self, obj, left=True):
-        # Ensure left is set first if the target is the right
-        if not (left) and not (hasattr(self, '_left')):
-            raise AttributeError("The left target must be set before the right "
-                                 "target.")
-        # Ensure type
-        if not isinstance(obj, EventsCollection):
-            raise TypeError("EventsMerge targets must be EventsCollections.")
-        # Ensure matching keys
-        try:
-            assert obj.num_keys == self.num_keys
-        except AttributeError:
-            pass
-        except AssertionError:
-            raise ValueError(
-                "Input EventsMerge target must have the same number of keys "
-                f"as the existing left target ({self.num_keys}).")
-            
-    def copy(self, deep=False):
-        """
-        Create an exact copy of the events class instance.
-        
-        Parameters
-        ----------
-        deep : bool, default False
-            Whether the created copy should be a deep copy.
-        """
-        if deep:
-            return copy.deepcopy(self)
-        else:
-            return copy.copy(self)
-    
-    def build(self, inplace=True):
-        """
-        Perform intersects and overlays to produce EventsMergeTrace objects 
-        for aggregation.
-        """
-        def _build_row(key, beg, end):
-            try:
-                # Retrieve corresponding events group and intersect/overlay
-                eg = self.right.get_group(key, empty=False)
-                mask = eg.intersecting(beg, end, mask=True)
-                weights = eg.overlay(beg, end, normalize=False, arr=True)
-                return EventsMergeTrace(eg, key, beg, end, mask, weights, 
-                                        success=True)
-            except KeyError as e:
-                return EventsMergeTrace(success=False)
-        
-        # In place?
-        em = self if inplace else self.copy()
-
-        # Build all traces
-        em.traces = [_build_row(key, beg, end) for key, beg, end in \
-                     zip(self.left.group_keys, self.left.begs, self.left.ends)]
-        return em if not inplace else None
-
-    def cut(self, **kwargs):
-        """
-        Cut intersecting event routes at the intersecting begin and end 
-        locations, returning the resulting route's geometry or the route itself 
-        if requested.
-
-        Parameters
-        ----------
-        empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
-            aggregation cannot be performed. If None, values will be filled 
-            with np.nan.
-        return_mls : bool, default True
-            Whether to return the MultiLineString associated with each cut 
-            MLRRoute instead of the route itself.
-        """
-        # Get attribute for routes if available
-        try:
-            ema = self[self.right.route]
-        except:
-            raise ValueError("Right collection does not contain a valid "
-                "routes column label.")
-        # Perform cut
-        return ema.cut(**kwargs)
-
-    def interpolate(self, **kwargs):
-        """
-        Interpolate along intersecting event routes at the intersecting 
-        location (or begin point for linear events), returning the resulting 
-        interpolated point geometry.
-
-        Parameters
-        ----------
-        empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there are no intersecting events and 
-            aggregation cannot be performed. If None, values will be filled 
-            with np.nan.
-        """
-        # Get attribute for routes if available
-        try:
-            ema = self[self.right.route]
-        except:
-            raise ValueError("Right collection does not contain a valid "
-                "routes column label.")
-        # Perform cut
-        return ema.interpolate(**kwargs)
-
-    def count(self, empty=None, as_array=True, **kwargs):
-        """
-        Count the number of intersecting events.
-
-        Parameters
-        ----------
-        empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there is no matching events group and 
-            aggregation cannot be performed. If None, values will be filled 
-            with np.nan.
-        """
-        # Validate fill value
-        empty = np.nan if empty is None else empty
-        # Aggregate all traces
-        res = []
-        for trace in self.traces:
-            try:
-                res.append(trace.mask.sum())
-            except AttributeError:
-                res.append(empty)
-        return np.array(res) if as_array else res
-
-    def any(self, empty=None, as_array=True, **kwargs):
-        """
-        Indicate whether each record intersects with at least one event.
-
-        Parameters
-        ----------
-        empty : scalar, string, or other pd.Series-compatible value, optional
-            Value to use to fill when there is no matching events group and 
-            aggregation cannot be performed. If None, values will be filled 
-            with np.nan.
-        """
-        # Validate fill value
-        empty = np.nan if empty is None else empty
-        # Aggregate all traces
-        res = []
-        for trace in self.traces:
-            try:
-                res.append(trace.mask.any())
-            except AttributeError:
-                res.append(empty)
-        return np.array(res) if as_array else res
-
-
 class EventsMergeAttribute(object):
     
     def __init__(self, parent, column):
@@ -452,7 +235,7 @@ class EventsMergeAttribute(object):
         return self._to_pandas(self._agg(
             _func, empty=empty, as_array=False, squeeze=True), as_series=True)
     
-    def interpolate(self, empty=None, **kwargs):
+    def interpolate(self, snap=None, empty=None, **kwargs):
         """
         Interpolate along intersecting event routes at the intersecting 
         location (or begin point for linear events), returning the resulting 
@@ -460,6 +243,11 @@ class EventsMergeAttribute(object):
 
         Parameters
         ----------
+        snap : {None, 'near', 'left', 'right'}, default None
+            If the event location does not fall within any geometry, snap to 
+            the nearest match based on distance, choosing the closest location 
+            to the left, right, or the nearest side ('near'). If None, a value 
+            error will be raised when no intersecting ranges are found.
         empty : scalar, string, or other pd.Series-compatible value, optional
             Value to use to fill when there is no matching events group and 
             aggregation cannot be performed. If None, values will be filled 
@@ -472,7 +260,7 @@ class EventsMergeAttribute(object):
             # Choose the first intersecting event and cut the route
             route = arr[trace.mask][0][0]
             try:
-                res = route.interpolate(trace.beg, **kwargs)
+                res = route.interpolate(trace.beg, snap=snap, **kwargs)
             except AttributeError:
                 raise TypeError("EventsMergeAttribute must represent a single "
                     "column and must contain MLSRoute objects to be "
@@ -719,6 +507,223 @@ class EventsMergeTrace(object):
         self.mask = mask if not mask is None else np.nan
         self.weights = weights if not weights is None else np.nan
         self.success = success
+
+
+class EventsMerge(object):
+    """
+    High-level object class for managing merges between two events collections 
+    and summarizing/retrieving information from these merges. Generated through 
+    collection-level merging methods such as EventsCollection.merge.
+    """
+    
+    def __init__(self, left, right):
+        # Log parameters
+        self.left = left
+        self.right = right
+        
+    def __getitem__(self, column) -> EventsMergeAttribute:
+        return EventsMergeAttribute(self, column)
+    
+    def __repr__(self):
+        text = (
+            f"left:  {self.left}\n"
+            f"right: {self.right}\n"
+            f"(traces {'built' if hasattr(self, '_traces') else 'not built'})"
+        )
+        return text
+        
+    @property
+    def left(self):
+        return self._left
+    
+    @left.setter
+    def left(self, obj):
+        self._validate_target(obj)
+        self._left = obj
+        
+    @property
+    def right(self):
+        return self._right
+    
+    @right.setter
+    def right(self, obj):
+        # Validate and set
+        self._validate_target(obj, left=False)
+        self._right = obj
+        
+    @property
+    def traces(self):
+        try:
+            return self._traces
+        except AttributeError:
+            self.build(inplace=True)
+            return self._traces
+    
+    @traces.setter
+    def traces(self, obj):
+        if not isinstance(obj, list):
+            raise TypeError("Traces must be a list of EventsMerge_trace "
+                            "objects.")
+        self._traces = obj
+        
+    @property
+    def num_keys(self):
+        return self.left.num_keys
+        
+    @property
+    def keys(self):
+        return self.left.keys
+    
+    @property
+    def columns(self):
+        return self.right.columns
+        
+    def _validate_target(self, obj, left=True):
+        # Ensure left is set first if the target is the right
+        if not (left) and not (hasattr(self, '_left')):
+            raise AttributeError("The left target must be set before the right "
+                                 "target.")
+        # Ensure type
+        if not isinstance(obj, EventsCollection):
+            raise TypeError("EventsMerge targets must be EventsCollections.")
+        # Ensure matching keys
+        try:
+            assert obj.num_keys == self.num_keys
+        except AttributeError:
+            pass
+        except AssertionError:
+            raise ValueError(
+                "Input EventsMerge target must have the same number of keys "
+                f"as the existing left target ({self.num_keys}).")
+            
+    def copy(self, deep=False):
+        """
+        Create an exact copy of the events class instance.
+        
+        Parameters
+        ----------
+        deep : bool, default False
+            Whether the created copy should be a deep copy.
+        """
+        if deep:
+            return copy.deepcopy(self)
+        else:
+            return copy.copy(self)
+    
+    def build(self, inplace=True):
+        """
+        Perform intersects and overlays to produce EventsMergeTrace objects 
+        for aggregation.
+        """
+        def _build_row(key, beg, end):
+            try:
+                # Retrieve corresponding events group and intersect/overlay
+                eg = self.right.get_group(key, empty=False)
+                mask = eg.intersecting(beg, end, mask=True)
+                weights = eg.overlay(beg, end, normalize=False, arr=True)
+                return EventsMergeTrace(eg, key, beg, end, mask, weights, 
+                                        success=True)
+            except KeyError as e:
+                return EventsMergeTrace(success=False)
+        
+        # In place?
+        em = self if inplace else self.copy()
+
+        # Build all traces
+        em.traces = [_build_row(key, beg, end) for key, beg, end in \
+                     zip(self.left.group_keys, self.left.begs, self.left.ends)]
+        return em if not inplace else None
+
+    def cut(self, **kwargs):
+        """
+        Cut intersecting event routes at the intersecting begin and end 
+        locations, returning the resulting route's geometry or the route itself 
+        if requested.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there are no intersecting events and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        return_mls : bool, default True
+            Whether to return the MultiLineString associated with each cut 
+            MLRRoute instead of the route itself.
+        """
+        # Get attribute for routes if available
+        try:
+            ema = self[self.right.route]
+        except:
+            raise ValueError("Right collection does not contain a valid "
+                "routes column label.")
+        # Perform cut
+        return ema.cut(**kwargs)
+
+    def interpolate(self, **kwargs):
+        """
+        Interpolate along intersecting event routes at the intersecting 
+        location (or begin point for linear events), returning the resulting 
+        interpolated point geometry.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there are no intersecting events and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Get attribute for routes if available
+        try:
+            ema = self[self.right.route]
+        except:
+            raise ValueError("Right collection does not contain a valid "
+                "routes column label.")
+        # Perform cut
+        return ema.interpolate(**kwargs)
+
+    def count(self, empty=None, as_array=True, **kwargs):
+        """
+        Count the number of intersecting events.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Validate fill value
+        empty = np.nan if empty is None else empty
+        # Aggregate all traces
+        res = []
+        for trace in self.traces:
+            try:
+                res.append(trace.mask.sum())
+            except AttributeError:
+                res.append(empty)
+        return np.array(res) if as_array else res
+
+    def any(self, empty=None, as_array=True, **kwargs):
+        """
+        Indicate whether each record intersects with at least one event.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        # Validate fill value
+        empty = np.nan if empty is None else empty
+        # Aggregate all traces
+        res = []
+        for trace in self.traces:
+            try:
+                res.append(trace.mask.any())
+            except AttributeError:
+                res.append(empty)
+        return np.array(res) if as_array else res
 
 
 ###########

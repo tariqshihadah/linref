@@ -1000,6 +1000,83 @@ class EventsFrame(object):
             **kwargs
         )
 
+    def to_grid(self, dissolve=False, **kwargs):
+        """
+        Use the events dataframe to create a grid of zero-length, equidistant 
+        point events which span the bounds of each event.
+
+        Parameters
+        ----------
+        length : numerical, default 1.0
+            A fixed distance between each point on the grid.
+        fill : {'none','cut','extend','right','balance'}, default 'cut'
+            How to fill a gap at the end of an event's range.
+
+            Options
+            -------
+            none : no point will be generated at the end of the input range 
+                unless it falls directly on the defined grid distance.
+            cut : a point will be generated at the very end of the input range, 
+                at a distance less than or equal to the defined grid distance.
+            right : the final point will be generated at a distance equal to 
+                the defined grid distance, even if this extends beyond the full 
+                input range.
+            extend : a point will be generated at the very end of the input 
+                range, at a distance greater than or equal to the defined grid 
+                distance.
+            balance : if the final range is greater than or equal to half the 
+                target range length, perform the cut method; if it is less, 
+                perform the extend method.
+        
+        dissolve : bool, default False
+            Whether to dissolve the events dataframe before performing the 
+            transformation.
+        """
+        # Dissolve events
+        if dissolve:
+            events = self.dissolve().df
+        else:
+            events = self.df
+        # Iterate over roads and create sliding window segments
+        gen = zip(
+            events[self.keys + [self.beg, self.end]].values,
+            events.index.values
+        )
+        grid = []
+        for (*keys, beg, end), index in gen:
+            # Build grid points
+            rng = RangeCollection.from_steps(beg, end, **kwargs).cut(beg, end)
+            locs = np.append(rng.begs, rng.ends[-1])
+            num_locs = len(locs)
+            # Assemble sliding window data
+            grid.append(
+                np.concatenate(
+                    [
+                        [keys]*num_locs,        # Event keys
+                        np.tile(locs, (2,1)).T, # Point locations
+                        [[index]]*num_locs      # Parent index value
+                    ],
+                    axis=1
+                )
+            )
+
+        # Merge and prepare data, return
+        grid = np.concatenate(grid, axis=0)
+        df = pd.DataFrame(
+            data=grid,
+            columns=self.keys + [self.beg, self.end, 'index_parent'],
+            index=None,
+        )
+        # Enforce data types
+        dtypes = {
+            **events.dtypes,
+            'index_parent': events.index.dtype
+        }
+        dtypes = {col: dtypes[col] for col in df.columns}
+        df = df.astype(dtypes, copy=False)
+        res = self.__class__(df, keys=self.keys, beg=self.beg, end=self.end)
+        return res
+
     def to_windows(self, dissolve=False, **kwargs):
         """
         Use the events dataframe to create sliding window events of a fixed 
@@ -1014,7 +1091,7 @@ class EventsFrame(object):
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
             value of 1.
-        fill : {'none','cut','left','right','extend','balance'}, default 'cut'
+        fill : {'none','cut','extend','left','right','balance'}, default 'cut'
             How to fill a gap at the end of an event's range.
 
             Options
@@ -1023,14 +1100,14 @@ class EventsFrame(object):
                 the input range.
             cut : a truncated window will be created to fill the gap with a 
                 length less than the full window length.
-            left : the final window will be anchored on the end of the event  
-                and will extend the full window length to the left. 
-            right : the final window will be anchored on the grid defined by 
-                the step value, extending the full window length to the right, 
-                beyond the event's end value.
             extend : the final window will be anchored on the grid defined by 
                 the step value, extending beyond the window length to the right
                 bound of the event.
+            left : the final window will be anchored on the end of the input 
+                range and will extend the full window length to the left. 
+            right : the final window will be anchored on the grid defined by 
+                the step value, extending the full window length to the right, 
+                beyond the event's end value.
             balance : if the final range is greater than or equal to half the 
                 target range length, perform the cut method; if it is less, 
                 perform the extend method.
