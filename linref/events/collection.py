@@ -381,6 +381,14 @@ class EventsFrame(object):
         self._geom_loc = self.columns.index(geom) if not geom is None else None
 
     @property
+    def is_point(self):
+        """
+        Returns True if the collection's beg and end columns are the same, 
+        implying that it is a collection of point events.
+        """
+        return self._beg == self._end
+
+    @property
     def route(self):
         return self._route
     
@@ -1077,7 +1085,7 @@ class EventsFrame(object):
         res = self.__class__(df, keys=self.keys, beg=self.beg, end=self.end)
         return res
 
-    def to_windows(self, dissolve=False, **kwargs):
+    def to_windows(self, dissolve=False, endpoint=False, **kwargs):
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1115,6 +1123,8 @@ class EventsFrame(object):
         dissolve : bool, default False
             Whether to dissolve the events dataframe before performing the 
             transformation.
+        endpoint : bool, default False
+            Add a point event at the end of each event range.
         """
         # Dissolve events
         if dissolve:
@@ -1130,6 +1140,8 @@ class EventsFrame(object):
         for (*keys, beg, end), index in gen:
             # Build sliding window ranges
             rng = RangeCollection.from_steps(beg, end, **kwargs).cut(beg, end)
+            if endpoint:
+                rng = rng.append(end, end)
             # Assemble sliding window data
             windows.append(
                 np.concatenate(
@@ -1298,8 +1310,8 @@ class EventsGroup(EventsFrame):
     
     def _build_rng(self):
         # Build range collection
-        rng = RangeCollection.from_array(self.df[[self.beg,self.end]].values.T,
-                                         closed=self.closed, sort=False)
+        rng = RangeCollection.from_array(
+            self.df[[self.beg,self.end]].values, closed=self.closed, sort=False)
         self.rng = rng
 
     def set_closed(self, closed, inplace=False):
