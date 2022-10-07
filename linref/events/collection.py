@@ -130,7 +130,7 @@ class EventsFrame(object):
 
     def __init__(
         self, df, keys=None, beg=None, end=None, geom=None, route=None, 
-        closed='left_mod', sort=False, **kwargs):
+        closed=None, sort=False, **kwargs):
         # Log input values
         super(EventsFrame, self).__init__()
         self._df = df
@@ -565,30 +565,36 @@ class EventsFrame(object):
         else:
             return copy.copy(self)
     
-    def set_closed(self, closed, inplace=False):
+    def set_closed(self, closed=None, inplace=False):
         """
         Change whether ranges are closed on left, right, both, or neither side. 
         
         Parameters
         ----------
         closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
-                'neither'}
+                'neither'}, optional
             Whether intervals are closed on the left-side, right-side, both or 
-            neither.
+            neither. If None, will default to 'left_mod' for linear events and 
+            'both' for point events.
         inplace : boolean, default False
             Whether to perform the operation in place on the parent range
             collection, returning None.
         """
-        if closed in RangeCollection._ops_closed:
-            if inplace:
-                self._closed = closed
+        if closed is None:
+            if self.is_point:
+                closed = 'both'
             else:
-                rc = self.copy()
-                rc._closed = closed
-                return rc
-        else:
-            raise ValueError(f"Closed parameter must be one of "
+                closed = 'left_mod'
+        elif not closed in RangeCollection._ops_closed:
+            raise ValueError(
+                "Closed parameter must be one of "
                 f"{RangeCollection._ops_closed}.")
+        if inplace:
+            self._closed = closed
+        else:
+            ec = self.copy()
+            ec._closed = closed
+            return ec
 
     def geometry_from_xy(self, x, y, col_name='geometry', crs=None, 
             inplace=False):
@@ -1348,7 +1354,7 @@ class EventsGroup(EventsFrame):
         except AttributeError:
             pass
 
-    def intersecting(self, beg, end=None, closed=None, mask=False, **kwargs):
+    def intersecting(self, beg, end=None, closed='both', mask=False, **kwargs):
         """
         Retrieve a selection of records from the group of events based 
         on provided begin and end locations.
@@ -1360,21 +1366,16 @@ class EventsGroup(EventsFrame):
         end : float, optional
             Ending milepost of the overlaid segment. If not provided, a point 
             overlay is assumed.
-        closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
-                'neither'}, default 'left'
-            Whether intervals are closed on the left-side, right-side, both or 
-            neither.
+        closed : str {'left', 'right', 'both', 'neither'}, default 'both'
+            Whether input interval is closed on the left-side, right-side, both 
+            or neither.
 
             Options
             -------
             left : ranges are always closed on the left and never closed on the 
                 right.
-            left_mod : ranges are always closed on the left and only closed on 
-                the right when the next range is not consecutive.
             right : ranges are always closed on the right and never closed on 
                 the right.
-            right_mod : ranges are always closed on the right and only closed 
-                on the left when the previous range is not consecutive.
             both : ranges are always closed on both sides
             neither : ranges are never closed on either side
 
@@ -1916,7 +1917,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other, closed=None):
+    def merge(self, other):
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 
@@ -1930,11 +1931,6 @@ class EventsCollection(EventsFrame):
             with this events collection, producing an EventsMerge instance 
             which can be used to perform various overlay operations to retrieve 
             attributes and more from the target collection.
-        closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
-                'neither'}, optional
-            Whether intervals on the target events frame are closed on the 
-            left-side, right-side, both or neither. If not provided, will 
-            default to the already-set parameter on the events frame.
         """
         # Create merge
         em = EventsMerge(self, other)
