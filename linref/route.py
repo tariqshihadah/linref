@@ -305,7 +305,7 @@ class MLSRoute(object):
             full_lines = combine_mpgs(full_lines, cls=MultiLineString)
             ranges = np.stack([begs_new, ends_new]).T
         # - One begin/end point per LineString provided
-        elif len(begs) == len(ends) == sum(len(i) for i in full_lines):
+        elif len(begs) == len(ends) == sum(len(i.geoms) for i in full_lines):
             ranges = np.stack([begs, ends]).T
             full_lines = combine_mpgs(full_lines, cls=MultiLineString)
         # - Invalid input type
@@ -314,7 +314,7 @@ class MLSRoute(object):
                 "Must provide a number of begin and end mile post values "
                 "equal to the number of lines if providing multiple values. "
                 f"Provided: {len(begs):,.0f} begs, {len(ends):,.0f} ends, "
-                f"{len(mls):,.0f} lines.")
+                f"{len(mls.geoms):,.0f} lines.")
         
         # Return generated MLSRoute instance based on input parameters
         return cls(full_lines, rte_ranges=ranges, **kwargs)

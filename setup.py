@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 import codecs
 import os
 
-VERSION = '0.0.5.post1'
+VERSION = '0.0.6'
 DESCRIPTION = 'Linearly referenced data management, manipulation, and operations'
 LONG_DESCRIPTION = 'Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.'
 
@@ -16,7 +16,7 @@ setup(
     long_description_content_type="text/markdown",
     long_description=LONG_DESCRIPTION,
     packages=find_packages(),
-    install_requires=['numpy', 'matplotlib', 'shapely', 'pandas', 'geopandas', 'rangel'],
+    install_requires=['numpy', 'matplotlib', 'shapely>=1.7', 'pandas>=1.1', 'geopandas>=0.10.2', 'rangel>=0.0.6'],
     keywords=['python', 'geospatial', 'linear', 'data', 'event', 'dissolve', 'overlay', 'range', 'numeric', 'interval'],
     classifiers=[
         "Development Status :: 1 - Planning",

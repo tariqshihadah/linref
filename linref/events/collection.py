@@ -124,7 +124,7 @@ class EventsFrame(object):
 
     # Default standard column values
     default_keys = ['RID', 'YEAR', 'KEY']
-    default_beg =  ['BMP', 'BEG', 'FROM']
+    default_beg =  ['BMP', 'BEG', 'FROM', 'LOC']
     default_end =  ['EMP', 'END', 'TO']
     default_geom = ['geometry']
 
@@ -186,6 +186,12 @@ class EventsFrame(object):
             # Retrieve default geometry column if df is geodataframe
             if isinstance(df, gpd.GeoDataFrame) and self.geom is None:
                 self.geom = df.geometry.name
+
+            # Reset log
+            try:
+                self.log.reset()
+            except:
+                pass
         else:
             raise TypeError("Input dataframe must be pandas DataFrame class "
                 "instance.")
@@ -580,6 +586,7 @@ class EventsFrame(object):
             Whether to perform the operation in place on the parent range
             collection, returning None.
         """
+        # Ensure valid option selected
         if closed is None:
             if self.is_point:
                 closed = 'both'
@@ -589,6 +596,7 @@ class EventsFrame(object):
             raise ValueError(
                 "Closed parameter must be one of "
                 f"{RangeCollection._ops_closed}.")
+        # Apply parameter
         if inplace:
             self._closed = closed
         else:
@@ -1101,7 +1109,7 @@ class EventsFrame(object):
         ----------
         length : numerical, default 1.0
             A fixed length for all windows being defined.
-        steps : int, default 10
+        steps : int, default 1
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
             value of 1.
@@ -1253,9 +1261,10 @@ class EventsGroup(EventsFrame):
         geometry associated with each event if available. If provided, 
         certain additional class functionalities will be made available.
     closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
-            'neither'}, default 'left_mod'
+            'neither'}, optional
         Whether intervals are closed on the left-side, right-side, both or 
-        neither.
+        neither. If None, will default to 'left_mod' for linear events and 
+        'both' for point events.
 
         Options
         -------
@@ -1269,9 +1278,10 @@ class EventsGroup(EventsFrame):
             the left when the previous range is not consecutive.
         both : ranges are always closed on both sides
         neither : ranges are never closed on either side
+
     """
 
-    def __init__(self, df, beg=None, end=None, geom=None, closed='left_mod', 
+    def __init__(self, df, beg=None, end=None, geom=None, closed=None, 
         **kwargs):
         # Initialize EventsFrame superclass
         super(EventsGroup, self).__init__(
@@ -1306,9 +1316,16 @@ class EventsGroup(EventsFrame):
     @property
     def lengths(self):
         """
-        Lengths of all events ranges.
+        Lengths of all event ranges.
         """
         return self.rng.lengths
+
+    @property
+    def centers(self):
+        """
+        Centers of all event ranges.
+        """
+        return self.rng.centers
             
     @property
     def shape(self):
@@ -1354,18 +1371,25 @@ class EventsGroup(EventsFrame):
         except AttributeError:
             pass
 
-    def intersecting(self, beg, end=None, closed='both', mask=False, **kwargs):
+    def intersecting(self, beg=None, end=None, other=None, closed='both', 
+        get_mask=False, **kwargs):
         """
         Retrieve a selection of records from the group of events based 
         on provided begin and end locations.
 
         Parameters
         ----------
-        beg : float
-            Beginning milepost of the overlaid segment.
-        end : float, optional
-            Ending milepost of the overlaid segment. If not provided, a point 
-            overlay is assumed.
+        beg, end : numerical or array-like, optional
+            The begin and end locations of the range or ranges to be tested. If 
+            a single range is to be tested, provide a numeric value. If 
+            multiple, provide an array-like with a single begin and end value 
+            for each range. If no end parameter provided, point locations will 
+            be assumed and end will be set equal to beg. Not required if other 
+            parameter is used.
+        other : EventsGroup, optional
+            Other EventsGroup instance to be intersected with this one. Can 
+            be provided instead of beg, end, and closed parameters and will 
+            take precedence over other input.
         closed : str {'left', 'right', 'both', 'neither'}, default 'both'
             Whether input interval is closed on the left-side, right-side, both 
             or neither.
@@ -1379,29 +1403,43 @@ class EventsGroup(EventsFrame):
             both : ranges are always closed on both sides
             neither : ranges are never closed on either side
 
-        mask : bool, default False
-            Whther to return a boolean mask for selecting from the events 
+        get_mask : bool, default False
+            Whether to return a boolean mask for selecting from the events 
             dataframe instead of the selection from the dataframe itself.
         """
+        # Deprecation
+        get_mask = kwargs.get('mask', get_mask)
+        # Check for other input
+        if not other is None:
+            if not isinstance(other, EventsGroup):
+                raise TypeError(
+                    "If provided, input other parameter must be valid "
+                    "EventsGroup instance.")
+            other = other.rng
         # Intersect range
-        mask_ = self.rng.intersecting(beg=beg, end=end, closed=closed, **kwargs)
-        if mask:
-            return mask_
+        mask = self.rng.intersecting(
+            beg=beg, end=end, other=other, closed=closed, **kwargs)
+        if get_mask:
+            return mask
         else:
-            df = self.df.loc[mask_, :]
+            if mask.ndim > 1:
+                mask = mask.any(axis=1)
+            df = self.df.loc[mask, :]
             return df
 
-    def overlay(self, beg=None, end=None, arr=False, **kwargs):
+    def overlay(self, beg=None, end=None, other=None, **kwargs):
         """
         Compute overlap of the input bounds with respect to the 
         events group.
         
         Parameters
         ----------
-        beg : float
-            Beginning milepost of the overlaid segment.
-        end : float
-            Ending milepost of the overlaid segment.
+        beg, end : scalar or array of scalars
+            Begin and end locations of the overlaid range(s).
+        other : EventsGroup, optional
+            Other EventsGroup instance to be overlaid with this one. Can be 
+            provided instead of beg and end parameters and will take precedence 
+            over other input.
         normalize : boolean, default True
             Whether overlapping lengths should be normalized range length to 
             give a proportional result.
@@ -1423,17 +1461,18 @@ class EventsGroup(EventsFrame):
             (denominator) is equal to zero, e.g., when the overlay range has a 
             length of zero and how='right'. If not provided, all instances of 
             zero division will return float value 0.0.
-        arr : bool, default False
-            Whther to return an array of resulting overlay values instead of 
-            a pandas Series with an index matching the events dataframe.
         """
+        # Check for other input
+        if not other is None:
+            if not isinstance(other, EventsGroup):
+                raise TypeError(
+                    "If provided, input other parameter must be valid "
+                    "EventsGroup instance.")
+            beg = other.rng.begs
+            end = other.rng.ends
         # Compute range overlaps
         weights = self.rng.overlay(beg=beg, end=end, **kwargs)
-        if arr:
-            return weights
-        else:
-            sr = pd.Series(data=weights, index=self.df.index)
-            return sr
+        return weights
     
     def overlay_average(self, beg=None, end=None, cols=None, weighted=True, 
                         zeroweight=None, how='right', weights=None, 
@@ -1672,9 +1711,10 @@ class EventsCollection(EventsFrame):
         geometry associated with each event if available. If provided, 
         certain additional class functionalities will be made available.
     closed : str {'left', 'left_mod', 'right', 'right_mod', 'both', 
-            'neither'}, default 'left_mod'
+            'neither'}, optional
         Whether intervals are closed on the left-side, right-side, both or 
-        neither.
+        neither. If None, will default to 'left_mod' for linear events and 
+        'both' for point events.
 
         Options
         -------
@@ -1695,7 +1735,7 @@ class EventsCollection(EventsFrame):
     """
 
     def __init__(self, df, keys=None, beg=None, end=None, 
-        geom=None, closed='left_mod', sort=False, **kwargs):
+        geom=None, closed=None, sort=False, **kwargs):
         # Validate keys option
         if keys is None:
             raise Exception("If no keys are required to define unique groups "
@@ -2029,8 +2069,8 @@ class EventsCollection(EventsFrame):
                     if empty:
                         dfs.append(self._build_empty())
                     else:
-                        raise KeyError("Invalid EventsCollection keys: "
-                                       f"{keys_i}")
+                        raise KeyError(
+                            f"Invalid EventsCollection keys: {keys_i}")
         # Log and return retrieved group
         if ndim == 1:
             return self._build_group(dfs[0])
@@ -2090,8 +2130,13 @@ class EventsCollection(EventsFrame):
         
         # Produce filtered collection
         df = self.df.loc[mask, :]
-        ec = EventsCollection(df, keys=new_keys, beg=self.beg, end=self.end, 
-                              geom=self.geom, closed=self.closed)
+        try:
+            ec = EventsCollection(
+                df, keys=new_keys, beg=self.beg, end=self.end, 
+                geom=self.geom, closed=self.closed)
+        except:
+            display(df)
+            raise ValueError()
         return ec
 
     def get_matching(self, other, **kwargs):
@@ -2114,8 +2159,13 @@ class EventsCollection(EventsFrame):
         the events collection's dataframe.
         """
         # Build and return events group
-        return EventsGroup(df=df, beg=self.beg, end=self.end, 
-                           geom=self.geom, closed=self.closed)
+        try:
+            return EventsGroup(
+                df=df, beg=self.beg, end=self.end, geom=self.geom, 
+                closed=self.closed)
+        except:
+            display(df)
+            raise ValueError()
 
 
 ####################
