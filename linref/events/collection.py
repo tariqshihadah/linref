@@ -187,6 +187,9 @@ class EventsFrame(object):
             if isinstance(df, gpd.GeoDataFrame) and self.geom is None:
                 self.geom = df.geometry.name
 
+            # Check for missing data
+            self._check_missing_data()
+
             # Reset log
             try:
                 self.log.reset()
@@ -203,6 +206,22 @@ class EventsFrame(object):
         """
         return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
+
+    def _check_missing_data(self):
+        """
+        Check for missing data in keys, beg, end, and geometry fields. Warn 
+        user when target fields contain null data.
+        """
+        # Count missing data records
+        missing = self.df[self.targets].isna().sum()
+        # Warn if more than one records contain missing data
+        if missing.sum() > 0:
+            # Prepare message
+            log = [f'{col}: {ct:,.0f}' for col, ct in missing.iteritems()]
+            warnings.warn(
+                f'Input events dataframe has {missing.sum():,.0f} records '
+                'with missing data in target columns. This may cause '
+                'unexpected behaviors.')
 
     def df_exportable(self):
         """
@@ -2171,6 +2190,45 @@ class EventsCollection(EventsFrame):
 ####################
 # COMMON FUNCTIONS #
 ####################
+
+def from_standard(df, require_end=False, **kwargs):
+    """
+    Create an EventsCollection from the input dataframe assuming standard 
+    column labels. These standard labels can be modified on the class 
+    directly be modifying the associated class attributes:
+    - default_keys
+    - default_beg
+    - default_end
+    - default_geom
+
+    Standard labels include:
+    keys : 'RID', 'YEAR', 'KEY'
+    beg : 'BMP', 'BEG', 'FROM'
+    end : 'EMP', 'END', 'TO'
+    geom : 'geometry'
+
+    Additional constructor keyword arguments can be passed through 
+    **kwargs.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Pandas dataframe which contains linear or point events data, 
+        formatted with standard labels. If multiple keys are detected, they 
+        will be assigned in the order in which they appear within the 
+        target dataframe. Only one of each begin and end option may be 
+        used. The geometry label is optional.
+    require_end : bool, default False
+        Whether to raise an error if no valid unique end column label is 
+        found. If False, no end label will be used when generating the 
+        collection.
+    **kwargs
+        Additional keyword arguments to be passed to the EventsCollection 
+        constructor.
+    """
+    ec = EventsCollection.from_standard(df, require_end=require_end, **kwargs)
+    return ec
+
 
 def check_compatibility(objs, errors='raise', **kwargs):
     """
