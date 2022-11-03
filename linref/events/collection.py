@@ -130,7 +130,7 @@ class EventsFrame(object):
 
     def __init__(
         self, df, keys=None, beg=None, end=None, geom=None, route=None, 
-        closed=None, sort=False, **kwargs):
+        closed=None, sort=False, missing_data='warn', **kwargs):
         # Log input values
         super(EventsFrame, self).__init__()
         self._df = df
@@ -142,6 +142,9 @@ class EventsFrame(object):
         self.closed = closed
         self._sort = sort
         self.df = df
+
+        # Additional processing
+        self._check_missing_data(missing_data=missing_data)
 
     def __repr__(self):
         # Define representation components
@@ -187,9 +190,6 @@ class EventsFrame(object):
             if isinstance(df, gpd.GeoDataFrame) and self.geom is None:
                 self.geom = df.geometry.name
 
-            # Check for missing data
-            self._check_missing_data()
-
             # Reset log
             try:
                 self.log.reset()
@@ -207,21 +207,40 @@ class EventsFrame(object):
         return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
 
-    def _check_missing_data(self):
+    def _check_missing_data(self, missing_data='warn'):
         """
         Check for missing data in keys, beg, end, and geometry fields. Warn 
         user when target fields contain null data.
         """
-        # Count missing data records
-        missing = self.df[self.targets].isna().sum()
-        # Warn if more than one records contain missing data
-        if missing.sum() > 0:
-            # Prepare message
-            log = [f'{col}: {ct:,.0f}' for col, ct in missing.iteritems()]
-            warnings.warn(
-                f'Input events dataframe has {missing.sum():,.0f} records '
-                'with missing data in target columns. This may cause '
-                'unexpected behaviors.')
+        # If ignore
+        if missing_data=='ignore':
+            return
+        elif missing_data in ['warn','raise','drop']:
+            # Find, count missing data records
+            mask = self.df[self.targets].isna().any(axis=1)
+            count = mask.sum()
+            # Address if more than one records contain missing data
+            if count > 0:
+                # Drop records
+                if missing_data=='drop':
+                    self.df = self.df[~mask].copy()
+                    return
+                # Warn or raise error
+                else:
+                    # Prepare message
+                    message = (
+                        f"Input events dataframe has {count:,.0f} records "
+                        "with missing data in target columns. This may cause "
+                        "unexpected behaviors.")
+                    if missing_data=='raise':
+                        raise ValueError(message)
+                    else:
+                        warnings.warn(message)
+                        return
+        else:
+            raise ValueError(
+                "Invalid input missing_data parameter. Must be one of "
+                "('ignore','drop','warn','raise').")
 
     def df_exportable(self):
         """
@@ -846,7 +865,7 @@ class EventsFrame(object):
         ec = EventsCollection(res, keys=self.keys, beg=self.beg, end=self.end, 
             geom=self.geom if agg_geometry else None,
             route='route' if agg_routes else None, 
-            closed=self.closed)
+            closed=self.closed, missing_data='ignore')
         return ec
 
     def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
@@ -953,6 +972,7 @@ class EventsFrame(object):
             keys=self.keys,
             beg=loc_label,
             closed=self.closed,
+            missing_data='ignore',
             **kwargs
         )
 
@@ -1038,6 +1058,7 @@ class EventsFrame(object):
             keys=self.keys,
             beg=loc_label,
             closed=self.closed,
+            missing_data='ignore',
             **kwargs
         )
 
@@ -1115,7 +1136,13 @@ class EventsFrame(object):
         }
         dtypes = {col: dtypes[col] for col in df.columns}
         df = df.astype(dtypes, copy=False)
-        res = self.__class__(df, keys=self.keys, beg=self.beg, end=self.end)
+        res = self.__class__(
+            df,
+            keys=self.keys,
+            beg=self.beg,
+            end=self.end,
+            missing_data='ignore'
+        )
         return res
 
     def to_windows(self, dissolve=False, endpoint=False, **kwargs):
@@ -1201,7 +1228,13 @@ class EventsFrame(object):
         }
         dtypes = {col: dtypes[col] for col in df.columns}
         df = df.astype(dtypes, copy=False)
-        res = self.__class__(df, keys=self.keys, beg=self.beg, end=self.end)
+        res = self.__class__(
+            df,
+            keys=self.keys,
+            beg=self.beg,
+            end=self.end,
+            missing_data='ignore'
+        )
         return res
 
 
@@ -1751,6 +1784,17 @@ class EventsCollection(EventsFrame):
     sort : bool, default False
         Whether to sort the events dataframe by its keys and begin and end 
         values upon its creation.
+    missing_data : {'ignore','drop','warn','raise'}
+        What to do when the input dataframe contains missing values in the 
+        target key, beg, and end columns.
+
+        Options
+        -------
+        ignore : do nothing.
+        drop : drop all records which contain any missing data in the target 
+            columns.
+        warn : log a warning when records are missing data.
+        raise : raise a ValueError when records are missing data.
     """
 
     def __init__(self, df, keys=None, beg=None, end=None, 
@@ -2037,6 +2081,7 @@ class EventsCollection(EventsFrame):
             beg=self.beg,
             end=self.end,
             closed=self.closed,
+            missing_data='ignore',
             **kwargs
         )
     
@@ -2102,7 +2147,7 @@ class EventsCollection(EventsFrame):
                 pass
             return EventsCollection(
                 df=df, keys=self.keys, beg=self.beg, end=self.end, 
-                geom=self.geom, closed=self.closed)
+                geom=self.geom, closed=self.closed, missing_data='ignore')
 
     def get_subset(self, keys, reduce=True, **kwargs):
         """
@@ -2152,7 +2197,7 @@ class EventsCollection(EventsFrame):
         try:
             ec = EventsCollection(
                 df, keys=new_keys, beg=self.beg, end=self.end, 
-                geom=self.geom, closed=self.closed)
+                geom=self.geom, closed=self.closed, missing_data='ignore')
         except:
             display(df)
             raise ValueError()
