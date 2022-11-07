@@ -207,6 +207,18 @@ class EventsFrame(object):
         return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
 
+    def sort(self, inplace=False):
+        """
+        Sort the events dataframe based on target columns.
+        """
+        # Create a copy if requested
+        ec = self if inplace else self.copy()
+        # Log sorting
+        ec._sort = True
+        ec.df = self.df
+        if not inplace:
+            return ec
+
     def _check_missing_data(self, missing_data='warn'):
         """
         Check for missing data in keys, beg, end, and geometry fields. Warn 
