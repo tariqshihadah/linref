@@ -708,11 +708,7 @@ class EventsMerge(object):
         # Log traces
         self.traces = traces
     
-    def distribute(
-        self,
-        column=None,
-        **kwargs
-    ):
+    def distribute(self, column=None, squeeze=True, **kwargs):
         """
         Intersect and distribute events over the range collection, scaling 
         their values relative to their indexed distance from their intersecting 
@@ -720,10 +716,10 @@ class EventsMerge(object):
         
         Parameters
         ----------
-        column : pandas column label, optional
-            The events dataframe column containing the values associated with 
-            each event being analyzed. If not provided, all values will default 
-            to be 1.
+        column : pandas column label or list of same, optional
+            The events dataframe column(s) containing the values associated 
+            with each event being analyzed. If not provided, all values will 
+            default to be 1.
         blur_size : int, default 0
             The number of pixels to blur events across based on the blur style.
         blur_style : str or callable, default 'linear'
@@ -755,22 +751,36 @@ class EventsMerge(object):
             group_right = self.right.get_group(key, empty=True)
             # Get event values
             if not column is None:
-                values = group_right.df[column].values
+                if isinstance(column, list):
+                    values = group_right.df[column].values
+                else:
+                    values = group_right.df[[column]].values
             else:
                 values = None
             # Perform distribution
             res_i = group_left.rng.distribute(
-                group_right.rng, values=values, **kwargs)
-            # Aggregate results
-            res_i = res_i.sum(axis=1)
+                group_right.rng, values=None, **kwargs)
+            # Aggregate results over all column values
+            if not column is None:
+                res_i = (np.expand_dims(res_i, 2) * values).sum(axis=1)
+            else:
+                res_i = res_i.sum(axis=1)
             # Log results
-            index.extend(list(group_left.df.index))
-            res.extend(list(res_i))
-        return pd.Series(
-            data=res,
-            index=index,
-            name=column
-        )
+            index.append(group_left.df.index)
+            res.append(res_i)
+        # Synthesize into pandas object
+        index = np.concatenate(index)
+        data = np.concatenate(res)
+        if column is None:
+            obj = pd.Series(index=index, data=data, name=None)
+        elif isinstance(column, list):
+            if len(column)==1 and squeeze:
+                obj = pd.Series(index=index, data=data, name=column[0])
+            else:
+                obj = pd.DataFrame(index=index, data=data, columns=column)
+        else:
+            obj = pd.Series(index=index, data=data, name=column)
+        return obj
 
     def cut(self, **kwargs):
         """
@@ -805,6 +815,14 @@ class EventsMerge(object):
 
         Parameters
         ----------
+        snap : {None, 'near', 'left', 'right'}, default None
+            If the event location does not fall within any geometry, snap to 
+            the nearest match based on distance, choosing the closest location 
+            to the left, right, or the nearest side ('near'). If None, a value 
+            error will be raised when no intersecting ranges are found.
+        point : {'begs', 'ends', 'centers'}, default 'begs'
+            Where on the intersecting events the point should be made, at the 
+            begin, end, or center point of the range.
         empty : scalar, string, or other pd.Series-compatible value, optional
             Value to use to fill when there are no intersecting events and 
             aggregation cannot be performed. If None, values will be filled 
