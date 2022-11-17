@@ -898,7 +898,8 @@ class EventsFrame(object):
             coordinate reference system.
         nearest : bool, default True
             Whether to choose only the nearest match within the defined buffer. 
-            If False, all matches will be returned.
+            If False, all matches will be returned. If True, when multiple 
+            equidistant points exist, choose the first result that appears.
         loc_label, dist_label : label
             Labels to be used for created columns for projected locations on 
             target events groups and nearest point distances between target 
@@ -944,6 +945,8 @@ class EventsFrame(object):
                     max_distance=buffer,
                     how='left'
                 )
+                # Drop duplicates
+                joined = joined[~joined.index.duplicated(keep='first')]
             else:
                 warnings.warn(
                     "Performance when nearest=False is currently limited and "
