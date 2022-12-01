@@ -881,7 +881,7 @@ class EventsFrame(object):
         return ec
 
     def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
-            dist_label='DISTANCE', **kwargs):
+            dist_label='DISTANCE', build_routes=True, **kwargs):
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -904,6 +904,9 @@ class EventsFrame(object):
             Labels to be used for created columns for projected locations on 
             target events groups and nearest point distances between target 
             geometries and events geometries.
+        build_routes : bool, default True
+            Whether to automatically build routes using the build_routes() 
+            method if routes are not already available.
         **kwargs
             Keyword arguments to be passed to the EventsFrame constructor 
             upon completion of the projection.
@@ -911,6 +914,12 @@ class EventsFrame(object):
         # Validate input geodataframe
         if not isinstance(other, gpd.GeoDataFrame):
             raise TypeError("Other object must be gpd.GeoDataFrame instance.")
+        else:
+            try:
+                other_geometry = other.geometry.name
+            except AttributeError:
+                raise AttributeError(
+                    "No geometry data set in other geodataframe.")
         other = other.copy()
 
         # Check for invalid column names
@@ -926,15 +935,19 @@ class EventsFrame(object):
 
         # Ensure that geometries and routes are available
         if self.geom is None:
-            raise ValueError("No geometry found in events dataframe. If "
-                "valid shapely geometries are available in the dataframe, "
-                f"set this with the {self.__class__.__name__}'s geom "
-                "property.")
+            raise ValueError(
+                "No geometry found in events dataframe. If valid shapely "
+                "geometries are available in the dataframe, set this with the "
+                f"{self.__class__.__name__}'s geom property.")
         elif self.route is None:
-            raise ValueError("No routes found in events dataframe. If valid "
-                "shapely geometries are available in the dataframe, create "
-                "routes by calling the build_routes() method on the "
-                f"{self.__class__.__name__} class instance.")
+            if build_routes:
+                self.build_routes()
+            else:
+                raise ValueError(
+                    "No routes found in events dataframe. If valid shapely "
+                    "geometries are available in the dataframe, create routes "
+                    "by calling the build_routes() method on the "
+                    f"{self.__class__.__name__} class instance.")
         
         # Join the other geodataframe to this one
         select_cols = self.keys + [self.route, self.geom]
@@ -975,98 +988,12 @@ class EventsFrame(object):
         # Project input geometries onto event geometries
         def _project(r):
             try:
-                return r[self.route].project(r.geometry)
+                return r[self.route].project(r[other_geometry])
             except AttributeError:
                 return
         locs = joined.apply(_project, axis=1)
         joined[loc_label] = locs
         # return joined # modified to return EC 7/27/2022
-        # Prepare and return data
-        return self.__class__(
-            joined.drop(columns=[self.route]),
-            keys=self.keys,
-            beg=loc_label,
-            closed=self.closed,
-            missing_data='ignore',
-            **kwargs
-        )
-
-    def project_old(self, other, buffer=100, choose='min', loc_label='LOC', 
-            dist_label='DISTANCE', **kwargs):
-        """
-        Project an input geodataframe onto the events dataframe, producing 
-        linearly referenced point locations relative to events for all input 
-        geometries within a buffered search area.
-
-        Parameters
-        ----------
-        other : gpd.GeoDataFrame
-            Geodataframe containing geometry which will be projected onto the 
-            events dataframe.
-        buffer : float, default 100
-            The max distance to search for input geometries to project against 
-            the events' geometries. Measured in terms of the geometries' 
-            coordinate reference system.
-        choose : {'min', 'max', 'all'}, default 'min'
-            Which target geometry to choose when more than one falls within the 
-            buffer distance.
-
-            Options
-            -------
-            min : choose the geometry with the shortest distance from the 
-                events data
-            max : choose the geometry with the longest distance from the 
-                events data
-            all : return all geometries which fall within the buffer area
-        loc_label, dist_label : label
-            Labels to be used for created columns for projected locations on 
-            target events groups and nearest point distances between target 
-            geometries and events geometries.
-        **kwargs
-            Keyword arguments to be passed to the EventsFrame constructor 
-            upon completion of the projection.
-        """
-        # Validate input geodataframe
-        if not isinstance(other, gpd.GeoDataFrame):
-            raise TypeError("Other object must be gpd.GeoDataFrame instance.")
-        other = other.copy()
-
-        # Check for invalid column names
-        if self.route in other.columns:
-            raise ValueError(f"Invalid column name '{self.route}' found in "
-                "target geodataframe.")
-
-        # Ensure that geometries and routes are available
-        if self.geom is None:
-            raise ValueError("No geometry found in events dataframe. If "
-                "valid shapely geometries are available in the dataframe, "
-                f"set this with the {self.__class__.__name__}'s geom "
-                "property.")
-        elif self.route is None:
-            raise ValueError("No routes found in events dataframe. If valid "
-                "shapely geometries are available in the dataframe, create "
-                "routes by calling the build_routes() method on the "
-                f"{self.__class__.__name__} class instance.")
-        
-        # Join the other geodataframe to this one
-        select_cols = self.keys + [self.route, self.geom]
-        joined = join_nearby(
-            other, 
-            self.df[select_cols], 
-            buffer=buffer, 
-            choose=choose,
-            dist_label=dist_label
-        )
-
-        # Project input geometries onto event geometries
-        def _project(r):
-            try:
-                return r[self.route].project(r.geometry)
-            except AttributeError:
-                return
-        locs = joined.apply(_project, axis=1)
-        joined[loc_label] = locs
-
         # Prepare and return data
         return self.__class__(
             joined.drop(columns=[self.route]),

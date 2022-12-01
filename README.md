@@ -2,6 +2,15 @@
 Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.
 
 # Version Notes
+## 0.0.8 (TBD)
+- Improve distribute method performance which was added in recent versions.
+- Drop duplicates in .project() method when using sjoin_nearest with newer versions of geopandas.
+- Added .sort() method to events collection.
+- Add warnings for missing data in target columns.
+- Remove .project_old() method from events collection.
+- Performance improvements
+- Various bug fixes, minor features
+
 ## 0.0.7 (2022-10-14)
 - Refactoring of EventsMerge system from 2D to 3D vectorized relationships for improved performance and accuracy. API and aggregation methods are largely the same.
 - Modified closed parameter use in merge relationships in accordance with rangel v0.0.6, which now performs intersections which honor the closed parameter on the left collection as well as the right collection. This provides more accurate results for events which fall on the edges of intersecting events when using left_mod or right_mod closed parameters.
