@@ -4,10 +4,10 @@ Module featuring EventsCollection object class for the management of linearly re
 # Version Notes
 ## 0.0.8 (TBD)
 - Improve distribute method performance which was added in recent versions.
-- Drop duplicates in .project() method when using sjoin_nearest with newer versions of geopandas.
-- Added .sort() method to events collection.
-- Add warnings for missing data in target columns.
-- Remove .project_old() method from events collection.
+- Drop duplicates in .project() method when using sjoin_nearest with newer versions of geopandas. Improved validation in .project() method, address edge case where projecting geometry column has a non-standard label (e.g., not 'geometry').
+- Added .sort() method to events collection. Default sorting methods remain unchanged.
+- Added warnings for missing data in target columns when initializing an EventsFrames through standard methods.
+- Remove .project_old() method from events collection due to deprecation.
 - Performance improvements
 - Various bug fixes, minor features
 
