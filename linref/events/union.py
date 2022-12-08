@@ -119,6 +119,7 @@ class EventsUnion(object):
         """
         # Iterate over all unique group keys
         records = []
+        dummy_df = pd.DataFrame(index=[0], dtype=float)
         for keys in self.group_keys_unique:
             # Iterate over groups
             groups = self.get_groups(keys, empty=True)
@@ -134,7 +135,8 @@ class EventsUnion(object):
                 # Prepare source data
                 source = group.df[self._objs[i].others]
                 source = \
-                    source.append(pd.Series(dtype=float), ignore_index=True)
+                    pd.concat([source, dummy_df], axis=0, ignore_index=True)
+#                    source.append(pd.Series(dtype=float), ignore_index=True)
                 sources.append(source)
             # Union ranges
             rc, indices = RangeCollection.union(
