@@ -130,7 +130,7 @@ class EventsFrame(object):
 
     def __init__(
         self, df, keys=None, beg=None, end=None, geom=None, route=None, 
-        closed=None, sort=False, missing_data='warn', **kwargs):
+        closed=None, sort=False, **kwargs):
         # Log input values
         super(EventsFrame, self).__init__()
         self._df = df
@@ -142,9 +142,6 @@ class EventsFrame(object):
         self.closed = closed
         self._sort = sort
         self.df = df
-
-        # Additional processing
-        self._check_missing_data(missing_data=missing_data)
 
     def __repr__(self):
         # Define representation components
@@ -218,41 +215,6 @@ class EventsFrame(object):
         ec.df = self.df
         if not inplace:
             return ec
-
-    def _check_missing_data(self, missing_data='warn'):
-        """
-        Check for missing data in keys, beg, end, and geometry fields. Warn 
-        user when target fields contain null data.
-        """
-        # If ignore
-        if missing_data=='ignore':
-            return
-        elif missing_data in ['warn','raise','drop']:
-            # Find, count missing data records
-            mask = self.df[self.targets].isna().any(axis=1)
-            count = mask.sum()
-            # Address if more than one records contain missing data
-            if count > 0:
-                # Drop records
-                if missing_data=='drop':
-                    self.df = self.df[~mask].copy()
-                    return
-                # Warn or raise error
-                else:
-                    # Prepare message
-                    message = (
-                        f"Input events dataframe has {count:,.0f} records "
-                        "with missing data in target columns. This may cause "
-                        "unexpected behaviors.")
-                    if missing_data=='raise':
-                        raise ValueError(message)
-                    else:
-                        warnings.warn(message)
-                        return
-        else:
-            raise ValueError(
-                "Invalid input missing_data parameter. Must be one of "
-                "('ignore','drop','warn','raise').")
 
     def df_exportable(self):
         """
@@ -328,7 +290,7 @@ class EventsFrame(object):
         """
         A list of all columns within the events dataframe.
         """
-        return list(self._df.columns)
+        return self._df.columns.values.tolist()
 
     @property
     def targets(self):
@@ -1726,7 +1688,7 @@ class EventsCollection(EventsFrame):
     sort : bool, default False
         Whether to sort the events dataframe by its keys and begin and end 
         values upon its creation.
-    missing_data : {'ignore','drop','warn','raise'}
+    missing_data : {'ignore','drop','warn','raise'}, default 'warn'
         What to do when the input dataframe contains missing values in the 
         target key, beg, and end columns.
 
@@ -1740,7 +1702,7 @@ class EventsCollection(EventsFrame):
     """
 
     def __init__(self, df, keys=None, beg=None, end=None, 
-        geom=None, closed=None, sort=False, **kwargs):
+        geom=None, closed=None, sort=False, missing_data='warn', **kwargs):
         # Validate keys option
         if keys is None:
             raise Exception("If no keys are required to define unique groups "
@@ -1752,6 +1714,9 @@ class EventsCollection(EventsFrame):
         # Log input values
         self.closed = closed
         
+        # Additional processing
+        self._check_missing_data(missing_data=missing_data)
+
         # Create events log
         self.log = EventsLog()
         
@@ -1771,6 +1736,41 @@ class EventsCollection(EventsFrame):
             else:
                 # Single group
                 return self.get_group(keys, empty=False)
+
+    def _check_missing_data(self, missing_data='warn'):
+        """
+        Check for missing data in keys, beg, end, and geometry fields. Warn 
+        user when target fields contain null data.
+        """
+        # If ignore
+        if missing_data=='ignore':
+            return
+        elif missing_data in ['warn','raise','drop']:
+            # Find, count missing data records
+            mask = self.df[self.targets].isna().any(axis=1)
+            count = mask.sum()
+            # Address if more than one records contain missing data
+            if count > 0:
+                # Drop records
+                if missing_data=='drop':
+                    self.df = self.df[~mask].copy()
+                    return
+                # Warn or raise error
+                else:
+                    # Prepare message
+                    message = (
+                        f"Input events dataframe has {count:,.0f} records "
+                        "with missing data in target columns. This may cause "
+                        "unexpected behaviors.")
+                    if missing_data=='raise':
+                        raise ValueError(message)
+                    else:
+                        warnings.warn(message)
+                        return
+        else:
+            raise ValueError(
+                "Invalid input missing_data parameter. Must be one of "
+                "('ignore','drop','warn','raise').")
 
     def from_similar(self, df, **kwargs):
         """
@@ -2061,7 +2061,7 @@ class EventsCollection(EventsFrame):
             except KeyError:
                 # Attempt to retrieve group
                 try:
-                    df = self.groups.get_group(keys_i)
+                    df = self._groups.get_group(keys_i)
                     dfs.append(df)
                     # Add group to log
                     self.log[keys_i] = self._build_group(df)
