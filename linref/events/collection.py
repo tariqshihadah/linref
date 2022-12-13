@@ -187,14 +187,21 @@ class EventsFrame(object):
             if isinstance(df, gpd.GeoDataFrame) and self.geom is None:
                 self.geom = df.geometry.name
 
-            # Reset log
+            # Reset logs
             try:
                 self.log.reset()
             except:
                 pass
+            self._initialize_df()
         else:
             raise TypeError("Input dataframe must be pandas DataFrame class "
                 "instance.")
+
+    def _initialize_df(self):
+        """
+        Class-specific dataframe initialization processes.
+        """
+        pass
 
     def _sort_df(self, df):
         """
@@ -1737,6 +1744,13 @@ class EventsCollection(EventsFrame):
                 # Single group
                 return self.get_group(keys, empty=False)
 
+    def _initialize_df(self):
+        """
+        Class-specific dataframe initialization processes.
+        """
+        self._empty_df = pd.DataFrame(columns=self.columns)
+        self._empty_group = self._build_group(self._empty_df.copy())
+
     def _check_missing_data(self, missing_data='warn'):
         """
         Check for missing data in keys, beg, end, and geometry fields. Warn 
@@ -1885,7 +1899,7 @@ class EventsCollection(EventsFrame):
         self._log = obj
     
     def _build_empty(self):
-        return pd.DataFrame(columns=self.df.columns)
+        return self._empty_group.copy(deep=True)
     
     def reset_log(self):
         """
@@ -1902,8 +1916,8 @@ class EventsCollection(EventsFrame):
         # Validate input keys
         if self.num_keys == 0:
             if not keys is None:
-                raise ValueError("No keys defined in the collection to be "
-                    "queried.")
+                raise ValueError(
+                    "No keys defined in the collection to be queried.")
         elif self.num_keys == 1:
             if isinstance(keys, list) or isinstance(keys, tuple):
                 keys = keys[0]
@@ -2027,7 +2041,8 @@ class EventsCollection(EventsFrame):
             **kwargs
         )
     
-    def get_group(self, keys, empty=True, **kwargs) -> EventsGroup:
+    def get_group(self, keys, empty=True, log_empty=True, 
+            **kwargs) -> EventsGroup:
         """
         Retrieve a unique group of events based on provided key values.
  
@@ -2036,60 +2051,42 @@ class EventsCollection(EventsFrame):
         keys : key value, tuple of key values, or list of the same
             If only one key column is defined within the collection, a single 
             column value may be provided. Otherwise, a tuple of column values 
-            must be provided in the same order as they appear in self.keys. To 
-            get multiple groups, a list of key values or tuples may be 
-            provided.
+            must be provided in the same order as they appear in self.keys.
         empty : bool, default True
             Whether to allow for empty events groups to be returned when the 
             provided keys are valid but are not associated with any actual 
             events. If False, these cases will return a KeyError.
+        log_empty : bool, default True
+            Whether created empty events should be logged and stored within 
+            the collection to allow for quicker access. More memory intensive 
+            but may produce moderate performance improvements if empty keys 
+            will be accessed repeatedly.
         """
-        # Enforce multiple keys method
-        if not isinstance(keys, list):
-            keys = [keys]
-            ndim = 1
-        else:
-            ndim = len(keys)
-
-        # Iterate over keys
-        dfs = []
-        for keys_i in keys:
-            # Attempt to retrieve from log
-            keys_i = self._validate_keys(keys_i)
+        # Attempt to retrieve from log
+        keys = self._validate_keys(keys)
+        try:
+            # Retrieve from log
+            group = self.log[keys]
+        except KeyError:
+            # Attempt to retrieve dataframe to create new group
             try:
-                dfs.append(self.log[keys_i].df)
+                # Build and add group to log
+                group = self._build_group(self._groups.get_group(keys))
+                self.log[keys] = group
+            # Invalid group keys (i.e., empty group)
             except KeyError:
-                # Attempt to retrieve group
-                try:
-                    df = self._groups.get_group(keys_i)
-                    dfs.append(df)
-                    # Add group to log
-                    self.log[keys_i] = self._build_group(df)
-                # - Collection is None (i.e., no defined keys)
-                except AttributeError:
-                    dfs.append(self.df)
-                    break
-                # - Invalid group keys (i.e., empty group)
-                except KeyError as e:
-                    # Deal with empty group
-                    if empty:
-                        dfs.append(self._build_empty())
-                    else:
-                        raise KeyError(
-                            f"Invalid EventsCollection keys: {keys_i}")
-        # Log and return retrieved group
-        if ndim == 1:
-            return self._build_group(dfs[0])
-        else:
-            df = pd.concat(dfs)
-            try:
-                df = gpd.GeoDataFrame(
-                    df, geometry=self.geom, crs=self.df.crs)
-            except:
-                pass
-            return EventsCollection(
-                df=df, keys=self.keys, beg=self.beg, end=self.end, 
-                geom=self.geom, closed=self.closed, missing_data='ignore')
+                # Deal with empty group
+                if empty:
+                    group = self._build_empty()
+                    if log_empty:
+                        self.log[keys] = group
+                else:
+                    raise KeyError(
+                        f"Invalid EventsCollection keys: {keys}")
+            # Collection is None (i.e., no defined keys)
+            except AttributeError:
+                raise ValueError("No defined group keys.")
+        return group
 
     def get_subset(self, keys, reduce=True, **kwargs):
         """
@@ -2141,8 +2138,9 @@ class EventsCollection(EventsFrame):
                 df, keys=new_keys, beg=self.beg, end=self.end, 
                 geom=self.geom, closed=self.closed, missing_data='ignore')
         except:
-            display(df)
-            raise ValueError()
+            raise ValueError(
+                "Unable to produce EventsCollection subset due to unknown "
+                "error.")
         return ec
 
     def get_matching(self, other, **kwargs):
@@ -2169,9 +2167,9 @@ class EventsCollection(EventsFrame):
             return EventsGroup(
                 df=df, beg=self.beg, end=self.end, geom=self.geom, 
                 closed=self.closed)
-        except:
+        except Exception as e:
             display(df)
-            raise ValueError()
+            raise e
 
 
 ####################

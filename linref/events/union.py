@@ -69,6 +69,10 @@ class EventsUnion(object):
     def group_keys_unique(self):
         return list(set(
             key for obj in self.objs for key in obj.group_keys_unique))
+    
+    @property
+    def num_keys(self):
+        return self.objs[0].num_keys
 
     def get_groups(self, keys, empty=True):
         """
@@ -89,13 +93,10 @@ class EventsUnion(object):
             events. If False, these cases will return a KeyError.
         """
         # Retrieve groups from all collections
-        groups = []
-        for obj in self._objs:
-            group = obj.get_group(keys, empty=empty)
-            groups.append(group)
+        groups = [obj.get_group(keys, empty=empty) for obj in self._objs]
         return groups
 
-    def union(self, fill_gaps=False, suffix=True):
+    def union(self, fill_gaps=False, get_index=True, merge=False, **kwargs):
         """
         Combine multiple EventsCollection instances into a single instance, 
         creating least common intervals among all collections and maintaining 
@@ -109,61 +110,84 @@ class EventsUnion(object):
             Whether to fill gaps in the merged collection with empty events. 
             These events would not be associated with any parent collection and 
             would not be populated with any events attributes.
-        suffix : bool, default True
-            Whether to address repeating column labels by appending a suffix 
-            to all repeating labels indicating the order in which they appear. 
-            E.g., repeated column labels 'info' and 'info' would be converted 
-            into 'info_1' and 'info_2'. If False, no modifications will be made 
-            to column labels which may produce errors when instantiating or 
-            utilizing the resulting EventsCollection.
+        get_index : bool, default True
+            Whether to produce columns relating each new record to the index of 
+            the originating record in the input events dataframes. When this is 
+            not necessary, setting to False may produce significant time 
+            savings.
+        merge : bool, default False
+            Whether to merge columns from each original dataframe to the newly 
+            created resegmented events collection dataframe. If not done during 
+            the union, it can be done later by merging on the new 'index_i' 
+            columns which correlate with the indices of the original 
+            dataframes. To perform this merge, the get_index parameter must be 
+            True.
         """
-        # Iterate over all unique group keys
-        records = []
-        dummy_df = pd.DataFrame(index=[0], dtype=float)
-        for keys in self.group_keys_unique:
-            # Iterate over groups
-            groups = self.get_groups(keys, empty=True)
-            ranges = []
-            sources = []
-            for i, group in enumerate(groups):
-                # Create range data for group
-                begs = group.df[group.beg].values
-                ends = group.df[group.end].values
-                rc = RangeCollection(
-                    begs=begs, ends=ends, sort=False, copy=False)
-                ranges.append(rc)
-                # Prepare source data
-                source = group.df[self._objs[i].others]
-                source = \
-                    pd.concat([source, dummy_df], axis=0, ignore_index=True)
-#                    source.append(pd.Series(dtype=float), ignore_index=True)
-                sources.append(source)
+        # Initialize new linear referencing data columns
+        keys = np.empty((0,self.num_keys))
+        begs = np.empty((0,))
+        ends = np.empty((0,))
+        indices = np.empty((0,len(self.objs)))
+        # Iterate over all unique group keys across all collections
+        # For collections that do not contain a given group key, the resulting 
+        # data will be left as null
+        for group_key in self.group_keys_unique:
+            # Get each group associated with the selected key across all 
+            # collections being analyzed
+            groups = self.get_groups(group_key, empty=True)
+            # Retrieve the range data associated with each group being unified
+            ranges = [group.rng for group in groups]
             # Union ranges
-            rc, indices = RangeCollection.union(
-                ranges, fill_gaps=fill_gaps, return_index=True, null_index=-1)
-            # Prepare dataframes
-            basedata = {col: [val] * rc.num_ranges for col, val \
-                in zip(self.objs[0].keys, keys)}
-            dfs = [pd.DataFrame({**basedata,
-                self.objs[0].beg: rc.begs,
-                self.objs[0].end: rc.ends,
-            })]
-            dfs += [source.iloc[index].reset_index(drop=True) \
-                for index, source in zip(indices, sources)]
-            records.append(pd.concat(dfs, axis=1))
-        # Concatenate records
-        df = pd.concat(records)
-        # Address repeating column labels
-        if suffix:
-            cols = list(df)
-            counts = [cols.count(col) for col in cols]
-            suffixes = ['_' + str(cols[:i+1].count(col)) \
-                for i, col in enumerate(cols)]
-            labels = [col + (suffix if count > 1 else '') \
-                for col, suffix, count in zip(cols, suffixes, counts)]
-            df.columns = labels
-        # Create events collection based on objs[0]
-        ec = self.objs[0].from_similar(df, geom=None)
+            if get_index:
+                rc, index = RangeCollection.union(
+                    ranges, fill_gaps=fill_gaps, return_index=True,
+                    null_index=-1)
+                # Reshape index arrays
+                arrs = []
+                for i, arr_i in enumerate(index):
+                    try:
+                        arr_i = np.where(
+                            arr_i!=-1, groups[i].df.index.values[arr_i], np.nan)
+                    except IndexError:
+                        pass
+                    arrs.append(arr_i)
+                # Concatenate selected indices
+                index = np.concatenate(arrs).reshape(2,-1).T
+                indices = np.append(indices, index, axis=0)
+            else:
+                rc = RangeCollection.union(
+                    ranges, fill_gaps=fill_gaps, return_index=False,
+                    null_index=-1)
+            # Log unified range results
+            keys = np.append(
+                keys, np.tile(group_key, (rc.num_ranges, 1)), axis=0)
+            begs = np.append(begs, rc.begs)
+            ends = np.append(ends, rc.ends)
+            
+        # Prepare resulting unified dataframe
+        if get_index:
+            indices[indices==-1] = np.nan
+            data = pd.DataFrame({
+                **{col: arr for col, arr in zip(self.objs[0].keys, keys.T)},
+                **{self.objs[0].beg: begs, self.objs[0].end: ends},
+                **{f'index_{i}': arr for i, arr in enumerate(indices.T)}
+            })
+        else:
+            data = pd.DataFrame({
+                **{col: arr for col, arr in zip(self.objs[0].keys, keys.T)},
+                **{self.objs[0].beg: begs, self.objs[0].end: ends},
+            })
+        
+        # Merge resegmented data with original dataframe columns
+        if merge and get_index:
+            for i, obj in enumerate(self.objs):
+                data = data.merge(
+                    obj.df.drop(columns=self.objs[0].targets, errors='ignore'),
+                    how='left', left_on=f'index_{i}', right_index=True, 
+                    **kwargs)
+            
+        # Convert to events collection in the model of the first collection
+        ec = self.objs[0].from_similar(data, geom=None)
         return ec
 
 
