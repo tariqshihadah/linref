@@ -15,8 +15,8 @@ fd = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 labels = [os.path.splitext(fn)[0] for fn in os.listdir(fd)]
 print(labels)
 for fp in os.listdir(fd):
-    label = os.path.splitext(os.path.basename(fp))
-    data[label] = pd.read_csv(os.path.join(fd, fp))
+    label = os.path.splitext(os.path.basename(fp))[0]
+    data[label] = pd.read_csv(os.path.join(fd, fp), index_col=0)
 
 
 #####################
@@ -35,21 +35,21 @@ class TestInitCollection(unittest.TestCase):
         self.assertIsInstance(ec, lr.EventsCollection)
 
     def test_init_bad_targets(self):
-        self.assertRaises(ValueError,
+        with self.assertRaises(ValueError):
             lr.EventsCollection(
                 data['linear_events'],
                 keys=['ASDF','YEAR'],
-                beg='BMP', end='EMP'))
-        self.assertRaises(ValueError,
+                beg='BMP', end='EMP')
+        with self.assertRaises(ValueError):
             lr.EventsCollection(
                 data['linear_events'],
                 keys=['RID','YEAR'],
-                beg='ASDF', end='EMP'))
-        self.assertRaises(ValueError,
+                beg='ASDF', end='EMP')
+        with self.assertRaises(ValueError):
             lr.EventsCollection(
                 data['linear_events'],
                 keys=['RID','YEAR'],
-                beg='BMP', end='ASDF'))
+                beg='BMP', end='ASDF')
 
     def test_init_unsorted(self):
         ec_sorted = lr.from_standard(
@@ -66,8 +66,8 @@ class TestIntersecting(unittest.TestCase):
         Test basic use of intersecting on EventsGroup.
         """
         ec = lr.from_standard(data['linear_events'])
-        df = ec['A', 2020].intersecting(0.55, 1.05)
-        self.assertTrue(df.equals(data['linear-events_dissolve']))
+        df = ec['A', 2020].intersecting(0.55, 1.05).fillna(0)
+        self.assertTrue((df==data['linear_events_select_intersecting'].fillna(0)).all().all())
 
 
 class TestDissolve(unittest.TestCase):
@@ -77,8 +77,9 @@ class TestDissolve(unittest.TestCase):
         Test basic use of dissolve on lr.EventsCollection.
         """
         ec = lr.from_standard(data['linear_events'])
-        df = ec.dissolve(attr=['A'], aggs=['B'], agg_func=list, fillna='z').df
-        self.assertTrue(df.equals(data['linear_events_dissolve']))
+        agg_func = lambda x: '_'.join(x)
+        df = ec.dissolve(attr=['A'], aggs=['B'], agg_func=agg_func, fillna='z').df
+        self.assertTrue((df==data['linear_events_dissolve']).all().all())
 
 
 #############
