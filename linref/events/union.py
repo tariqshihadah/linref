@@ -124,10 +124,10 @@ class EventsUnion(object):
             True.
         """
         # Initialize new linear referencing data columns
-        keys = np.empty((0,self.num_keys))
-        begs = np.empty((0,))
-        ends = np.empty((0,))
-        indices = np.empty((0,len(self.objs)))
+        keys = []
+        begs = []
+        ends = []
+        indices = []
         # Iterate over all unique group keys across all collections
         # For collections that do not contain a given group key, the resulting 
         # data will be left as null
@@ -152,19 +152,22 @@ class EventsUnion(object):
                         pass
                     arrs.append(arr_i)
                 # Concatenate selected indices
-                index = np.concatenate(arrs).reshape(2,-1).T
-                indices = np.append(indices, index, axis=0)
+                index = np.array(arrs).T
+                indices.append(index)
             else:
                 rc = RangeCollection.union(
                     ranges, fill_gaps=fill_gaps, return_index=False,
                     null_index=-1)
             # Log unified range results
-            keys = np.append(
-                keys, np.tile(group_key, (rc.num_ranges, 1)), axis=0)
-            begs = np.append(begs, rc.begs)
-            ends = np.append(ends, rc.ends)
+            keys.append(np.tile(group_key, (rc.num_ranges, 1)))
+            begs.append(rc.begs)
+            ends.append(rc.ends)
             
         # Prepare resulting unified dataframe
+        keys = np.concatenate(keys, axis=0)
+        begs = np.concatenate(begs)
+        ends = np.concatenate(ends)
+        indices = np.concatenate(indices, axis=0)
         if get_index:
             indices[indices==-1] = np.nan
             data = pd.DataFrame({
