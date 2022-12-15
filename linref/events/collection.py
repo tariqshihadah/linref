@@ -929,15 +929,11 @@ class EventsFrame(object):
             # Drop duplicates (required for equidistant ties)
             joined = joined[~joined.index.duplicated(keep='first')]
         else:
-            warnings.warn(
-                "Performance when nearest=False is currently limited and "
-                "will be improved in future versions.")
-            joined = join_nearby(
-                other, 
-                self.df[select_cols], 
-                buffer=buffer, 
-                choose='all',
-                dist_label=dist_label
+            # Buffer geometry for spatial join
+            buffered_geoms = self.df.geometry.buffer(buffer)
+            joined = other.sjoin(
+                self.df[select_cols].set_geometry(buffered_geoms),
+                how='left'
             )
 
         # Project input geometries onto event geometries
