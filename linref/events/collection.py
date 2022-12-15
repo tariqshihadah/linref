@@ -106,9 +106,6 @@ from linref.route import MLSRoute, combine_mpgs
 from rangel import RangeCollection
 import copy, warnings
 
-# Temporary dependencies
-from linref.various.geospatial import join_nearby
-
 
 ##################
 # EVENTS CLASSES #

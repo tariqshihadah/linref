@@ -2,6 +2,9 @@
 Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.
 
 # Version Notes
+## 0.0.9 (TBD)
+- Improve performance of .project() method when nearest=False by removing dependence on join_nearby() function and using native gpd features.
+
 ## 0.0.8 (2022-12-14)
 - Improve performance of essential .get_group() method, reducing superfluous initialization of empty dataframes and events collections and improving logging of initialized groups.
 - Improve performance of .union() method with updated RangeCollection.union() features and optimized iteration and aggregation of unified data. Performance times are significantly improved, especially for large datasets with many events groups.
