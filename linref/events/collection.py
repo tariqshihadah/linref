@@ -920,37 +920,23 @@ class EventsFrame(object):
         
         # Join the other geodataframe to this one
         select_cols = self.keys + [self.route, self.geom]
-        try:
-            if nearest:
-                joined = other.sjoin_nearest(
-                    self.df[select_cols],
-                    max_distance=buffer,
-                    how='left'
-                )
-                # Drop duplicates
-                joined = joined[~joined.index.duplicated(keep='first')]
-            else:
-                warnings.warn(
-                    "Performance when nearest=False is currently limited and "
-                    "will be improved in future versions.")
-                joined = join_nearby(
-                    other, 
-                    self.df[select_cols], 
-                    buffer=buffer, 
-                    choose='all',
-                    dist_label=dist_label
-                )
-        except AttributeError:
-            # Optional dependency warning for improved performance
+        if nearest:
+            joined = other.sjoin_nearest(
+                self.df[select_cols],
+                max_distance=buffer,
+                how='left'
+            )
+            # Drop duplicates (required for equidistant ties)
+            joined = joined[~joined.index.duplicated(keep='first')]
+        else:
             warnings.warn(
-                "Performance will be reduced for this operation when using "
-                "the current geopandas version. Upgrade to geopandas>=v0.10.0 "
-                "for improved performance.")
+                "Performance when nearest=False is currently limited and "
+                "will be improved in future versions.")
             joined = join_nearby(
                 other, 
                 self.df[select_cols], 
                 buffer=buffer, 
-                choose='min' if nearest else 'all',
+                choose='all',
                 dist_label=dist_label
             )
 
