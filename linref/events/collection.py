@@ -222,6 +222,21 @@ class EventsFrame(object):
         return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
 
+    def set_df(self, obj, inplace=False):
+        """
+        Set a new events dataframe.
+        """
+        # Define target, copy if needed
+        if inplace:
+            ef = self
+        else:
+            ef = self.copy()
+        # Assign dataframe
+        ef.df = obj
+        # Return if needed
+        if not inplace:
+            return ef
+
     def sort(self, inplace=False):
         """
         Sort the events dataframe based on target columns.
