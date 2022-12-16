@@ -191,8 +191,22 @@ class EventsFrame(object):
                 pass
             self._initialize_df()
         else:
-            raise TypeError("Input dataframe must be pandas DataFrame class "
-                "instance.")
+            raise TypeError(
+                "Input dataframe must be pandas DataFrame class instance.")
+
+    @property
+    def size(self):
+        """
+        Return the size of the events dataframe.
+        """
+        return self._df.size
+
+    @property
+    def shape(self):
+        """
+        Return the shape of the events dataframe.
+        """
+        return self._df.shape
 
     def _initialize_df(self):
         """
