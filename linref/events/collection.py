@@ -227,10 +227,7 @@ class EventsFrame(object):
         Set a new events dataframe.
         """
         # Define target, copy if needed
-        if inplace:
-            ef = self
-        else:
-            ef = self.copy()
+        ef = self if inplace else self.copy()
         # Assign dataframe
         ef.df = obj
         # Return if needed
@@ -242,12 +239,12 @@ class EventsFrame(object):
         Sort the events dataframe based on target columns.
         """
         # Create a copy if requested
-        ec = self if inplace else self.copy()
+        ef = self if inplace else self.copy()
         # Log sorting
-        ec._sort = True
-        ec.df = self.df
+        ef._sort = True
+        ef.df = self.df
         if not inplace:
-            return ec
+            return ef
 
     def df_exportable(self):
         """

@@ -66,6 +66,10 @@ class EventsUnion(object):
             self._objs = objs
 
     @property
+    def num_objs(self):
+        return len(self.objs)
+
+    @property
     def group_keys_unique(self):
         return list(set(
             key for obj in self.objs for key in obj.group_keys_unique))
@@ -96,7 +100,14 @@ class EventsUnion(object):
         groups = [obj.get_group(keys, empty=empty) for obj in self._objs]
         return groups
 
-    def union(self, fill_gaps=False, get_index=True, merge=False, **kwargs):
+    def union(
+        self, 
+        fill_gaps=False, 
+        get_index=True, 
+        merge=False, 
+        suffixes=None, 
+        **kwargs
+        ):
         """
         Combine multiple EventsCollection instances into a single instance, 
         creating least common intervals among all collections and maintaining 
@@ -122,7 +133,25 @@ class EventsUnion(object):
             columns which correlate with the indices of the original 
             dataframes. To perform this merge, the get_index parameter must be 
             True.
+        suffixes : list-like, default ['_0', ..., '_n']
+            Sequence of length equal to the number of events collections being 
+            unified, where each element is a string indicating the suffix to 
+            add to overlapping column names in each corresponding events 
+            dataframe. All entries must be unique.
         """
+        # Validate suffixes
+        if suffixes is None:
+            suffixes = [f'_{i}' for i in range(self.num_objs)]
+        else:
+            try:
+                assert len(suffixes) == self.num_objs
+                assert len(set(suffixes)) == self.num_objs
+                assert all(isinstance(suffix, str) for suffix in suffixes)
+            except:
+                raise ValueError(
+                    "Input suffixes must be list-like of unique strings with "
+                    "a length equal to the number of events collections being "
+                    f"unified ({self.num_objs:,.0f}).")
         # Initialize new linear referencing data columns
         keys = []
         begs = []
@@ -184,10 +213,11 @@ class EventsUnion(object):
         # Merge resegmented data with original dataframe columns
         if merge and get_index:
             for i, obj in enumerate(self.objs):
+                suffixes_i = (None, suffixes[i])
                 data = data.merge(
                     obj.df.drop(columns=self.objs[0].targets, errors='ignore'),
                     how='left', left_on=f'index_{i}', right_index=True, 
-                    **kwargs)
+                    suffixes=suffixes_i, **kwargs)
             
         # Convert to events collection in the model of the first collection
         ec = self.objs[0].from_similar(data, geom=None)
