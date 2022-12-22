@@ -1024,6 +1024,8 @@ def _distribute_dimensions(mls, beg, end):
     # Validate input
     if not isinstance(mls, MultiLineString):
         raise ValueError("Input MLS must be MultiLineString type.")
+    if mls.is_empty:
+        raise ValueError("Input MLS is empty.")
     # Compute dimensions
     delta = end - beg
     lengths = np.array([ls.length for ls in mls.geoms])
