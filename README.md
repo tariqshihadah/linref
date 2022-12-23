@@ -2,8 +2,12 @@
 Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.
 
 # Version Notes
-## 0.0.9 (TBD)
+## 0.0.8.post2 (2022-12-23)
+Final update of 2022 including small feature updates and bug fixes from 0.0.8. Happy Holidays!
 - Add .set_df() method for in-line modification of an EventsFrame's dataframe, inplace or not.
+- Addition of suffixes parameter and default setting to EventsUnion.union() method.
+- Performance improvements
+- Various bug fixes, minor features
 
 ## 0.0.8.post1 (2022-12-16)
 - Improve performance of .project() method when nearest=False by removing dependence on join_nearby() function and using native gpd features.
