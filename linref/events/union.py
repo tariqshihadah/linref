@@ -131,8 +131,8 @@ class EventsUnion(object):
             created resegmented events collection dataframe. If not done during 
             the union, it can be done later by merging on the new 'index_i' 
             columns which correlate with the indices of the original 
-            dataframes. To perform this merge, the get_index parameter must be 
-            True.
+            dataframes. To perform this merge manually, the get_index parameter 
+            should be True.
         suffixes : list-like, default ['_0', ..., '_n']
             Sequence of length equal to the number of events collections being 
             unified, where each element is a string indicating the suffix to 
