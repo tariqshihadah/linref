@@ -179,6 +179,23 @@ class EventsMergeAttribute(object):
             return res
         return self._to_pandas(*self._agg(_func, empty=empty))
 
+    def any(self, empty=None, **kwargs):
+        """
+        Indicate whether each record intersects with at least one event.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        def _func(arr, trace, **kwargs):
+            # Find any intersecting events, apply to all columns
+            res = np.tile(trace.mask.any(axis=1), (self._ncols,1)).T
+            return res
+        return self._to_pandas(*self._agg(_func, empty=empty))
+
     def unique(self, empty=None, **kwargs):
         """
         Return all unique values from intersecting events in a tuple.

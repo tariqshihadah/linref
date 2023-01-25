@@ -59,6 +59,10 @@ To select events on all routes but only those from a specific year, indexing
 for only some keys can be used.
 >>> ec_2018 = ec[:, 2018]
 
+To retrieve information from one events collection and apply it to the events 
+of the other.
+>>> ec.merge()
+
 To get all events which intersect with a numeric range, the intersecting() 
 method can be used on an EventsGroup instance.
 >>> df_intersecting = eg.intersecting(0.5, 1.5, closed='left_mod')
