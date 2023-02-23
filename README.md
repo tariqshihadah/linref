@@ -2,6 +2,12 @@
 Module featuring EventsCollection object class for the management of linearly referenced data and optimized performance of various simple and complex events and geospatial operations.
 
 # Version Notes
+## 0.0.9 (TBD)
+First update of 2023.
+- Add missing .any() aggregation method to EventsMergeAttribute API. Was previously available but missed during a previous update.
+- Performance improvements
+- Various bug fixes, minor features
+
 ## 0.0.8.post2 (2022-12-23)
 Final update of 2022 including small feature updates and bug fixes from 0.0.8. Happy Holidays!
 - Add .set_df() method for in-line modification of an EventsFrame's dataframe, inplace or not.
