@@ -12,8 +12,8 @@ multiple groups of events which are distinguished by at least one set of keys
 for a variety of linear referencing operations and events manipulations, such 
 as dissolves based on a subset of events columns, returning a simplified 
 data set with a selection of columns aggregated. Additionally, these 
-collections can be used to perform automated intersections with another 
-EventsCollection class instance using the retrieve() method, retrieving 
+collections can be used to perform automated merges and intersections with 
+other EventsCollection class instances using the .merge() method, retrieving 
 column data from another collection and relating it to the original 
 collection's events data.
 
@@ -25,7 +25,7 @@ with an input range, length-weighted averages of event column values based on
 an input range, and more.
 
 EventsCollection class instances can be queried using square bracket indexing 
-or the get_subset() and get_group() methods, returning a pared down 
+or the .get_subset() and .get_group() methods, returning a pared down 
 EventsCollection or a specific EventsGroup, respectively. Similarly, this can 
 be done using object indexing, passing a mixture of unique values and valid 
 slices of unique key values to return a subset of the collection as an 
