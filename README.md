@@ -45,6 +45,7 @@ performing an aggregation function over these values.
 ## 0.0.9 (2023-03-02)
 First update of 2023. Been a quiet start to the year.
 - Add missing .any() aggregation method to EventsMergeAttribute API. Was previously available but missed during a previous update.
+- Update documentation
 - Performance improvements
 - Various bug fixes, minor features
 

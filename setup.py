@@ -5,7 +5,7 @@ import os
 VERSION = '0.0.9'
 DESCRIPTION = 'Linearly referenced data management, manipulation, and operations'
 with open('README.md') as f:
-    LONG_DESCRIPTION = f.readlines()
+    LONG_DESCRIPTION = ''.join(f.readlines())
 
 # Setting up
 setup(
