@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 import codecs
 import os
 
-VERSION = '0.0.9'
+VERSION = '0.0.9.post1'
 DESCRIPTION = 'Linearly referenced data management, manipulation, and operations'
 with open('README.md') as f:
     LONG_DESCRIPTION = ''.join(f.readlines())
