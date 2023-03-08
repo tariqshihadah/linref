@@ -3,18 +3,14 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Documentation Contents
-======================
-
+Linear Referencing with linref
+==============================
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
 
    readme
    modules
 
-Overview of linref
-==================
 .. include:: ../README.md
     :parser: myst_parser.sphinx_
 
