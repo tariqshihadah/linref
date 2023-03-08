@@ -1,0 +1,7 @@
+[build-system]
+requires = ["sphinx","myst-parser","sphinx-rtd-theme","geopandas"]
+
+[project]
+name = "linref"
+authors = [{name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}]
+dynamic = ["version", "description"]
