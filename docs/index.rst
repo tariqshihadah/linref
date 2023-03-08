@@ -11,8 +11,7 @@ Linear Referencing with linref
    readme
    modules
 
-.. include:: ../README.md
-    :parser: myst_parser.sphinx_
+.. include:: ../README.rst
 
 Indices and Tables
 ==================
