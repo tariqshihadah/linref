@@ -34,3 +34,4 @@ source_suffix = {
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+html_logo = 'source/Linref_Logo_Simple_AllWhite.svg'

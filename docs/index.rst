@@ -8,7 +8,6 @@ Linear Referencing with linref
 .. toctree::
    :maxdepth: 1
 
-   readme
    modules
 
 .. include:: ../README.rst
