@@ -45,6 +45,11 @@ performing an aggregation function over these values.
 
 Version Notes
 =============
+0.0.10 (TBD)
+------------
+Not a lot of updates to share, I guess that's a good thing?
+* Minor updates to MLSRoute class to account for deprecation of subscripting MultiLineStrings. Most issues were addressed previously but a few were missed, most notably in the .bearing() method and a couple odd cases in the .cut() method.
+
 0.0.9 (2023-03-02)
 ------------------
 First update of 2023. Been a quiet start to the year.

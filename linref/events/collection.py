@@ -2015,8 +2015,8 @@ class EventsCollection(EventsFrame):
         Parameters
         ----------
         other : gpd.GeoDataFrame
-            Geodataframe containing linear geometry which will be projected onto 
-            the events dataframe.
+            Geodataframe containing linear geometry which will be projected 
+            onto the events dataframe.
         samples : int, default 3
             The number of equidistant sample points to take along each geometry 
             being projected to check for nearby geometry.

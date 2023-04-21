@@ -785,7 +785,7 @@ class MLSRoute(object):
                              choose='last', closed='both', snap='right')
             beg_loc = self.rte_ranges.project(beg_index, beg_dist)
         else:
-            beg_point = self.mls[0].coords[0]
+            beg_point = self.mls.geoms[0].coords[0]
             beg_index = 0
             beg_loc = self.rte_ranges.begs[0]
 
@@ -797,7 +797,7 @@ class MLSRoute(object):
                              choose='first', closed='both', snap='left')
             end_loc = self.rte_ranges.project(end_index, end_dist)
         else:
-            end_point = self.mls[-1].coords[-1]
+            end_point = self.mls.geoms[-1].coords[-1]
             end_index = self.mls_ranges.num_ranges - 1
             end_loc = self.rte_ranges.ends[-1]
         
@@ -976,8 +976,8 @@ class MLSRoute(object):
             reversing the direction of the route.
         """
         # Capture x and y distance between points
-        x_diff = self.mls[-1].xy[0][-1] - self.mls[0] .xy[0][0]
-        y_diff = self.mls[-1].xy[1][-1] - self.mls[0] .xy[1][0]
+        x_diff = self.mls.geoms[-1].xy[0][-1] - self.mls.geoms[0].xy[0][0]
+        y_diff = self.mls.geoms[-1].xy[1][-1] - self.mls.geoms[0].xy[1][0]
         
         # Compute bearing angle
         bearing = math.degrees(math.atan2(y_diff, x_diff))

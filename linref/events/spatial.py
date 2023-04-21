@@ -44,6 +44,8 @@ from linref.various.geospatial import join_nearby
 
 class ParallelProjector(object):
     """
+    Experimental class for performing projections of linear geometries onto 
+    linear events collections.
     """
 
     def __init__(self, target, other, samples=3, buffer=100) -> None:

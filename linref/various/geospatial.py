@@ -31,7 +31,7 @@ def join_nearby(left, right, buffer=100, lsuffix='left', rsuffix='right',
         try:
             p1, p2 = nearest_points(o1, o2)
             return p1.distance(p2)
-        except AttributeError:
+        except (AttributeError, ValueError) as e:
             return -1
             
     # Compute distances
