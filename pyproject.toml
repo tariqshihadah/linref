@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linref"
-version = "0.0.9.post1"
+version = "0.0.10"
 description = "Linearly referenced data management, manipulation, and operations"
-readme = "README.md"
+readme = "README.rst"
 requires-python = ">=3.8"
-license = {file = "LICENSE.md"}
+license = {file = "LICENSE.rst"}
 keywords=["python", "geospatial", "linear", "data", "event", "dissolve", "overlay", "range", "numeric", "interval"]
 authors = [{name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}]
 dependencies = ["numpy", "matplotlib", "shapely>=1.7", "pandas>=1.1", "geopandas>=0.10.2", "rangel>=0.0.7"]
