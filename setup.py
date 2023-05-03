@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 import codecs
 import os
 
-VERSION = '0.0.10'
+VERSION = '0.0.10.post1'
 DESCRIPTION = 'Linearly referenced data management, manipulation, and operations'
 with open('README.rst') as f:
     LONG_DESCRIPTION = ''.join(f.readlines())
@@ -14,6 +14,7 @@ setup(
     author="Tariq Shihadah",
     author_email="<tariq.shihadah@gmail.com>",
     description=DESCRIPTION,
+#    long_description_content_type="text/x-rst",
     long_description=LONG_DESCRIPTION,
     packages=find_packages(),
     package_data={"": ["*.json"]},
