@@ -48,7 +48,11 @@ Version Notes
 0.0.10 (TBD)
 ------------
 Not a lot of updates to share, I guess that's a good thing?
-* Minor updates to MLSRoute class to account for deprecation of subscripting MultiLineStrings. Most issues were addressed previously but a few were missed, most notably in the .bearing() method and a couple odd cases in the .cut() method.
+* Minor updates to MLSRoute class to account for deprecation of subscripting MultiLineStrings. Most issues were addressed previously but a few were missed, most notably in the MLSRoute.bearing() method and a couple odd cases in the MLSRoute.cut() method.
+* Fix minor issue with EventsCollection.project_parallel() implementation related to unmatched sampling points.
+* Addition of EventsFrame.cast_gdf() method to cast events dataframes to geopandas geodataframes in-line.
+* Performance improvements
+* Various bug fixes, minor features
 
 0.0.9 (2023-03-02)
 ------------------

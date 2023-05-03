@@ -250,6 +250,24 @@ class EventsFrame(object):
         if not inplace:
             return ef
 
+    def cast_gdf(self, inplace=False, **kwargs):
+        """
+        Convert the events dataframe to a geodataframe, passing the input 
+        keyword arguments, such as crs and geometry, to the gpd.GeoDataFrame 
+        constructor. See documentation for this constructor for more 
+        information.
+        """
+        # Attempt to convert to geodataframe
+        gdf = gpd.GeoDataFrame(self.df, **kwargs)
+        # Log new geodataframe
+        if inplace:
+            self.df = gdf
+            return
+        else:
+            ef = self.copy()
+            ef.df = gdf
+            return ef
+
     def df_exportable(self):
         """
         Return a dataframe which is optimized for exporting.
