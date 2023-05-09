@@ -17,39 +17,39 @@ route identifier represented by the 'Route' column and data for multiple years,
 represented by the 'Year' column. The begin and end mile points are defined by 
 the 'Begin' and 'End' columns::
 
-ec = EventsCollection(df, keys=['Route','Year'], beg='Begin', end='End')
+    ec = EventsCollection(df, keys=['Route','Year'], beg='Begin', end='End')
 
 To select events from a specific route and a specific year, indexing for all 
 keys can be used, producing an EventsGroup::
 
-eg = ec['Route 50', 2018]
+    eg = ec['Route 50', 2018]
 
 To select events on all routes but only those from a specific year, indexing 
 for only some keys can be used::
 
-ec_2018 = ec[:, 2018]
+    ec_2018 = ec[:, 2018]
 
 To get all events which intersect with a numeric range, the intersecting() 
 method can be used on an EventsGroup instance::
 
-df_intersecting = eg.intersecting(0.5, 1.5, closed='left_mod')
+    df_intersecting = eg.intersecting(0.5, 1.5, closed='left_mod')
 
 The intersecting() method can also be used for point locations by ommitting the 
 second location attribute::
 
-df_intersecting = eg.intersecting(0.75, closed='both')
+    df_intersecting = eg.intersecting(0.75, closed='both')
 
 The linearly weighted average of one or more attributes can be obtained using 
 the overlay_average() method::
 
-df_overlay = eg.overlay_average(0.5, 1.5, cols=['Speed_Limit','Volume'])
+    df_overlay = eg.overlay_average(0.5, 1.5, cols=['Speed_Limit','Volume'])
 
 If the events include information on the roadway speed limit and number of 
 lanes, they can be dissolved on these attributes. During the dissolve, other 
 attributes can be aggregated, providing a list of associated values or 
 performing an aggregation function over these values::
 
-ec_dissolved = ec.dissolve(attr=['Speed_Limit','Lanes'], aggs=['County'])
+    ec_dissolved = ec.dissolve(attr=['Speed_Limit','Lanes'], aggs=['County'])
 
 Version Notes
 =============
