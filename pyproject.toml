@@ -14,5 +14,5 @@ authors = [{name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}]
 dependencies = ["numpy", "matplotlib", "shapely>=1.7", "pandas>=1.1", "geopandas>=0.10.2", "rangel>=0.0.7"]
 
 [project.urls]
-documentation = "https://readthedocs.org"
-repository = "https://github.com"
+documentation = "https://linref.readthedocs.io/"
+repository = "https://github.com/tariqshihadah/linref"
