@@ -53,6 +53,14 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
+0.0.11 (TBD)
+-------------------
+Feeling the algo-rhythm these days.
+
+* Initial deployment of synthesis module featuring some tools for generating linear referencing information for chains of linear asset data with geometry but no LRS.
+* Performance improvements
+* Various bug fixes, minor features
+
 0.0.10 (2023-05-03)
 -------------------
 Not a lot of updates to share, I guess that's a good thing?
