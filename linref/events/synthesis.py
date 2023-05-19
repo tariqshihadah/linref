@@ -35,11 +35,12 @@ Modified:
 ################
 
 import pandas as pd
+import geopandas as gpd
 import numpy as np
 import copy, warnings
 from functools import wraps
 from rangel import RangeCollection
-
+from shapely.geometry import Point
 
 def generate_linear_events(
     df, 
