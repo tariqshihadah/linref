@@ -49,6 +49,7 @@ def generate_linear_events(
     end_label='END', 
     chain_label='CHAIN', 
     buffer=None, 
+    scale=1,
     decimals=None, 
     breaks='continue', 
     **kwargs
@@ -80,6 +81,10 @@ def generate_linear_events(
         A spatial buffer to use when determining if end and begin points 
         are coincident. If not provided, only points which are exactly 
         identical will be determined to be coincident.
+    scale : scalar, default 1
+        A value to multiply all linearly referenced location values by to 
+        transform geographic distance values to a preferred scale. For 
+        example, using a value of 5280 to convert from miles to feet.
     decimals : scalar, optional
         If provided, linearly referenced location values will be rounded to 
         the provided number of decimals.
@@ -219,6 +224,10 @@ def generate_linear_events(
             record_begs.extend([0] + lengths[:-1])
             record_ends.extend(lengths)
             record_chains.extend([chain_index] * len(chain))
+
+    # Scale location data
+    record_begs *= scale
+    record_ends *= scale
 
     # Round location data if requested
     if not decimals is None:
