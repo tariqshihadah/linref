@@ -226,8 +226,8 @@ def generate_linear_events(
             record_chains.extend([chain_index] * len(chain))
 
     # Scale location data
-    record_begs *= scale
-    record_ends *= scale
+    record_begs = np.array(record_begs) * scale
+    record_ends = np.array(record_ends) * scale
 
     # Round location data if requested
     if not decimals is None:
