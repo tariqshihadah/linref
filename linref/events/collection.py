@@ -1959,6 +1959,46 @@ class EventsCollection(EventsFrame):
             keys = tuple(keys)
         # Return validated keys
         return keys
+    
+    def separate(self, eliminate_inside=False, inplace=False, **kwargs):
+        """
+        Separate the bounds of all events so that none directly overlap. 
+        This is done using the rangel.RangeCollection.separate() method 
+        on each EventsGroup.
+
+        Parameters
+        ----------
+        eliminate_inside : boolean, default False
+            Whether to automatically eliminate ranges which are entirely 
+            overlapped by other ranges, producing zero-length ranges (e.g., 
+            point events).
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Iterate through events groups
+        records = []
+        for key, group in self.iter_groups():
+            # Separate group ranges
+            separated = group.rng.separate(
+                drop_short=False, eliminate_inside=eliminate_inside)
+            # Apply separated ranges to a copy of the group
+            updated = group.copy()
+            updated[self.beg] = separated.begs
+            updated[self.end] = separated.ends
+            records.append(updated)
+
+        # Prepare new dataframe
+        df = pd.concat(records)
+        df = df.loc[self.df.index] # Retain original sorting
+
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
 
     def overlay_average(self, other, cols=None, **kwargs):
         """
