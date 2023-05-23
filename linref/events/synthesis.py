@@ -2,7 +2,8 @@
 ===============================================================================
 
 Module featuring classes and functionality for synthesizing linear referencing 
-information for existing data that is not LRS-enabled.
+information for existing data that is not LRS-enabled and other manipulations 
+which support linear referencing data engineering and analysis.
 
 
 Classes
@@ -12,7 +13,7 @@ None
 
 Dependencies
 ------------
-pandas, numpy, rangel, copy, warnings, functools
+geopandas, shapely, pandas, numpy, rangel, copy, warnings, functools
 
 
 Development
@@ -41,6 +42,12 @@ import copy, warnings
 from functools import wraps
 from rangel import RangeCollection
 from shapely.geometry import Point
+from shapely import unary_union
+
+
+#######################
+# SYNTHESIS FUNCTIONS #
+#######################
 
 def generate_linear_events(
     df, 
@@ -247,6 +254,46 @@ def generate_linear_events(
         events, keys=keys + [chain_label], beg=beg_label, end=end_label, 
         geom=df.geometry.name, **kwargs)
     return ec
+
+
+def find_intersections(df):
+    """
+    Generate intersection points for an input geodataframe of linear 
+    geometries. Output will be a geodataframe with a single point 
+    geometry at each location where a line intersects with another 
+    and will have the same CRS.
+
+    Parameters
+    ----------
+    df : gpd.GeoDataFrame
+        Valid geopandas geodataframe containing linear geometries.
+    """
+    # Validate parameters
+    if not isinstance(df, gpd.GeoDataFrame):
+        raise ValueError(
+            "Input data must be of gpd.GeoDataFrame type.")
+        
+    # Iterate through slices of the dataframe
+    geoms = df.geometry.values
+    records = []
+    for i in range(geoms.shape[0] - 1):
+        # Select the row and unary union of lower remainder
+        target = geoms[i]
+        sub = unary_union(geoms[i+1:])
+        # Find intersection points
+        intersection = sub.intersection(target)
+        # Check if none found
+        if intersection.is_empty:
+            continue
+        # Add to records
+        try:
+            records.extend(list(intersection.geoms))
+        except:
+            records.append(intersection)
+
+    # Cast to dataframe
+    res = gpd.GeoDataFrame(geometry=records, crs=df.crs)
+    return res
 
 
 #####################
