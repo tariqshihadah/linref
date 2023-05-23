@@ -1960,6 +1960,59 @@ class EventsCollection(EventsFrame):
         # Return validated keys
         return keys
     
+    def round(self, decimals=0, factor=1, inplace=False):
+        """
+        Round the bounds of all events to the specified number of decimals 
+        or to a specified rounding factor.
+
+        Parameters
+        ----------
+        decimals : int, default 0
+            Number of decimals to round event bound values to.
+        factor : scalar, default 1
+            Rounding factor to apply to the event bound values. For example, 
+            use `factor=0.5` (and `decimals=0`) to round each value to the 
+            nearest 0.5.
+        """
+        # Copy data
+        df = self.df.copy()
+        # Perform rounding
+        df[self.beg] = \
+            np.round(df[self.beg] / factor, decimals=decimals) * factor
+        df[self.end] = \
+            np.round(df[self.end] / factor, decimals=decimals) * factor
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
+
+    def shift(self, distance=0, inplace=False):
+        """
+        Shift the bounds of all events by the specified value.
+
+        Parameters
+        ----------
+        distance : scalar, default 0
+            The amount to shift each event bound by.
+        """
+        # Copy data
+        df = self.df.copy()
+        # Perform shifting
+        df[self.beg] = df[self.beg] + distance
+        df[self.end] = df[self.end] + distance
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
+
     def separate(self, eliminate_inside=False, inplace=False, **kwargs):
         """
         Separate the bounds of all events so that none directly overlap. 
@@ -1983,7 +2036,7 @@ class EventsCollection(EventsFrame):
             separated = group.rng.separate(
                 drop_short=False, eliminate_inside=eliminate_inside)
             # Apply separated ranges to a copy of the group
-            updated = group.copy()
+            updated = group.df.copy()
             updated[self.beg] = separated.begs
             updated[self.end] = separated.ends
             records.append(updated)
