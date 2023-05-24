@@ -792,11 +792,14 @@ class EventsMerge(object):
             obj = pd.Series(index=index, data=data, name=None)
         elif isinstance(column, list):
             if len(column)==1 and squeeze:
-                obj = pd.Series(index=index, data=data, name=column[0])
+                obj = pd.Series(
+                    index=index, data=data, name=column[0], dtype=float)
             else:
-                obj = pd.DataFrame(index=index, data=data, columns=column)
+                obj = pd.DataFrame(
+                    index=index, data=data, columns=column, dtype=float)
         else:
-            obj = pd.Series(index=index, data=data, name=column)
+            obj = pd.Series(
+                index=index, data=data, name=column, dtype=float)
         return obj
 
     def cut(self, **kwargs):
