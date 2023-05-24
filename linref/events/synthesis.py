@@ -193,8 +193,16 @@ def generate_linear_events(
             # Initialize pairs filter
             pairs_filter = np.ones(pairs.shape[0], dtype=bool)
             
-            # Iterate over upstream terminals
+            # Identify terminals which begin segment chains
             terminals = sorted(set(pairs[:,0]) - set(pairs[:,1]))
+
+            # Address complete loops by selecting a terminal
+            try:
+                assert len(terminals) > 0
+            except AssertionError:
+                terminals = [pairs[0,0]]
+
+            # Iterate over upstream terminals
             for terminal in terminals:
         
                 # Iterate through chain members
