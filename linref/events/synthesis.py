@@ -164,8 +164,8 @@ def generate_linear_events(
         lengths_all = group.length
         
         # Get boundaries of all lines
-        begs = group[geom].apply(lambda x: Point(x.coords[0]))
-        ends = group[geom].apply(lambda x: Point(x.coords[-1]))
+        begs = group[geom].apply(lambda line: line.boundary.geoms[0])
+        ends = group[geom].apply(lambda line: line.boundary.geoms[-1])
         if not buffer is None:
             begs = begs.apply(lambda x: x.buffer(buffer))
             ends = ends.apply(lambda x: x.buffer(buffer))
