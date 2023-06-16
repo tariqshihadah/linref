@@ -152,6 +152,21 @@ def generate_linear_events(
         groups = df.groupby(by=keys)
     else:
         groups = {np.nan: df}.items()
+
+    # Define function for retrieving boundary points
+    def _get_boundary_point(line, index=None):
+        # Use line boundary approach
+        try:
+            return line.boundary.geoms[index]
+        # Boundary of fully looped geometry may be an empty MultiPoint
+        except IndexError:
+            # Use geoms.coords approach for multi-part geometries
+            try:
+                return Point(line.geoms[index].coords[index])
+            # Use coords approach for single-part geometries
+            except AttributeError:
+                return Point(line.coords[index])
+
     # Iterate over all groups and perform analysis
     geom = df.geometry.name
     record_indexes = []
@@ -164,8 +179,8 @@ def generate_linear_events(
         lengths_all = group.length
         
         # Get boundaries of all lines
-        begs = group[geom].apply(lambda line: line.boundary.geoms[0])
-        ends = group[geom].apply(lambda line: line.boundary.geoms[-1])
+        begs = group[geom].apply(_get_boundary_point, index=0)
+        ends = group[geom].apply(_get_boundary_point, index=-1)
         if not buffer is None:
             begs = begs.apply(lambda x: x.buffer(buffer))
             ends = ends.apply(lambda x: x.buffer(buffer))
