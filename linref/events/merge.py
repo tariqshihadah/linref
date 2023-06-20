@@ -725,7 +725,7 @@ class EventsMerge(object):
         # Log traces
         self.traces = traces
     
-    def distribute(self, column=None, squeeze=True, **kwargs):
+    def distribute(self, column=None, **kwargs):
         """
         Intersect and distribute events over the range collection, scaling 
         their values relative to their indexed distance from their intersecting 
@@ -760,6 +760,21 @@ class EventsMerge(object):
                 
         Created:  2022-10-04
         """
+        # Validate column choice
+        squeeze = True
+        if not column is None:
+            # Enforce list type
+            if not isinstance(column, list):
+                column = [column]
+            else:
+                squeeze = False
+            # Ensure valid labels
+            mismatched = set(column) - set(self.right.df.columns)
+            if len(mismatched) > 0:
+                raise ValueError(
+                    f"Input column labels {mismatched} are not present in "
+                    "the right dataframe.")
+
         # Iterate over EventsGroups in the left collection
         index = []
         res = []
@@ -785,21 +800,21 @@ class EventsMerge(object):
             # Log results
             index.append(group_left.df.index)
             res.append(res_i)
+
         # Synthesize into pandas object
         index = np.concatenate(index)
         data = np.concatenate(res)
+        # No column requested, prepare generic results
         if column is None:
-            obj = pd.Series(index=index, data=data, name=None)
-        elif isinstance(column, list):
-            if len(column)==1 and squeeze:
-                obj = pd.Series(
-                    index=index, data=data, name=column[0], dtype=float)
-            else:
-                obj = pd.DataFrame(
-                    index=index, data=data, columns=column, dtype=float)
-        else:
             obj = pd.Series(
-                index=index, data=data, name=column, dtype=float)
+                index=index, data=data, name=None, dtype=float)
+        # Column(s) requested, prepare complete results
+        else:
+            obj = pd.DataFrame(
+                index=index, data=data, columns=column, dtype=float)
+            # Squeeze dataframe if a single column label is provided
+            if squeeze:
+                obj = obj.squeeze()
         return obj
 
     def cut(self, **kwargs):
