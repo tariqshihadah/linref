@@ -351,7 +351,21 @@ class EventsFrame(object):
         """
         # Define target columns
         targets = [self.beg, self.end] + self.keys
-        return targets        
+        return targets
+
+    @property
+    def spatials(self):
+        """
+        A list of geometry and route columns within the events dataframe, if 
+        defined.
+        """
+        # List defined spatial columns
+        spatials = []
+        if not self.geom is None:
+            spatials += self.geom
+        if not self.route is None:
+            spatials += self.route 
+        return spatials
 
     @property
     def others(self):
@@ -360,7 +374,8 @@ class EventsFrame(object):
         end, or key columns.
         """
         # Define other columns
-        others = [col for col in self.df.columns if not col in self.targets]
+        exclude = self.targets + self.spatials
+        others = [col for col in self.df.columns if not col in exclude]
         return others
 
     @property
