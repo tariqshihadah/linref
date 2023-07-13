@@ -65,9 +65,9 @@ def generate_linear_events(
     Function for generating events information for existing chains of linear 
     geospatial data based on the geographic lengths of chain members. This 
     function is intended to synthesize a new linear referencing system for 
-    chains of adjacent linear data which are oriented in the same direction 
-    and whose end and begin points are coincident or fall within a defined 
-    buffer distance of one another.
+    chains of adjacent linear data with matching key values, which are 
+    oriented in the same direction, and whose end and begin points are 
+    coincident or fall within a defined buffer distance of one another.
 
     Parameters
     ----------
@@ -175,28 +175,33 @@ def generate_linear_events(
     record_chains = []
     for key, group in groups:
 
-        # Get lengths of all geometries
-        lengths_all = group.length
-        
-        # Get boundaries of all lines
+        # Get boundaries points of all lines for finding matches
         begs = group[geom].apply(_get_boundary_point, index=0)
         ends = group[geom].apply(_get_boundary_point, index=-1)
+        # Buffer the end points if requested
         if not buffer is None:
             begs = begs.apply(lambda x: x.buffer(buffer))
             ends = ends.apply(lambda x: x.buffer(buffer))
+        # Create geodataframes for intersecting
         begs = gpd.GeoDataFrame(begs, geometry=geom)
         ends = gpd.GeoDataFrame(ends, geometry=geom)
         
         # Intersect boundary geometries
         intersection = gpd.sjoin(ends, begs)
         intersection['index_left'] = intersection.index
+        # Get all unique matches between the line end points and other line 
+        # begin points
         pairs = intersection[['index_left','index_right']].values
         
-        # Remove instances of multiple matches on left or right
+        # Remove instances of multiple matches on left or right; only the 
+        # first unique value on the left and right are kept based on original 
+        # sorting of data
         pairs = pairs[np.unique(pairs[:,0], return_index=True)[1]]
         pairs = pairs[np.unique(pairs[:,1], return_index=True)[1]]
         
-        # Identify single-value chains and downstream terminals with null pairs
+        # Identify single-segment chains with no matches to other segments as 
+        # well as downstream terminals, holding their places with pairs of 
+        # these segments' indices matched with null values
         missing = set(group.index) - set(pairs[:,0])
         missing = np.array([sorted(missing), np.full(len(missing), np.nan)]).T
         pairs = np.concatenate([pairs, missing])
@@ -205,35 +210,44 @@ def generate_linear_events(
         chains = []
         chain_index = 0
         while pairs.shape[0] > 0:
-            # Initialize pairs filter
+            # Initialize pairs filter, retaining all pairs
             pairs_filter = np.ones(pairs.shape[0], dtype=bool)
             
-            # Identify terminals which begin segment chains
+            # Identify upstream terminals which will be used to begin segment 
+            # chains
             terminals = sorted(set(pairs[:,0]) - set(pairs[:,1]))
 
-            # Address complete loops by selecting a terminal
+            # Address complete loops by selecting a terminal from remaining 
+            # data if none remain
             try:
                 assert len(terminals) > 0
             except AssertionError:
                 terminals = [pairs[0,0]]
 
-            # Iterate over upstream terminals
+            # Iterate over upstream terminals, chaining from them to their 
+            # downstream matches
             for terminal in terminals:
         
-                # Iterate through chain members
+                # Iterate through all subsequent matches to the terminal
                 chains.append([])
                 member = terminal
                 while True:
                     try:
-                        # Update chain with current member
+                        # Update the chain by adding the current member
                         chains[chain_index].append(member)
                         # Identify pairs matching the selected chain member
                         member_loc = (pairs[:,0] == member) & pairs_filter
-                        assert member_loc.sum() > 0 # Check for no matches
+                        # Check for no matches; if there are none, end the 
+                        # chain and move to the next one
+                        assert member_loc.sum() > 0
                         # Update pairs filter to remove matches to the member
                         pairs_filter[member_loc] = False
-                        # Update indexed chain member
+                        # Update indexed chain member by selecting the next 
+                        # match
                         member = pairs[member_loc.argmax()][1]
+                        # Check for the end of the chain if the new selected 
+                        # member is null, or if looping is detected; end the 
+                        # chain in either case
                         assert ~np.isnan(member) # Check for end of chain
                         assert member != terminal # Check for looping
                     except AssertionError:
@@ -245,6 +259,8 @@ def generate_linear_events(
             # Filter pairs to remove addressed items
             pairs = pairs[pairs_filter]
 
+        # Get lengths of all geometries
+        lengths_all = group.length
         # Iterate over chains and create events information
         for chain_index, chain in enumerate(chains):
             # Compute cumulative sum of chain geometry lengths
