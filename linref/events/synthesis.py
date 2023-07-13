@@ -155,20 +155,15 @@ def generate_linear_events(
 
     # Define function for retrieving boundary points
     def _get_boundary_point(line, index=None):
-        # Use line boundary approach
+        # Use coords approach for multi-part geometries
         try:
-            return line.boundary.geoms[index]
-        # Boundary of fully looped geometry may be an empty MultiPoint
-        except IndexError:
-            # Use geoms.coords approach for multi-part geometries
-            try:
-                return Point(line.geoms[index].coords[index])
-            # Use coords approach for single-part geometries
-            except AttributeError:
-                return Point(line.coords[index])
+            return Point(line.geoms[index].coords[index])
+        # Use coords approach for single-part geometries
+        except AttributeError:
+            return Point(line.coords[index])
 
     # Iterate over all groups and perform analysis
-    geom = df.geometry.name
+    geom_column = df.geometry.name
     record_indexes = []
     record_begs = []
     record_ends = []
@@ -176,15 +171,15 @@ def generate_linear_events(
     for key, group in groups:
 
         # Get boundaries points of all lines for finding matches
-        begs = group[geom].apply(_get_boundary_point, index=0)
-        ends = group[geom].apply(_get_boundary_point, index=-1)
+        begs = group[geom_column].apply(_get_boundary_point, index=0)
+        ends = group[geom_column].apply(_get_boundary_point, index=-1)
         # Buffer the end points if requested
         if not buffer is None:
             begs = begs.apply(lambda x: x.buffer(buffer))
             ends = ends.apply(lambda x: x.buffer(buffer))
         # Create geodataframes for intersecting
-        begs = gpd.GeoDataFrame(begs, geometry=geom)
-        ends = gpd.GeoDataFrame(ends, geometry=geom)
+        begs = gpd.GeoDataFrame(begs, geometry=geom_column)
+        ends = gpd.GeoDataFrame(ends, geometry=geom_column)
         
         # Intersect boundary geometries
         intersection = gpd.sjoin(ends, begs)
@@ -291,7 +286,7 @@ def generate_linear_events(
     # Merge with parent table and create EventsCollection
     ec = EventsCollection(
         events, keys=keys + [chain_label], beg=beg_label, end=end_label, 
-        geom=df.geometry.name, **kwargs)
+        geom=geom_column, **kwargs)
     return ec
 
 
