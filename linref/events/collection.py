@@ -1098,7 +1098,7 @@ class EventsFrame(object):
         )
         return res
 
-    def to_windows(self, dissolve=False, endpoint=False, **kwargs):
+    def to_windows(self, dissolve=False, retain=True, endpoint=False, **kwargs):
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1136,6 +1136,9 @@ class EventsFrame(object):
         dissolve : bool, default False
             Whether to dissolve the events dataframe before performing the 
             transformation.
+        retain : bool, default True
+            Whether to retain all fields from the original dataframe in the 
+            newly generated dataframe.
         endpoint : bool, default False
             Add a point event at the end of each event range.
         """
@@ -1181,6 +1184,13 @@ class EventsFrame(object):
         }
         dtypes = {col: dtypes[col] for col in df.columns}
         df = df.astype(dtypes, copy=False)
+        # Retain original fields if requested
+        if retain:
+            df = df.merge(
+                self.df[self.others], left_on='index_parent', 
+                right_index=True, how='left'
+            )
+        # Prepare collection and return
         res = self.__class__(
             df,
             keys=self.keys,
