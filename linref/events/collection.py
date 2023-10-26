@@ -362,9 +362,9 @@ class EventsFrame(object):
         # List defined spatial columns
         spatials = []
         if not self.geom is None:
-            spatials += self.geom
+            spatials.append(self.geom)
         if not self.route is None:
-            spatials += self.route 
+            spatials.append(self.route)
         return spatials
 
     @property
