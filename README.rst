@@ -57,7 +57,7 @@ Version Notes
 -------------------
 Feeling the algo-rhythm these days.
 
-* Initial deployment of synthesis module featuring some tools for generating linear referencing information for chains of linear asset data with geometry but no LRS.
+* Initial deployment of synthesis module featuring some tools for generating linear referencing information for chains of linear asset data with geometry but no LRS. These features are currently experimental and outputs should be reviewed for quality and expected outcomes. They will get refined in future versions based on performance in various applications and input from users.
 * Addition of ``retain`` parameter to the ``EventsCollection.to_windows()`` method which retains all non-target and non-spatial fields from the original events dataframe when performing the operation. Previously, only newly generated target fields would be present in the output ``EventsCollection``'s events dataframe.
 * Fixed implementation of ``EventsCollection.spatials`` property to correctly return a list of spatial column labels (e.g., geometry and route column labels) in the events dataframe. This also corrects ``EventsCollection.others`` which previously incorrectly included these labels.
 * Performance improvements
