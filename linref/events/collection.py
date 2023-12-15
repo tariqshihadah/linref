@@ -704,7 +704,7 @@ class EventsFrame(object):
         return None if inplace else ef
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
-        agg_geometry=False, agg_routes=False, dropna=False, fillna=None, 
+        agg_geometry=True, agg_routes=True, dropna=False, fillna=None, 
         reorder=True, merge_lines=True):
         """
         Dissolve the events dataframe on a selection of event attributes.
@@ -733,14 +733,16 @@ class EventsFrame(object):
             A suffix to be added to the name of aggregated columns. If provided 
             as a list, must correspond to provided lost of aggregation 
             attributes.
-        agg_geometry : bool, default False
+        agg_geometry : bool, default True
             Whether to create an aggregated geometries field, populated with 
             aggregated shapely geometries based on those contained in the 
-            collection's geometry field.
-        agg_routes : bool, default False
+            collection's geometry field. If not needed, set to False to reduce 
+            processing time.
+        agg_routes : bool, default True
             Whether to create an aggregated routes field, populated with 
             MLSRoute object class instances, created based on aggregated 
-            segment geometries and begin and end mile posts.
+            segment geometries and begin and end mile posts. If not needed, 
+            set to False to reduce processing time.
         dropna : bool, default False
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
