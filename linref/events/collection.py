@@ -2143,7 +2143,7 @@ class EventsCollection(EventsFrame):
         return em
 
     def project_parallel(self, other, samples=3, buffer=100, match='all', 
-            choose=1, sort_locs=True, **kwargs):
+            choose=1, sort_locs=True, build_routes, **kwargs):
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 
@@ -2171,10 +2171,29 @@ class EventsCollection(EventsFrame):
         sort_locs : bool, default True
             Whether begin and end location values should be sorted, ensuring 
             that all events are increasing and monotonic.
+        build_routes : bool, default True
+            Whether to automatically build routes using the build_routes() 
+            method if routes are not already available.
         **kwargs
             Keyword arguments to be passed to the EventsCollection constructor 
             upon completion of the projection.
         """
+        # Ensure that geometries and routes are available
+        if self.geom is None:
+            raise ValueError(
+                "No geometry found in events dataframe. If valid shapely "
+                "geometries are available in the dataframe, set this with the "
+                f"{self.__class__.__name__}'s geom property.")
+        elif self.route is None:
+            if build_routes:
+                self.build_routes()
+            else:
+                raise ValueError(
+                    "No routes found in events dataframe. If valid shapely "
+                    "geometries are available in the dataframe, create routes "
+                    "by calling the build_routes() method on the "
+                    f"{self.__class__.__name__} class instance.")
+            
         # Create projector
         pp = ParallelProjector(self, other, samples=samples, buffer=buffer)
         # Perform match and return results in new events collection
