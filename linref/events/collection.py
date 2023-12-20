@@ -2143,7 +2143,7 @@ class EventsCollection(EventsFrame):
         return em
 
     def project_parallel(self, other, samples=3, buffer=100, match='all', 
-            choose=1, sort_locs=True, build_routes, **kwargs):
+            choose=1, sort_locs=True, build_routes=True, **kwargs):
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 

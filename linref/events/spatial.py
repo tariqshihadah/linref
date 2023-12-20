@@ -49,11 +49,15 @@ class ParallelProjector(object):
 
     The methodology used by this class involves the following steps:
 
-    1. Perform a spatial join between all geometries in the base 
-    EventsCollection and the projected geometries using a defined buffer 
-    distance.
+    1. Create sample points along the projected geometries using a fixed 
+    number of samples per geometry.
 
-    2. 
+    2. Spatially join these sample points to the target EventsCollection's 
+    geometry using the provided buffer distance to identify candidate matches.
+
+    3. Process all possible matches using the .match() method to produce 
+    linear referencing information for the projected geometries based on that 
+    of the target EventsCollection.
     """
 
     def __init__(self, target, projected, samples=3, buffer=100) -> None:
@@ -62,6 +66,38 @@ class ParallelProjector(object):
         self.samples = samples
         self.buffer = buffer
 
+    @property
+    def target(self):
+        return self._target
+
+    @target.setter
+    def target(self, obj):
+        # Validate object type
+        if not isinstance(obj, EventsCollection):
+            raise TypeError(
+                "Input target must be valid lr.EventsCollection instance.")
+        # Ensure that geometries and routes are available
+        if obj.geom is None:
+            raise ValueError(
+                "No geometry found in the target events dataframe.")
+        elif obj.route is None:
+            raise ValueError(
+                "No routes found in events dataframe.")
+        self._target = obj
+
+    @property
+    def projected(self):
+        return self._projected
+
+    @projected.setter
+    def projected(self, obj):
+        # Validate object type
+        if not isinstance(obj, gpd.GeoDataFrame):
+            raise TypeError(
+                "Input projected object must be valid gpd.GeoDataFrame "
+                "instance.")
+        self._projected = obj
+    
     @property
     def samples(self):
         return self._samples
@@ -142,6 +178,9 @@ class ParallelProjector(object):
 
     def match(self, match='all', choose=1, sort_locs=True):
         """
+        Perform the actual matching of nearby geometries to one another based 
+        on input analysis parameters, producing a dataframe which has been 
+        applied to the target EventsCollection's linear referencing system.
         """
         # Validate matching parameters
         if match=='all':
@@ -178,7 +217,8 @@ class ParallelProjector(object):
             axis=0,
             return_index=True
         )
-        pair_distances = np.array(np.split(mean_distances, proj_index)[1:])
+        pair_distances = np.array(
+            np.split(mean_distances, proj_index)[1:], dtype=object)
         
         # Identify the index of the target(s) with the lowest mean distance for 
         # each projector if requested
@@ -193,7 +233,8 @@ class ParallelProjector(object):
                         for i in pair_distances]
         # - Produce a projector-target map
         zipped = zip(pair_groups, pair_select)
-        targets = np.array([group[index] for group, index in zipped])
+        targets = np.array(
+            [group[index] for group, index in zipped], dtype=object)
         # - Flatten map if multiple choices
         if choose != 1:
             projectors = np.repeat(proj_unique, [len(i) for i in targets])
@@ -219,7 +260,7 @@ class ParallelProjector(object):
             try:
                 # Project bounds onto target route
                 boundary = line.boundary
-                beg, end = boundary[0], boundary[-1]
+                beg, end = boundary.geoms[0], boundary.geoms[-1]
                 beg_loc, end_loc = route.project(beg), route.project(end)
                 return beg_loc, end_loc
             except (AttributeError, IndexError):
@@ -244,3 +285,10 @@ class ParallelProjector(object):
             .drop(columns=['__projector','__target','__proj_lines','route'],
                   errors='ignore')
         return select
+    
+
+#####################
+# LATE DEPENDENCIES #
+#####################
+
+from linref.events.collection import EventsCollection
