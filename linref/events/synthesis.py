@@ -73,11 +73,14 @@ def generate_linear_events(
     ----------
     df : gpd.GeoDataFrame
         Valid geopandas GeoDataFrame with linear geometries.
-    keys : list or tuple
+    keys : list or tuple, optional
         A list or tuple of dataframe column labels which define the unique 
         groups of events within the events dataframe. Common examples include 
         year or route ID columns which distinguish unrelated sets of events 
-        within the events dataframe.
+        within the events dataframe. If not provided, it will be assumed that 
+        the whole dataframe represents a single group of events. As a result, 
+        the only key included in the resulting EventsCollection will be the
+        provided `chain_label`.
     beg_label, end_label : str or label
         Column labels to be created within the events dataframe which 
         represent the linearly referenced location of each event.
@@ -285,8 +288,13 @@ def generate_linear_events(
 
     # Merge with parent table and create EventsCollection
     ec = EventsCollection(
-        events, keys=keys + [chain_label], beg=beg_label, end=end_label, 
-        geom=geom_column, **kwargs)
+        events, 
+        keys=keys + [chain_label] if not keys is None else [chain_label], 
+        beg=beg_label, 
+        end=end_label, 
+        geom=geom_column, 
+        **kwargs
+    )
     return ec
 
 
