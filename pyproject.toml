@@ -36,7 +36,7 @@ documentation = "https://linref.readthedocs.io/"
 repository = "https://github.com/tariqshihadah/linref"
 
 [tool.setuptools]
-py-modules = ["linref"]
+packages = ["linref"]
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.rst"]}
