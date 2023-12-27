@@ -2016,21 +2016,99 @@ class EventsCollection(EventsFrame):
         else:
             ec = self.from_similar(df)
             return ec
+        
+    def clip(self, lower=None, upper=None, inplace=False):
+        """
+        Clip the bounds of all events at the specified lower and upper values.
+        
+        Parameters
+        ----------
+        lower, upper : scalar, default None
+            The lower and upper threshold values. All values below the lower 
+            threshold will be set to it. All values above the upper threshold 
+            will be set to it. If a threshold value is not provided (e.g., 
+            None), values will not be clipped in that direction.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Copy data
+        df = self.df.copy()
 
-    def shift(self, distance=0, inplace=False):
+        # Perform clipping
+        df[self.beg] = np.clip(df[self.beg], lower, upper)
+        df[self.end] = np.clip(df[self.end], lower, upper)
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
+
+    def shift(
+        self,
+        distance=0,
+        direction='positive',
+        which='both',
+        inplace=False
+    ):
         """
         Shift the bounds of all events by the specified value.
 
         Parameters
         ----------
         distance : scalar, default 0
-            The amount to shift each event bound by.
+            The amount to shift each event bound by. Negative values will 
+            result in an inversion of the `direction` parameter.
+        direction : {'positive', 'negative', 'both'}, default 'positive'
+            Which direction the event bounds should be shifted.
+
+            Options
+            -------
+            'positive' : Shift event bounds in an increasing direciton.
+            'negative' : Shift event bounds in a decreasing direciton.
+            'both' : Shift event begin points in an increasing direction and 
+                event end points in a decreasing direction.
+
+        which : {'begs', 'ends', 'both'}, default 'both'
+            Which ends should be shifted.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
         """
+        # Validation
+        _ops_direction = {'positive', 'negative', 'both'}
+        _ops_which = {'begs', 'ends', 'both'}
+        if not direction in _ops_direction:
+            raise ValueError(
+                f"Input `direction` parameter must be one of {_ops_direction}")
+        if not which in _ops_which:
+            raise ValueError(
+                f"Input `which` parameter must be one of {_ops_which}")
+
         # Copy data
         df = self.df.copy()
+
+        # Determine shifting values
+        if which in ('ends', 'both'):
+            if direction in ('positive', 'both'):
+                distance_ends = distance
+            else:
+                distance_ends = -distance
+        else:
+            distance_ends = 0
+        if which in ('begs', 'both'):
+            if direction in ('negative', 'both'):
+                distance_begs = -distance
+            else:
+                distance_begs = distance
+            
+
         # Perform shifting
-        df[self.beg] = df[self.beg] + distance
-        df[self.end] = df[self.end] + distance
+        df[self.beg] = df[self.beg] + distance_begs
+        df[self.end] = df[self.end] + distance_ends
     
         # Apply update
         if inplace:
