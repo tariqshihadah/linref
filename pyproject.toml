@@ -1,18 +1,42 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm", "sphinx", "myst-parser", "sphinx-rtd-theme", "geopandas"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "linref"
-version = "0.0.10.post1"
+version = "0.0.11a1"
 description = "Linearly referenced data management, manipulation, and operations"
-readme = "README.rst"
 requires-python = ">=3.8"
 license = {file = "LICENSE.rst"}
 keywords=["python", "geospatial", "linear", "data", "event", "dissolve", "overlay", "range", "numeric", "interval"]
-authors = [{name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}]
-dependencies = ["numpy", "matplotlib", "shapely>=1.7", "pandas>=1.1", "geopandas>=0.10.2", "rangel>=0.0.7"]
+authors = [
+    {name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}
+]
+dependencies = [
+    "numpy", 
+    "matplotlib", 
+    "shapely>=1.7", 
+    "pandas>=1.1", 
+    "geopandas>=0.10.2", 
+    "rangel>=0.0.7",
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Unix",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+]
+dynamic = ["readme"]
 
 [project.urls]
 documentation = "https://linref.readthedocs.io/"
 repository = "https://github.com/tariqshihadah/linref"
+
+[tool.setuptools]
+py-modules = ["linref"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.rst"]}
