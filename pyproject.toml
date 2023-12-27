@@ -35,8 +35,8 @@ dynamic = ["readme"]
 documentation = "https://linref.readthedocs.io/"
 repository = "https://github.com/tariqshihadah/linref"
 
-[tool.setuptools]
-packages = ["linref"]
+[tool.setuptools.packages.find]
+include = ["linref*"]
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.rst"]}
