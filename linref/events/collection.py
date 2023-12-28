@@ -2052,6 +2052,7 @@ class EventsCollection(EventsFrame):
         distance=0,
         direction='positive',
         which='both',
+        labels=None,
         inplace=False
     ):
         """
@@ -2074,6 +2075,11 @@ class EventsCollection(EventsFrame):
 
         which : {'begs', 'ends', 'both'}, default 'both'
             Which ends should be shifted.
+        labels : tuple, optional
+            Two-value tuple containing new begin and end column labels for the 
+            modified event bound columns. If provided, must be a two-value 
+            tuple containing two valid pandas column labels. If not provided, 
+            original begin and end labels will be retained.
         inplace : boolean, default False
             Whether to perform the operation in place. If False, will return a 
             modified copy of the events object.
@@ -2087,6 +2093,13 @@ class EventsCollection(EventsFrame):
         if not which in _ops_which:
             raise ValueError(
                 f"Input `which` parameter must be one of {_ops_which}")
+        if not labels is None:
+            try:
+                assert isinstance(labels, tuple)
+                assert len(labels) == 2
+            except AssertionError:
+                raise ValueError(
+                    f"If provided, input labels must be two-value tuple.")
 
         # Copy data
         df = self.df.copy()
@@ -2104,18 +2117,29 @@ class EventsCollection(EventsFrame):
                 distance_begs = -distance
             else:
                 distance_begs = distance
-            
+        
+        # Determine shifted column labels
+        if not labels is None:
+            label_beg = labels[0]
+            label_end = labels[1]
+        else:
+            label_beg = self.beg
+            label_end = self.end            
 
         # Perform shifting
-        df[self.beg] = df[self.beg] + distance_begs
-        df[self.end] = df[self.end] + distance_ends
+        df[label_beg] = df[self.beg] + distance_begs
+        df[label_end] = df[self.end] + distance_ends
     
         # Apply update
         if inplace:
             self.df = df
+            self.beg = label_beg
+            self.end = label_end
             return
         else:
             ec = self.from_similar(df)
+            ec.beg = label_beg
+            ec.end = label_end
             return ec
 
     def separate(self, eliminate_inside=False, inplace=False, **kwargs):
