@@ -445,6 +445,13 @@ class EventsFrame(object):
         self._end_loc = self.columns.index(end)
 
     @property
+    def lengths(self):
+        """
+        Lengths of all event ranges.
+        """
+        return self.ends - self.begs
+
+    @property
     def geom(self):
         return self._geom
     
