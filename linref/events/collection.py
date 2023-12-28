@@ -2146,7 +2146,8 @@ class EventsCollection(EventsFrame):
         """
         Separate the bounds of all events so that none directly overlap. 
         This is done using the rangel.RangeCollection.separate() method 
-        on each EventsGroup.
+        on each EventsGroup. This method does not retain the sorting of 
+        the original events dataframe.
 
         Parameters
         ----------
@@ -2172,7 +2173,6 @@ class EventsCollection(EventsFrame):
 
         # Prepare new dataframe
         df = pd.concat(records)
-        df = df.loc[self.df.index] # Retain original sorting
 
         # Apply update
         if inplace:
