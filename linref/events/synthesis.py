@@ -297,7 +297,6 @@ def generate_linear_events(
     )
     return ec
 
-
 def find_intersections(df, only_points=True, only_single=True):
     """
     Generate intersection points for an input geodataframe of linear 
@@ -316,31 +315,18 @@ def find_intersections(df, only_points=True, only_single=True):
         Whether all multi-part geometries resulting from intersections should 
         be removed from results.
     """
-    # Validate parameters
-    if not isinstance(df, gpd.GeoDataFrame):
-        raise ValueError(
-            "Input data must be of gpd.GeoDataFrame type.")
-        
-    # Iterate through slices of the dataframe
-    geoms = df.geometry.values
-    records = []
-    for i in range(geoms.shape[0] - 1):
-        # Select the row and unary union of lower remainder
-        target = geoms[i]
-        sub = unary_union(geoms[i+1:])
-        # Find intersection points
-        intersection = sub.intersection(target)
-        # Check if none found
-        if intersection.is_empty:
-            continue
-        # Add to records
-        try:
-            records.extend(list(intersection.geoms))
-        except:
-            records.append(intersection)
+    # Spatial join with self
+    joined = df.sjoin(df)
+    # Remove duplicates
+    joined = joined[joined['index_right'] != joined.index]
+    # Find intersections
+    other_geometries = df.geometry.reindex(joined['index_right'])
+    intersections = joined.geometry.intersection(other_geometries, align=False)
 
-    # Cast to dataframe
-    res = gpd.GeoDataFrame(geometry=records, crs=df.crs)
+    # Cast to geodataframe
+    res = gpd.GeoDataFrame(geometry=intersections, crs=df.crs)
+    # Drop duplicate points
+    res = res.drop_duplicates()
     # Filter results if requested
     if only_points:
         if only_single:
