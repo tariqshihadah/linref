@@ -1846,6 +1846,26 @@ class EventsCollection(EventsFrame):
             raise ValueError(
                 "Invalid input missing_data parameter. Must be one of "
                 "('ignore','drop','warn','raise').")
+        
+    def drop_missing(self, inplace=False):
+        """
+        Drop records from the events dataframe which do not contain valid 
+        linear referencing information (e.g., empty key values or begin or 
+        end location values).
+
+        Parameters
+        ----------
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Apply update
+        if inplace:
+            self._check_missing_data(missing_data='drop')
+            return
+        else:
+            ec = self.copy()._check_missing_data(missing_data='drop')
+            return ec
 
     def from_similar(self, df, **kwargs):
         """
@@ -2007,6 +2027,9 @@ class EventsCollection(EventsFrame):
             Rounding factor to apply to the event bound values. For example, 
             use `factor=0.5` (and `decimals=0`) to round each value to the 
             nearest 0.5.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
         """
         # Copy data
         df = self.df.copy()

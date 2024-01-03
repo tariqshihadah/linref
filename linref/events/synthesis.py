@@ -298,7 +298,7 @@ def generate_linear_events(
     return ec
 
 
-def find_intersections(df):
+def find_intersections(df, only_points=True, only_single=True):
     """
     Generate intersection points for an input geodataframe of linear 
     geometries. Output will be a geodataframe with a single point 
@@ -309,6 +309,12 @@ def find_intersections(df):
     ----------
     df : gpd.GeoDataFrame
         Valid geopandas geodataframe containing linear geometries.
+    only_points : bool, default True
+        Whether all non-point geometries resulting from intersections should 
+        be removed from results.
+    only_single : bool, default True
+        Whether all multi-part geometries resulting from intersections should 
+        be removed from results.
     """
     # Validate parameters
     if not isinstance(df, gpd.GeoDataFrame):
@@ -335,6 +341,13 @@ def find_intersections(df):
 
     # Cast to dataframe
     res = gpd.GeoDataFrame(geometry=records, crs=df.crs)
+    # Filter results if requested
+    if only_points:
+        if only_single:
+            choose_types = ['Point']
+        else:
+            choose_types = ['Point', 'MultiPoint']
+        res = res[res.geom_type.isin(choose_types)]
     return res
 
 
