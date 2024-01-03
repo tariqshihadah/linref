@@ -1864,7 +1864,8 @@ class EventsCollection(EventsFrame):
             self._check_missing_data(missing_data='drop')
             return
         else:
-            ec = self.copy()._check_missing_data(missing_data='drop')
+            ec = self.copy()
+            ec._check_missing_data(missing_data='drop')
             return ec
 
     def from_similar(self, df, **kwargs):
