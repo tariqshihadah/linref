@@ -711,7 +711,7 @@ class EventsFrame(object):
         return None if inplace else ef
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
-        agg_geometry=True, agg_routes=True, dropna=False, fillna=None, 
+        agg_geometry=None, agg_routes=None, dropna=False, fillna=None, 
         reorder=True, merge_lines=True):
         """
         Dissolve the events dataframe on a selection of event attributes.
@@ -740,16 +740,18 @@ class EventsFrame(object):
             A suffix to be added to the name of aggregated columns. If provided 
             as a list, must correspond to provided lost of aggregation 
             attributes.
-        agg_geometry : bool, default True
+        agg_geometry : bool, optional
             Whether to create an aggregated geometries field, populated with 
             aggregated shapely geometries based on those contained in the 
             collection's geometry field. If not needed, set to False to reduce 
-            processing time.
-        agg_routes : bool, default True
+            processing time. If a valid geometry column is present, this will 
+            default to True.
+        agg_routes : bool, optional
             Whether to create an aggregated routes field, populated with 
             MLSRoute object class instances, created based on aggregated 
             segment geometries and begin and end mile posts. If not needed, 
-            set to False to reduce processing time.
+            set to False to reduce processing time. If a valid route column 
+            is present, this will default to True.
         dropna : bool, default False
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
@@ -806,6 +808,10 @@ class EventsFrame(object):
         
         # Additional aggregation requests
         # - Prepare geometry dissolve if requested
+        if (agg_geometry is None) and not (self.geom is None):
+            agg_geometry = True
+        else:
+            agg_geometry = False
         if agg_geometry:
             # Confirm valid geometry field
             if self.geom is None:
@@ -823,6 +829,10 @@ class EventsFrame(object):
             agg_suffix.append('')
         
         # - Prepare route dissolve if requested
+        if (agg_routes is None) and not (self.geom is None):
+            agg_routes = True
+        else:
+            agg_routes = False
         if agg_routes:
             # Confirm valid geometry field
             if self.geom is None:
