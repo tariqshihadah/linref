@@ -1,0 +1,6 @@
+numpy
+matplotlib
+shapely>=1.7
+pandas>=1.1
+geopandas>=0.10.2
+rangel>=0.0.7
