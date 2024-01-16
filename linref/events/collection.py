@@ -752,6 +752,7 @@ class EventsFrame(object):
             segment geometries and begin and end mile posts. If not needed, 
             set to False to reduce processing time. If a valid route column 
             is present, this will default to True.
+            Note: If True, any existing route data will be overwritten.
         dropna : bool, default False
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
