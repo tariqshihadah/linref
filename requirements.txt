@@ -5,3 +5,5 @@ pandas>=1.1
 geopandas>=0.10.2
 rangel>=0.0.7
 scipy>=1.4.1
+build
+twine
