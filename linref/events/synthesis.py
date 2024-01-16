@@ -317,11 +317,11 @@ def find_intersections(df, only_points=True, only_single=True):
     """
     # Spatial join with self
     joined = df.sjoin(df)
-    # Remove duplicates
+    # Remove self-matches
     joined = joined[joined['index_right'] != joined.index]
     # Find intersections
     other_geometries = df.geometry.reindex(joined['index_right'])
-    intersections = joined.geometry.intersection(other_geometries, align=False)
+    intersections = joined.geometry.intersection(other_geometries, align=False)    
 
     # Cast to geodataframe
     res = gpd.GeoDataFrame(geometry=intersections, crs=df.crs)
@@ -334,6 +334,8 @@ def find_intersections(df, only_points=True, only_single=True):
         else:
             choose_types = ['Point', 'MultiPoint']
         res = res[res.geom_type.isin(choose_types)]
+    # Reset index
+    res = res.reset_index(drop=True)
     return res
 
 
