@@ -2467,7 +2467,6 @@ class EventsCollection(EventsFrame):
                 df=df, beg=self.beg, end=self.end, geom=self.geom, 
                 closed=self.closed)
         except Exception as e:
-            display(df)
             raise e
 
 
