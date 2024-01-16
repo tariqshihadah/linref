@@ -53,9 +53,9 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
-0.0.11 (TBD)
+0.1.0 (2024-01-16)
 -------------------
-Feeling the algo-rhythm these days.
+My heart is in Gaza.
 
 * Initial deployment of synthesis module featuring some tools for generating linear referencing information for chains of linear asset data with geometry but no LRS. These features are currently experimental and outputs should be reviewed for quality and expected outcomes. They will get refined in future versions based on performance in various applications and input from users.
 * Addition of ``retain`` parameter to the ``EventsCollection.to_windows()`` method which retains all non-target and non-spatial fields from the original events dataframe when performing the operation. Previously, only newly generated target fields would be present in the output ``EventsCollection``'s events dataframe.
@@ -64,6 +64,7 @@ Feeling the algo-rhythm these days.
 * Transition to ``pyproject.toml`` setup with ``setuptools``.
 * Performance improvements
 * Various bug fixes, minor features
+* Why not push to v0.1 finally?
 
 0.0.10 (2023-05-03)
 -------------------
