@@ -351,7 +351,21 @@ class EventsFrame(object):
         """
         # Define target columns
         targets = [self.beg, self.end] + self.keys
-        return targets        
+        return targets
+
+    @property
+    def spatials(self):
+        """
+        A list of geometry and route columns within the events dataframe, if 
+        defined.
+        """
+        # List defined spatial columns
+        spatials = []
+        if not self.geom is None:
+            spatials.append(self.geom)
+        if not self.route is None:
+            spatials.append(self.route)
+        return spatials
 
     @property
     def others(self):
@@ -360,7 +374,8 @@ class EventsFrame(object):
         end, or key columns.
         """
         # Define other columns
-        others = [col for col in self.df.columns if not col in self.targets]
+        exclude = self.targets + self.spatials
+        others = [col for col in self.df.columns if not col in exclude]
         return others
 
     @property
@@ -428,6 +443,13 @@ class EventsFrame(object):
         # Log validated keys
         self._end = end
         self._end_loc = self.columns.index(end)
+
+    @property
+    def lengths(self):
+        """
+        Lengths of all event ranges.
+        """
+        return self.ends - self.begs
 
     @property
     def geom(self):
@@ -689,7 +711,7 @@ class EventsFrame(object):
         return None if inplace else ef
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
-        agg_geometry=False, agg_routes=False, dropna=False, fillna=None, 
+        agg_geometry=True, agg_routes=True, dropna=False, fillna=None, 
         reorder=True, merge_lines=True):
         """
         Dissolve the events dataframe on a selection of event attributes.
@@ -718,14 +740,16 @@ class EventsFrame(object):
             A suffix to be added to the name of aggregated columns. If provided 
             as a list, must correspond to provided lost of aggregation 
             attributes.
-        agg_geometry : bool, default False
+        agg_geometry : bool, default True
             Whether to create an aggregated geometries field, populated with 
             aggregated shapely geometries based on those contained in the 
-            collection's geometry field.
-        agg_routes : bool, default False
+            collection's geometry field. If not needed, set to False to reduce 
+            processing time.
+        agg_routes : bool, default True
             Whether to create an aggregated routes field, populated with 
             MLSRoute object class instances, created based on aggregated 
-            segment geometries and begin and end mile posts.
+            segment geometries and begin and end mile posts. If not needed, 
+            set to False to reduce processing time.
         dropna : bool, default False
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
@@ -1083,7 +1107,7 @@ class EventsFrame(object):
         )
         return res
 
-    def to_windows(self, dissolve=False, endpoint=False, **kwargs):
+    def to_windows(self, dissolve=False, retain=True, endpoint=False, **kwargs):
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1121,6 +1145,9 @@ class EventsFrame(object):
         dissolve : bool, default False
             Whether to dissolve the events dataframe before performing the 
             transformation.
+        retain : bool, default True
+            Whether to retain all fields from the original dataframe in the 
+            newly generated dataframe.
         endpoint : bool, default False
             Add a point event at the end of each event range.
         """
@@ -1166,6 +1193,13 @@ class EventsFrame(object):
         }
         dtypes = {col: dtypes[col] for col in df.columns}
         df = df.astype(dtypes, copy=False)
+        # Retain original fields if requested
+        if retain:
+            df = df.merge(
+                self.df[self.others], left_on='index_parent', 
+                right_index=True, how='left'
+            )
+        # Prepare collection and return
         res = self.__class__(
             df,
             keys=self.keys,
@@ -1812,6 +1846,27 @@ class EventsCollection(EventsFrame):
             raise ValueError(
                 "Invalid input missing_data parameter. Must be one of "
                 "('ignore','drop','warn','raise').")
+        
+    def drop_missing(self, inplace=False):
+        """
+        Drop records from the events dataframe which do not contain valid 
+        linear referencing information (e.g., empty key values or begin or 
+        end location values).
+
+        Parameters
+        ----------
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Apply update
+        if inplace:
+            self._check_missing_data(missing_data='drop')
+            return
+        else:
+            ec = self.copy()
+            ec._check_missing_data(missing_data='drop')
+            return ec
 
     def from_similar(self, df, **kwargs):
         """
@@ -1959,6 +2014,204 @@ class EventsCollection(EventsFrame):
             keys = tuple(keys)
         # Return validated keys
         return keys
+    
+    def round(self, decimals=0, factor=1, inplace=False):
+        """
+        Round the bounds of all events to the specified number of decimals 
+        or to a specified rounding factor.
+
+        Parameters
+        ----------
+        decimals : int, default 0
+            Number of decimals to round event bound values to.
+        factor : scalar, default 1
+            Rounding factor to apply to the event bound values. For example, 
+            use `factor=0.5` (and `decimals=0`) to round each value to the 
+            nearest 0.5.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Copy data
+        df = self.df.copy()
+        # Perform rounding
+        df[self.beg] = \
+            np.round(df[self.beg] / factor, decimals=decimals) * factor
+        df[self.end] = \
+            np.round(df[self.end] / factor, decimals=decimals) * factor
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
+        
+    def clip(self, lower=None, upper=None, inplace=False):
+        """
+        Clip the bounds of all events at the specified lower and upper values.
+        
+        Parameters
+        ----------
+        lower, upper : scalar, default None
+            The lower and upper threshold values. All values below the lower 
+            threshold will be set to it. All values above the upper threshold 
+            will be set to it. If a threshold value is not provided (e.g., 
+            None), values will not be clipped in that direction.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Copy data
+        df = self.df.copy()
+
+        # Perform clipping
+        df[self.beg] = np.clip(df[self.beg], lower, upper)
+        df[self.end] = np.clip(df[self.end], lower, upper)
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
+
+    def shift(
+        self,
+        distance=0,
+        direction='positive',
+        which='both',
+        labels=None,
+        inplace=False
+    ):
+        """
+        Shift the bounds of all events by the specified value.
+
+        Parameters
+        ----------
+        distance : scalar, default 0
+            The amount to shift each event bound by. Negative values will 
+            result in an inversion of the `direction` parameter.
+        direction : {'positive', 'negative', 'both'}, default 'positive'
+            Which direction the event bounds should be shifted.
+
+            Options
+            -------
+            'positive' : Shift event bounds in an increasing direciton.
+            'negative' : Shift event bounds in a decreasing direciton.
+            'both' : Shift event begin points in an increasing direction and 
+                event end points in a decreasing direction.
+
+        which : {'begs', 'ends', 'both'}, default 'both'
+            Which ends should be shifted.
+        labels : tuple, optional
+            Two-value tuple containing new begin and end column labels for the 
+            modified event bound columns. If provided, must be a two-value 
+            tuple containing two valid pandas column labels. If not provided, 
+            original begin and end labels will be retained.
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Validation
+        _ops_direction = {'positive', 'negative', 'both'}
+        _ops_which = {'begs', 'ends', 'both'}
+        if not direction in _ops_direction:
+            raise ValueError(
+                f"Input `direction` parameter must be one of {_ops_direction}")
+        if not which in _ops_which:
+            raise ValueError(
+                f"Input `which` parameter must be one of {_ops_which}")
+        if not labels is None:
+            try:
+                assert isinstance(labels, tuple)
+                assert len(labels) == 2
+            except AssertionError:
+                raise ValueError(
+                    f"If provided, input labels must be two-value tuple.")
+
+        # Copy data
+        df = self.df.copy()
+
+        # Determine shifting values
+        if which in ('ends', 'both'):
+            if direction in ('positive', 'both'):
+                distance_ends = distance
+            else:
+                distance_ends = -distance
+        else:
+            distance_ends = 0
+        if which in ('begs', 'both'):
+            if direction in ('negative', 'both'):
+                distance_begs = -distance
+            else:
+                distance_begs = distance
+        
+        # Determine shifted column labels
+        if not labels is None:
+            label_beg = labels[0]
+            label_end = labels[1]
+        else:
+            label_beg = self.beg
+            label_end = self.end            
+
+        # Perform shifting
+        df[label_beg] = df[self.beg] + distance_begs
+        df[label_end] = df[self.end] + distance_ends
+    
+        # Apply update
+        if inplace:
+            self.df = df
+            self.beg = label_beg
+            self.end = label_end
+            return
+        else:
+            ec = self.from_similar(df)
+            ec.beg = label_beg
+            ec.end = label_end
+            return ec
+
+    def separate(self, eliminate_inside=False, inplace=False, **kwargs):
+        """
+        Separate the bounds of all events so that none directly overlap. 
+        This is done using the rangel.RangeCollection.separate() method 
+        on each EventsGroup. This method does not retain the sorting of 
+        the original events dataframe.
+
+        Parameters
+        ----------
+        eliminate_inside : boolean, default False
+            Whether to automatically eliminate ranges which are entirely 
+            overlapped by other ranges, producing zero-length ranges (e.g., 
+            point events).
+        inplace : boolean, default False
+            Whether to perform the operation in place. If False, will return a 
+            modified copy of the events object.
+        """
+        # Iterate through events groups
+        records = []
+        for key, group in self.iter_groups():
+            # Separate group ranges
+            separated = group.rng.separate(
+                drop_short=False, eliminate_inside=eliminate_inside)
+            # Apply separated ranges to a copy of the group
+            updated = group.df.copy()
+            updated[self.beg] = separated.begs
+            updated[self.end] = separated.ends
+            records.append(updated)
+
+        # Prepare new dataframe
+        df = pd.concat(records)
+
+        # Apply update
+        if inplace:
+            self.df = df
+            return
+        else:
+            ec = self.from_similar(df)
+            return ec
 
     def overlay_average(self, other, cols=None, **kwargs):
         """
@@ -2023,7 +2276,7 @@ class EventsCollection(EventsFrame):
         return em
 
     def project_parallel(self, other, samples=3, buffer=100, match='all', 
-            choose=1, sort_locs=True, **kwargs):
+            choose=1, sort_locs=True, build_routes=True, **kwargs):
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 
@@ -2051,10 +2304,29 @@ class EventsCollection(EventsFrame):
         sort_locs : bool, default True
             Whether begin and end location values should be sorted, ensuring 
             that all events are increasing and monotonic.
+        build_routes : bool, default True
+            Whether to automatically build routes using the build_routes() 
+            method if routes are not already available.
         **kwargs
             Keyword arguments to be passed to the EventsCollection constructor 
             upon completion of the projection.
         """
+        # Ensure that geometries and routes are available
+        if self.geom is None:
+            raise ValueError(
+                "No geometry found in events dataframe. If valid shapely "
+                "geometries are available in the dataframe, set this with the "
+                f"{self.__class__.__name__}'s geom property.")
+        elif self.route is None:
+            if build_routes:
+                self.build_routes()
+            else:
+                raise ValueError(
+                    "No routes found in events dataframe. If valid shapely "
+                    "geometries are available in the dataframe, create routes "
+                    "by calling the build_routes() method on the "
+                    f"{self.__class__.__name__} class instance.")
+            
         # Create projector
         pp = ParallelProjector(self, other, samples=samples, buffer=buffer)
         # Perform match and return results in new events collection

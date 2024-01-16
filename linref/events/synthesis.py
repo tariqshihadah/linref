@@ -2,7 +2,8 @@
 ===============================================================================
 
 Module featuring classes and functionality for synthesizing linear referencing 
-information for existing data that is not LRS-enabled.
+information for existing data that is not LRS-enabled and other manipulations 
+which support linear referencing data engineering and analysis.
 
 
 Classes
@@ -12,7 +13,7 @@ None
 
 Dependencies
 ------------
-pandas, numpy, rangel, copy, warnings, functools
+geopandas, shapely, pandas, numpy, rangel, copy, warnings, functools
 
 
 Development
@@ -41,6 +42,12 @@ import copy, warnings
 from functools import wraps
 from rangel import RangeCollection
 from shapely.geometry import Point
+from shapely import unary_union
+
+
+#######################
+# SYNTHESIS FUNCTIONS #
+#######################
 
 def generate_linear_events(
     df, 
@@ -58,19 +65,22 @@ def generate_linear_events(
     Function for generating events information for existing chains of linear 
     geospatial data based on the geographic lengths of chain members. This 
     function is intended to synthesize a new linear referencing system for 
-    chains of adjacent linear data which are oriented in the same direction 
-    and whose end and begin points are coincident or fall within a defined 
-    buffer distance of one another.
+    chains of adjacent linear data with matching key values, which are 
+    oriented in the same direction, and whose end and begin points are 
+    coincident or fall within a defined buffer distance of one another.
 
     Parameters
     ----------
     df : gpd.GeoDataFrame
         Valid geopandas GeoDataFrame with linear geometries.
-    keys : list or tuple
+    keys : list or tuple, optional
         A list or tuple of dataframe column labels which define the unique 
         groups of events within the events dataframe. Common examples include 
         year or route ID columns which distinguish unrelated sets of events 
-        within the events dataframe.
+        within the events dataframe. If not provided, it will be assumed that 
+        the whole dataframe represents a single group of events. As a result, 
+        the only key included in the resulting EventsCollection will be the
+        provided `chain_label`.
     beg_label, end_label : str or label
         Column labels to be created within the events dataframe which 
         represent the linearly referenced location of each event.
@@ -145,36 +155,51 @@ def generate_linear_events(
         groups = df.groupby(by=keys)
     else:
         groups = {np.nan: df}.items()
+
+    # Define function for retrieving boundary points
+    def _get_boundary_point(line, index=None):
+        # Use coords approach for multi-part geometries
+        try:
+            return Point(line.geoms[index].coords[index])
+        # Use coords approach for single-part geometries
+        except AttributeError:
+            return Point(line.coords[index])
+
     # Iterate over all groups and perform analysis
-    geom = df.geometry.name
+    geom_column = df.geometry.name
     record_indexes = []
     record_begs = []
     record_ends = []
     record_chains = []
     for key, group in groups:
 
-        # Get lengths of all geometries
-        lengths_all = group.length
-        
-        # Get boundaries of all lines
-        begs = group[geom].apply(lambda x: Point(x.coords[0]))
-        ends = group[geom].apply(lambda x: Point(x.coords[-1]))
+        # Get boundaries points of all lines for finding matches
+        begs = group[geom_column].apply(_get_boundary_point, index=0)
+        ends = group[geom_column].apply(_get_boundary_point, index=-1)
+        # Buffer the end points if requested
         if not buffer is None:
             begs = begs.apply(lambda x: x.buffer(buffer))
             ends = ends.apply(lambda x: x.buffer(buffer))
-        begs = gpd.GeoDataFrame(begs, geometry=geom)
-        ends = gpd.GeoDataFrame(ends, geometry=geom)
+        # Create geodataframes for intersecting
+        begs = gpd.GeoDataFrame(begs, geometry=geom_column)
+        ends = gpd.GeoDataFrame(ends, geometry=geom_column)
         
         # Intersect boundary geometries
         intersection = gpd.sjoin(ends, begs)
         intersection['index_left'] = intersection.index
+        # Get all unique matches between the line end points and other line 
+        # begin points
         pairs = intersection[['index_left','index_right']].values
         
-        # Remove instances of multiple matches on left or right
+        # Remove instances of multiple matches on left or right; only the 
+        # first unique value on the left and right are kept based on original 
+        # sorting of data
         pairs = pairs[np.unique(pairs[:,0], return_index=True)[1]]
         pairs = pairs[np.unique(pairs[:,1], return_index=True)[1]]
         
-        # Identify single-value chains and downstream terminals with null pairs
+        # Identify single-segment chains with no matches to other segments as 
+        # well as downstream terminals, holding their places with pairs of 
+        # these segments' indices matched with null values
         missing = set(group.index) - set(pairs[:,0])
         missing = np.array([sorted(missing), np.full(len(missing), np.nan)]).T
         pairs = np.concatenate([pairs, missing])
@@ -183,27 +208,44 @@ def generate_linear_events(
         chains = []
         chain_index = 0
         while pairs.shape[0] > 0:
-            # Initialize pairs filter
+            # Initialize pairs filter, retaining all pairs
             pairs_filter = np.ones(pairs.shape[0], dtype=bool)
             
-            # Iterate over upstream terminals
+            # Identify upstream terminals which will be used to begin segment 
+            # chains
             terminals = sorted(set(pairs[:,0]) - set(pairs[:,1]))
+
+            # Address complete loops by selecting a terminal from remaining 
+            # data if none remain
+            try:
+                assert len(terminals) > 0
+            except AssertionError:
+                terminals = [pairs[0,0]]
+
+            # Iterate over upstream terminals, chaining from them to their 
+            # downstream matches
             for terminal in terminals:
         
-                # Iterate through chain members
+                # Iterate through all subsequent matches to the terminal
                 chains.append([])
                 member = terminal
                 while True:
                     try:
-                        # Update chain with current member
+                        # Update the chain by adding the current member
                         chains[chain_index].append(member)
                         # Identify pairs matching the selected chain member
                         member_loc = (pairs[:,0] == member) & pairs_filter
-                        assert member_loc.sum() > 0 # Check for no matches
+                        # Check for no matches; if there are none, end the 
+                        # chain and move to the next one
+                        assert member_loc.sum() > 0
                         # Update pairs filter to remove matches to the member
                         pairs_filter[member_loc] = False
-                        # Update indexed chain member
+                        # Update indexed chain member by selecting the next 
+                        # match
                         member = pairs[member_loc.argmax()][1]
+                        # Check for the end of the chain if the new selected 
+                        # member is null, or if looping is detected; end the 
+                        # chain in either case
                         assert ~np.isnan(member) # Check for end of chain
                         assert member != terminal # Check for looping
                     except AssertionError:
@@ -215,6 +257,8 @@ def generate_linear_events(
             # Filter pairs to remove addressed items
             pairs = pairs[pairs_filter]
 
+        # Get lengths of all geometries
+        lengths_all = group.length
         # Iterate over chains and create events information
         for chain_index, chain in enumerate(chains):
             # Compute cumulative sum of chain geometry lengths
@@ -244,9 +288,55 @@ def generate_linear_events(
 
     # Merge with parent table and create EventsCollection
     ec = EventsCollection(
-        events, keys=keys + [chain_label], beg=beg_label, end=end_label, 
-        geom=df.geometry.name, **kwargs)
+        events, 
+        keys=keys + [chain_label] if not keys is None else [chain_label], 
+        beg=beg_label, 
+        end=end_label, 
+        geom=geom_column, 
+        **kwargs
+    )
     return ec
+
+def find_intersections(df, only_points=True, only_single=True):
+    """
+    Generate intersection points for an input geodataframe of linear 
+    geometries. Output will be a geodataframe with a single point 
+    geometry at each location where a line intersects with another 
+    and will have the same CRS.
+
+    Parameters
+    ----------
+    df : gpd.GeoDataFrame
+        Valid geopandas geodataframe containing linear geometries.
+    only_points : bool, default True
+        Whether all non-point geometries resulting from intersections should 
+        be removed from results.
+    only_single : bool, default True
+        Whether all multi-part geometries resulting from intersections should 
+        be removed from results.
+    """
+    # Spatial join with self
+    joined = df.sjoin(df)
+    # Remove self-matches
+    joined = joined[joined['index_right'] != joined.index]
+    # Find intersections
+    other_geometries = df.geometry.reindex(joined['index_right'])
+    intersections = joined.geometry.intersection(other_geometries, align=False)    
+
+    # Cast to geodataframe
+    res = gpd.GeoDataFrame(geometry=intersections, crs=df.crs)
+    # Drop duplicate points
+    res = res.drop_duplicates()
+    # Filter results if requested
+    if only_points:
+        if only_single:
+            choose_types = ['Point']
+        else:
+            choose_types = ['Point', 'MultiPoint']
+        res = res[res.geom_type.isin(choose_types)]
+    # Reset index
+    res = res.reset_index(drop=True)
+    return res
 
 
 #####################

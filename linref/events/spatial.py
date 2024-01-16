@@ -46,14 +46,58 @@ class ParallelProjector(object):
     """
     Experimental class for performing projections of linear geometries onto 
     linear events collections.
+
+    The methodology used by this class involves the following steps:
+
+    1. Create sample points along the projected geometries using a fixed 
+    number of samples per geometry.
+
+    2. Spatially join these sample points to the target EventsCollection's 
+    geometry using the provided buffer distance to identify candidate matches.
+
+    3. Process all possible matches using the .match() method to produce 
+    linear referencing information for the projected geometries based on that 
+    of the target EventsCollection.
     """
 
-    def __init__(self, target, other, samples=3, buffer=100) -> None:
+    def __init__(self, target, projected, samples=3, buffer=100) -> None:
         self.target = target
-        self.other = other
+        self.projected = projected
         self.samples = samples
         self.buffer = buffer
 
+    @property
+    def target(self):
+        return self._target
+
+    @target.setter
+    def target(self, obj):
+        # Validate object type
+        if not isinstance(obj, EventsCollection):
+            raise TypeError(
+                "Input target must be valid lr.EventsCollection instance.")
+        # Ensure that geometries and routes are available
+        if obj.geom is None:
+            raise ValueError(
+                "No geometry found in the target events dataframe.")
+        elif obj.route is None:
+            raise ValueError(
+                "No routes found in events dataframe.")
+        self._target = obj
+
+    @property
+    def projected(self):
+        return self._projected
+
+    @projected.setter
+    def projected(self, obj):
+        # Validate object type
+        if not isinstance(obj, gpd.GeoDataFrame):
+            raise TypeError(
+                "Input projected object must be valid gpd.GeoDataFrame "
+                "instance.")
+        self._projected = obj
+    
     @property
     def samples(self):
         return self._samples
@@ -80,8 +124,8 @@ class ParallelProjector(object):
             assert buffer >= 0
             self._buffer = buffer
         except:
-            raise ValueError("Buffer parameter must be a non-negative "
-                             "numeric value.")
+            raise ValueError(
+                "Buffer parameter must be a non-negative numeric value.")
         
         # Perform spatial join
         self._buffer_join()
@@ -96,7 +140,7 @@ class ParallelProjector(object):
 
     @property
     def projectors(self):
-        return self.other.geometry.values
+        return self.projected.geometry.values
 
     def _build_sample_points(self):
         """
@@ -110,8 +154,8 @@ class ParallelProjector(object):
             points.extend([projector.interpolate(loc) for loc in \
                 sample_locs * projector.length])
         self._sample_points = gpd.GeoDataFrame({
-            '__projector': np.repeat(self.other.index.values, self.samples),
-            'geometry': points}, geometry='geometry', crs=self.other.crs
+            '__projector': np.repeat(self.projected.index.values, self.samples),
+            'geometry': points}, geometry='geometry', crs=self.projected.crs
         )
 
     def _buffer_join(self):
@@ -134,6 +178,9 @@ class ParallelProjector(object):
 
     def match(self, match='all', choose=1, sort_locs=True):
         """
+        Perform the actual matching of nearby geometries to one another based 
+        on input analysis parameters, producing a dataframe which has been 
+        applied to the target EventsCollection's linear referencing system.
         """
         # Validate matching parameters
         if match=='all':
@@ -161,8 +208,8 @@ class ParallelProjector(object):
         # Test all unique pairs for minimum match count
         match_mask = pair_counts >= match
         # Compute mean distances for all unique matched pairs
-        split = np.array(np.split(self._joined.values[:,2], pair_index)[1:])\
-            [match_mask]
+        all_distances = np.split(self._joined.values[:,2], pair_index)[1:]
+        split = np.array(all_distances, dtype=object)[match_mask]
         mean_distances = np.array([np.mean(i) for i in split])
         # Group matched targets for all matched projectors
         proj_unique, proj_index = np.unique(
@@ -170,7 +217,8 @@ class ParallelProjector(object):
             axis=0,
             return_index=True
         )
-        pair_distances = np.array(np.split(mean_distances, proj_index)[1:])
+        pair_distances = np.array(
+            np.split(mean_distances, proj_index)[1:], dtype=object)
         
         # Identify the index of the target(s) with the lowest mean distance for 
         # each projector if requested
@@ -185,7 +233,8 @@ class ParallelProjector(object):
                         for i in pair_distances]
         # - Produce a projector-target map
         zipped = zip(pair_groups, pair_select)
-        targets = np.array([group[index] for group, index in zipped])
+        targets = np.array(
+            [group[index] for group, index in zipped], dtype=object)
         # - Flatten map if multiple choices
         if choose != 1:
             projectors = np.repeat(proj_unique, [len(i) for i in targets])
@@ -198,7 +247,7 @@ class ParallelProjector(object):
             '__projector': projectors, '__target': targets})
         
         # Merge matched records
-        proj_lines = self.other.geometry.rename('__proj_lines')
+        proj_lines = self.projected.geometry.rename('__proj_lines')
         select = matched_pairs \
             .merge(proj_lines, left_on='__projector', right_index=True)
         target_data = self.target.df[self.target.keys + [self.target.route]]
@@ -211,7 +260,7 @@ class ParallelProjector(object):
             try:
                 # Project bounds onto target route
                 boundary = line.boundary
-                beg, end = boundary[0], boundary[-1]
+                beg, end = boundary.geoms[0], boundary.geoms[-1]
                 beg_loc, end_loc = route.project(beg), route.project(end)
                 return beg_loc, end_loc
             except (AttributeError, IndexError):
@@ -229,10 +278,17 @@ class ParallelProjector(object):
         else:
             select[labels[0]] = proj_bounds[:, 0]
             select[labels[1]] = proj_bounds[:, 1]
-        clean = self.other.drop(
+        clean = self.projected.drop(
             columns=labels + ['geometry','route'], errors='ignore')
         select = select \
             .merge(clean, how='left', left_on='__projector', right_index=True) \
             .drop(columns=['__projector','__target','__proj_lines','route'],
                   errors='ignore')
         return select
+    
+
+#####################
+# LATE DEPENDENCIES #
+#####################
+
+from linref.events.collection import EventsCollection
