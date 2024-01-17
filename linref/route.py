@@ -268,7 +268,9 @@ class MLSRoute(object):
             else:
                 raise ValueError(
                     "Input lines must be all LineString or all "
-                    "MultiLineString shapely objects.")
+                    "MultiLineString shapely objects. Provided data was "
+                    f"list-like containing `{type(i)}`."
+                )
         else:
             raise TypeError(
                 "Input lines must be valid shapely linear geometries or list "
