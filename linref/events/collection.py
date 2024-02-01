@@ -940,7 +940,7 @@ class EventsFrame(object):
         ----------
         other : gpd.GeoDataFrame
             Geodataframe containing geometry which will be projected onto the 
-            events dataframe.
+            events geodataframe.
         buffer : float, default 100
             The max distance to search for input geometries to project against 
             the events' geometries. Measured in terms of the geometries' 
@@ -1034,6 +1034,36 @@ class EventsFrame(object):
             missing_data='ignore',
             **kwargs
         )
+
+    def project_boundaries(target, other, **kwargs):
+        """
+        Project an input polygon dataframe onto the events dataframe, 
+        producing linearly referenced point locations everywhere the events 
+        intersect with polygon boundaries.
+    
+        Parameters
+        ----------
+        other : gpd.GeoDataFrame
+            Geodataframe containing geometry which will be projected onto the 
+            events geodataframe.
+        **kwargs
+            Keyword arguments to be passed to the EventsFrame.project method. 
+            These exclude the buffer and nearest parameters which are preset 
+            to 0 and False respectively.
+        """
+        # Get unified geometries
+        target_geom = target.df.unary_union
+        other_geom = other.set_geometry(other.boundary).unary_union
+        # Get intersection of geometries
+        intersection = target_geom.intersection(other_geom)
+        # Expand to geodataframes
+        gdf = gpd.GeoDataFrame(geometry=[intersection], crs=target.df.crs)
+        gdf = gdf.explode(index_parts=True)
+    
+        # Project onto the events collection
+        kwargs['buffer'] = 0
+        kwargs['nearest'] = False
+        return target.project(gdf, **kwargs)
 
     def to_grid(self, dissolve=False, **kwargs):
         """

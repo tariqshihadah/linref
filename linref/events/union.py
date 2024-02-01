@@ -224,6 +224,54 @@ class EventsUnion(object):
         return ec
 
 
+def union(
+        objs,
+        fill_gaps=False, 
+        get_index=True, 
+        merge=False, 
+        suffixes=None, 
+    ):
+    """
+    Combine multiple EventsCollection instances into a single instance, 
+    creating least common intervals among all collections and maintaining all 
+    event attributes. The resulting combined events will be used to create and 
+    return an EventsCollection modeled after the first indexed collection.
+
+    Parameters
+    ----------
+    objs : list-like of EventsCollection instances
+        A selection of EventsCollection object instances to be combined into a 
+        single instance based on the input parameters.
+    fill_gaps : bool, default False
+        Whether to fill gaps in the merged collection with empty events. 
+        These events would not be associated with any parent collection and 
+        would not be populated with any events attributes.
+    get_index : bool, default True
+        Whether to produce columns relating each new record to the index of 
+        the originating record in the input events dataframes. When this is 
+        not necessary, setting to False may produce significant time 
+        savings.
+    merge : bool, default False
+        Whether to merge columns from each original dataframe to the newly 
+        created resegmented events collection dataframe. If not done during 
+        the union, it can be done later by merging on the new 'index_i' 
+        columns which correlate with the indices of the original 
+        dataframes. To perform this merge manually, the get_index parameter 
+        should be True.
+    suffixes : list-like, default ['_0', ..., '_n']
+        Sequence of length equal to the number of events collections being 
+        unified, where each element is a string indicating the suffix to 
+        add to overlapping column names in each corresponding events 
+        dataframe. All entries must be unique.
+    """
+    return EventsUnion(objs).union(
+        fill_gaps=fill_gaps,
+        get_index=get_index,
+        merge=merge,
+        suffixes=suffixes
+    )
+
+
 #####################
 # LATE DEPENDENCIES #
 #####################
