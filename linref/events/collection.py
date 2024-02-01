@@ -811,7 +811,7 @@ class EventsFrame(object):
         # - Prepare geometry dissolve if requested
         if (agg_geometry is None) and not (self.geom is None):
             agg_geometry = True
-        else:
+        elif (agg_geometry is None) and (self.geom is None):
             agg_geometry = False
         if agg_geometry:
             # Confirm valid geometry field
@@ -832,7 +832,7 @@ class EventsFrame(object):
         # - Prepare route dissolve if requested
         if (agg_routes is None) and not (self.geom is None):
             agg_routes = True
-        else:
+        elif (agg_routes is None) and (self.geom is None):
             agg_routes = False
         if agg_routes:
             # Confirm valid geometry field
@@ -1118,7 +1118,10 @@ class EventsFrame(object):
         )
         return res
 
-    def to_windows(self, dissolve=False, retain=True, endpoint=False, **kwargs):
+    def to_windows(
+            self, length=1.0, dissolve=False, retain=True, endpoint=False, 
+            **kwargs
+        ):
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1126,8 +1129,12 @@ class EventsFrame(object):
 
         Parameters
         ----------
-        length : numerical, default 1.0
-            A fixed length for all windows being defined.
+        length : numerical, array-like, or label, default 1.0
+            A length to cut down all events to. If an array is provided, must 
+            have a length equal to the number of records in the events 
+            dataframe. If a label is provided, it must be a valid label within 
+            the events dataframe, containing valid numerical data defining 
+            segment lengths. Not valid if dissolve=True.
         steps : int, default 1
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
@@ -1167,15 +1174,33 @@ class EventsFrame(object):
             events = self.dissolve().df
         else:
             events = self.df
+        # Define cut lengths
+        if isinstance(length, str):
+            if not length in events.columns:
+                raise ValueError(f"Provided length label '{length}' is not "
+                    "present within the events dataframe.")
+            else:
+                lengths = events[length].values
+        elif isinstance(length, (int, float)):
+            lengths = np.full(events.shape[0], length)
+        else:
+            try:
+                assert len(lengths) == events.shape[0]
+            except:
+                raise ValueError("Provided length array must be an array-like "
+                    "and have a length equal to the number of records in the "
+                    "events dataframe.")
         # Iterate over roads and create sliding window segments
         gen = zip(
             events[self.keys + [self.beg, self.end]].values,
-            events.index.values
+            events.index.values,
+            lengths
         )
         windows = []
-        for (*keys, beg, end), index in gen:
+        for (*keys, beg, end), index, length_i in gen:
             # Build sliding window ranges
-            rng = RangeCollection.from_steps(beg, end, **kwargs).cut(beg, end)
+            rng = RangeCollection.from_steps(
+                beg, end, length=length_i, **kwargs).cut(beg, end)
             if endpoint:
                 rng = rng.append(end, end)
             # Assemble sliding window data

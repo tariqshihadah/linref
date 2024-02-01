@@ -326,7 +326,7 @@ def find_intersections(df, only_points=True, only_single=True):
     # Cast to geodataframe
     res = gpd.GeoDataFrame(geometry=intersections, crs=df.crs)
     # Drop duplicate points
-    res = res.drop_duplicates()
+    res = res.drop_duplicates(keep='first')
     # Filter results if requested
     if only_points:
         if only_single:
