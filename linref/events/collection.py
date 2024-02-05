@@ -1215,7 +1215,8 @@ class EventsFrame(object):
             lengths = np.full(events.shape[0], length)
         else:
             try:
-                assert len(lengths) == events.shape[0]
+                assert len(length) == events.shape[0]
+                lengths = length
             except:
                 raise ValueError("Provided length array must be an array-like "
                     "and have a length equal to the number of records in the "
