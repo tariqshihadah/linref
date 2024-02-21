@@ -7,3 +7,4 @@ rangel>=0.0.7
 scipy>=1.4.1
 build
 twine
+ipython

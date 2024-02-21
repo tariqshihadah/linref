@@ -141,3 +141,5 @@ cython_debug/
 
 # Other
 NOTES
+DEBUG/
+TEST*.ipynb

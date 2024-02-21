@@ -1242,24 +1242,17 @@ class EventsFrame(object):
                         rng.rng.T,               # Window bounds
                         [[index]]*rng.num_ranges # Parent index value
                     ],
-                    axis=1
+                    axis=1, dtype=object
                 )
             )
 
         # Merge and prepare data, return
-        windows = np.concatenate(windows, axis=0)
+        windows = np.concatenate(windows, axis=0, dtype=object)
         df = pd.DataFrame(
             data=windows,
             columns=self.keys + [self.beg, self.end, 'index_parent'],
             index=None,
         )
-        # Enforce data types
-        dtypes = {
-            **events.dtypes,
-            'index_parent': events.index.dtype
-        }
-        dtypes = {col: dtypes[col] for col in df.columns}
-        df = df.astype(dtypes, copy=False)
         # Retain original fields if requested
         if retain:
             df = df.merge(
