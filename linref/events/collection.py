@@ -1248,17 +1248,21 @@ class EventsFrame(object):
 
         # Merge and prepare data, return
         windows = np.concatenate(windows, axis=0, dtype=object)
+        columns = self.keys + [self.beg, self.end, 'index_parent']
+        dtypes = {col: type(sample) for col, sample in zip(columns, windows[0])}
         df = pd.DataFrame(
             data=windows,
             columns=self.keys + [self.beg, self.end, 'index_parent'],
             index=None,
-        )
+        ).astype(dtypes, copy=False)
+
         # Retain original fields if requested
         if retain:
             df = df.merge(
                 self.df[self.others], left_on='index_parent', 
                 right_index=True, how='left'
             )
+            
         # Prepare collection and return
         res = self.__class__(
             df,
