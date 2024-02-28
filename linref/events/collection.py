@@ -711,7 +711,7 @@ class EventsFrame(object):
         return None if inplace else ef
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
-        agg_geometry=True, agg_routes=True, dropna=False, fillna=None, 
+        agg_geometry=None, agg_routes=None, dropna=False, fillna=None, 
         reorder=True, merge_lines=True):
         """
         Dissolve the events dataframe on a selection of event attributes.
@@ -740,16 +740,19 @@ class EventsFrame(object):
             A suffix to be added to the name of aggregated columns. If provided 
             as a list, must correspond to provided lost of aggregation 
             attributes.
-        agg_geometry : bool, default True
+        agg_geometry : bool, optional
             Whether to create an aggregated geometries field, populated with 
             aggregated shapely geometries based on those contained in the 
             collection's geometry field. If not needed, set to False to reduce 
-            processing time.
-        agg_routes : bool, default True
+            processing time. If a valid geometry column is present, this will 
+            default to True.
+        agg_routes : bool, optional
             Whether to create an aggregated routes field, populated with 
             MLSRoute object class instances, created based on aggregated 
             segment geometries and begin and end mile posts. If not needed, 
-            set to False to reduce processing time.
+            set to False to reduce processing time. If a valid route column 
+            is present, this will default to True.
+            Note: If True, any existing route data will be overwritten.
         dropna : bool, default False
             Whether to drop records with empty values in the attribute fields. 
             This parameter is passed to the df.groupby call.
@@ -806,6 +809,10 @@ class EventsFrame(object):
         
         # Additional aggregation requests
         # - Prepare geometry dissolve if requested
+        if (agg_geometry is None) and not (self.geom is None):
+            agg_geometry = True
+        elif (agg_geometry is None) and (self.geom is None):
+            agg_geometry = False
         if agg_geometry:
             # Confirm valid geometry field
             if self.geom is None:
@@ -823,6 +830,10 @@ class EventsFrame(object):
             agg_suffix.append('')
         
         # - Prepare route dissolve if requested
+        if (agg_routes is None) and not (self.geom is None):
+            agg_routes = True
+        elif (agg_routes is None) and (self.geom is None):
+            agg_routes = False
         if agg_routes:
             # Confirm valid geometry field
             if self.geom is None:
@@ -929,7 +940,7 @@ class EventsFrame(object):
         ----------
         other : gpd.GeoDataFrame
             Geodataframe containing geometry which will be projected onto the 
-            events dataframe.
+            events geodataframe.
         buffer : float, default 100
             The max distance to search for input geometries to project against 
             the events' geometries. Measured in terms of the geometries' 
@@ -1024,6 +1035,36 @@ class EventsFrame(object):
             **kwargs
         )
 
+    def project_boundaries(target, other, **kwargs):
+        """
+        Project an input polygon dataframe onto the events dataframe, 
+        producing linearly referenced point locations everywhere the events 
+        intersect with polygon boundaries.
+    
+        Parameters
+        ----------
+        other : gpd.GeoDataFrame
+            Geodataframe containing geometry which will be projected onto the 
+            events geodataframe.
+        **kwargs
+            Keyword arguments to be passed to the EventsFrame.project method. 
+            These exclude the buffer and nearest parameters which are preset 
+            to 0 and False respectively.
+        """
+        # Get unified geometries
+        target_geom = target.df.unary_union
+        other_geom = other.set_geometry(other.boundary).unary_union
+        # Get intersection of geometries
+        intersection = target_geom.intersection(other_geom)
+        # Expand to geodataframes
+        gdf = gpd.GeoDataFrame(geometry=[intersection], crs=target.df.crs)
+        gdf = gdf.explode(index_parts=True)
+    
+        # Project onto the events collection
+        kwargs['buffer'] = 0
+        kwargs['nearest'] = False
+        return target.project(gdf, **kwargs)
+
     def to_grid(self, dissolve=False, **kwargs):
         """
         Use the events dataframe to create a grid of zero-length, equidistant 
@@ -1107,7 +1148,10 @@ class EventsFrame(object):
         )
         return res
 
-    def to_windows(self, dissolve=False, retain=True, endpoint=False, **kwargs):
+    def to_windows(
+            self, length=1.0, dissolve=False, retain=True, endpoint=False, 
+            **kwargs
+        ):
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1115,8 +1159,12 @@ class EventsFrame(object):
 
         Parameters
         ----------
-        length : numerical, default 1.0
-            A fixed length for all windows being defined.
+        length : numerical, array-like, or label, default 1.0
+            A length to cut down all events to. If an array is provided, must 
+            have a length equal to the number of records in the events 
+            dataframe. If a label is provided, it must be a valid label within 
+            the events dataframe, containing valid numerical data defining 
+            segment lengths. Not valid if dissolve=True.
         steps : int, default 1
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
@@ -1156,15 +1204,34 @@ class EventsFrame(object):
             events = self.dissolve().df
         else:
             events = self.df
+        # Define cut lengths
+        if isinstance(length, str):
+            if not length in events.columns:
+                raise ValueError(f"Provided length label '{length}' is not "
+                    "present within the events dataframe.")
+            else:
+                lengths = events[length].values
+        elif isinstance(length, (int, float)):
+            lengths = np.full(events.shape[0], length)
+        else:
+            try:
+                assert len(length) == events.shape[0]
+                lengths = length
+            except:
+                raise ValueError("Provided length array must be an array-like "
+                    "and have a length equal to the number of records in the "
+                    "events dataframe.")
         # Iterate over roads and create sliding window segments
         gen = zip(
             events[self.keys + [self.beg, self.end]].values,
-            events.index.values
+            events.index.values,
+            lengths
         )
         windows = []
-        for (*keys, beg, end), index in gen:
+        for (*keys, beg, end), index, length_i in gen:
             # Build sliding window ranges
-            rng = RangeCollection.from_steps(beg, end, **kwargs).cut(beg, end)
+            rng = RangeCollection.from_steps(
+                beg, end, length=length_i, **kwargs).cut(beg, end)
             if endpoint:
                 rng = rng.append(end, end)
             # Assemble sliding window data
@@ -1175,30 +1242,32 @@ class EventsFrame(object):
                         rng.rng.T,               # Window bounds
                         [[index]]*rng.num_ranges # Parent index value
                     ],
-                    axis=1
+                    axis=1, dtype=object
                 )
             )
 
         # Merge and prepare data, return
-        windows = np.concatenate(windows, axis=0)
+        windows = np.concatenate(windows, axis=0, dtype=object)
+        columns = self.keys + [self.beg, self.end, 'index_parent']
         df = pd.DataFrame(
             data=windows,
-            columns=self.keys + [self.beg, self.end, 'index_parent'],
+            columns=columns,
             index=None,
         )
-        # Enforce data types
-        dtypes = {
-            **events.dtypes,
-            'index_parent': events.index.dtype
-        }
-        dtypes = {col: dtypes[col] for col in df.columns}
-        df = df.astype(dtypes, copy=False)
+        # Enforce dtypes
+        dtypes = {col: events.dtypes[col] for col in self.keys}
+        dtypes[self.beg] = float
+        dtypes[self.end] = float
+        dtypes['index_parent'] = events.index.dtype
+        df = df.astype(dtypes, copy=False, errors='ignore')
+
         # Retain original fields if requested
         if retain:
             df = df.merge(
                 self.df[self.others], left_on='index_parent', 
                 right_index=True, how='left'
             )
+            
         # Prepare collection and return
         res = self.__class__(
             df,
@@ -2467,7 +2536,6 @@ class EventsCollection(EventsFrame):
                 df=df, beg=self.beg, end=self.end, geom=self.geom, 
                 closed=self.closed)
         except Exception as e:
-            display(df)
             raise e
 
 

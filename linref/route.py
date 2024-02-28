@@ -259,16 +259,21 @@ class MLSRoute(object):
             full_lines = [lines]
         # List of geometries provided
         elif isinstance(lines, (list, tuple)):
-            # - LineStrings
-            if all(isinstance(i, LineString) for i in lines):
-                full_lines = [MultiLineString(lines)]
-            # - MultiLineStrings
-            elif all(isinstance(i, MultiLineString) for i in lines):
-                full_lines = lines
-            else:
-                raise ValueError(
-                    "Input lines must be all LineString or all "
-                    "MultiLineString shapely objects.")
+            # Iterate over contents
+            full_lines = []
+            for i in lines:
+                # - LineString
+                if isinstance(i, LineString):
+                    full_lines.append(MultiLineString([i]))
+                # - MultiLineString
+                elif isinstance(i, MultiLineString):
+                    full_lines.append(i)
+                else:
+                    raise ValueError(
+                        "Input lines must be all LineString or all "
+                        "MultiLineString shapely objects. Provided data was "
+                        f"list-like containing `{set(type(i) for i in lines)}`."
+                    )
         else:
             raise TypeError(
                 "Input lines must be valid shapely linear geometries or list "

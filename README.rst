@@ -53,6 +53,12 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
+0.1.1 (2024-01-31)
+-------------------
+* Addition of array-like and dataframe label-based length parameter options to the ``EventsCollection.to_windows()`` method. This allows for the creation of segments based on a variable length.
+* Performance improvements
+* Various bug fixes, minor features
+
 0.1.0 (2024-01-16)
 -------------------
 My heart is in Gaza.
@@ -153,3 +159,8 @@ Final update of 2022 including small feature updates and bug fixes from 0.0.8. H
 0.0.1 (2022-03-31)
 ------------------
 * Original experimental release.
+
+Future improvements
+===================
+* Check spatial continuity of events groups. This may apply at instantiation of ``EventsCollection``.
+* Unify direction of opposing routes which converge/diverge at a point (e.g., W Main St and E Main St).
