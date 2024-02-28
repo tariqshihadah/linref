@@ -53,7 +53,7 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
-0.1.1 (2024-01-31)
+0.1.1 (TBD)
 -------------------
 * Addition of array-like and dataframe label-based length parameter options to the ``EventsCollection.to_windows()`` method. This allows for the creation of segments based on a variable length.
 * Performance improvements
