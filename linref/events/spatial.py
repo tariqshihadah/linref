@@ -136,8 +136,8 @@ class PointProjector(SpatialProjector):
         self.projected = projected
         self.buffer = buffer
         self.nearest = nearest
-        self._validate_ons(on, left_on, right_on)
         self.loc_label = loc_label
+        self._validate_ons(on, left_on, right_on)
         self.build_routes = build_routes
         # Check protected labels
         self._check_protected_labels()
@@ -182,6 +182,7 @@ class PointProjector(SpatialProjector):
     def loc_label(self, loc_label):
         if loc_label is None:
             raise ValueError("Location label parameter must be provided.")
+        self._loc_label = loc_label
 
     def _validate_ons(self, on=None, left_on=None, right_on=None):
         # Check matching parameters
