@@ -929,8 +929,8 @@ class EventsFrame(object):
             closed=self.closed, missing_data='ignore')
         return ec
 
-    def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
-            dist_label='DISTANCE', build_routes=True, **kwargs):
+    def project(self, other, buffer=100, nearest=True, on=None, left_on=None, 
+            right_on=None, loc_label='LOC', build_routes=True, **kwargs):
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -949,6 +949,13 @@ class EventsFrame(object):
             Whether to choose only the nearest match within the defined buffer. 
             If False, all matches will be returned. If True, when multiple 
             equidistant points exist, choose the first result that appears.
+        on, left_on, right_on : label or list, optional
+            Column label or list of column labels which must be matched in 
+            both the left and right dataframes. If not provided, no matching 
+            will be enforced on joined data. Can be provided with `on` if 
+            matching labels are the same in both dataframes or separately 
+            using `left_on` and `right_on` if matching labels are different 
+            in the left and right dataframes.
         loc_label, dist_label : label
             Labels to be used for created columns for projected locations on 
             target events groups and nearest point distances between target 
@@ -960,80 +967,13 @@ class EventsFrame(object):
             Keyword arguments to be passed to the EventsFrame constructor 
             upon completion of the projection.
         """
-        # Validate input geodataframe
-        if not isinstance(other, gpd.GeoDataFrame):
-            raise TypeError("Other object must be gpd.GeoDataFrame instance.")
-        else:
-            try:
-                other_geometry = other.geometry.name
-            except AttributeError:
-                raise AttributeError(
-                    "No geometry data set in other geodataframe.")
-        other = other.copy()
-
-        # Check for invalid column names
-        if (self.route in other.columns):
-            raise ValueError(
-                f"Invalid column name '{self.route}' found in target "
-                "geodataframe.")
-        if len(set(self.keys) & set(other.columns)) > 0:
-            invalid = set(self.keys) & set(other.columns)
-            raise ValueError(
-                f"Target geodataframe contains at least one events collection "
-                f"key column name {invalid}.")
-
-        # Ensure that geometries and routes are available
-        if self.geom is None:
-            raise ValueError(
-                "No geometry found in events dataframe. If valid shapely "
-                "geometries are available in the dataframe, set this with the "
-                f"{self.__class__.__name__}'s geom property.")
-        elif self.route is None:
-            if build_routes:
-                self.build_routes()
-            else:
-                raise ValueError(
-                    "No routes found in events dataframe. If valid shapely "
-                    "geometries are available in the dataframe, create routes "
-                    "by calling the build_routes() method on the "
-                    f"{self.__class__.__name__} class instance.")
-        
-        # Join the other geodataframe to this one
-        select_cols = self.keys + [self.route, self.geom]
-        if nearest:
-            joined = other.sjoin_nearest(
-                self.df[select_cols],
-                max_distance=buffer,
-                how='left'
-            )
-            # Drop duplicates (required for equidistant ties)
-            joined = joined[~joined.index.duplicated(keep='first')]
-        else:
-            # Buffer geometry for spatial join
-            buffered_geoms = self.df.geometry.buffer(buffer)
-            joined = other.sjoin(
-                self.df[select_cols].set_geometry(buffered_geoms),
-                how='left'
-            )
-
-        # Project input geometries onto event geometries
-        def _project(r):
-            try:
-                return r[self.route].project(r[other_geometry])
-            except AttributeError:
-                return
-        locs = joined.apply(_project, axis=1)
-        joined[loc_label] = locs
-        # return joined # modified to return EC 7/27/2022
-        # Prepare and return data
-        return self.__class__(
-            joined.drop(columns=[self.route]),
-            keys=self.keys,
-            beg=loc_label,
-            closed=self.closed,
-            missing_data='ignore',
-            **kwargs
-        )
+        # Create projector object
+        proj = PointProjector(
+            self, other, buffer=buffer, nearest=nearest, on=on, 
+            left_on=left_on, right_on=right_on, loc_label=loc_label,
+            build_routes=build_routes, **kwargs)
+        # Perform projection
+        return proj.match()
 
     def project_boundaries(target, other, **kwargs):
         """
@@ -2629,4 +2569,4 @@ def check_compatibility(objs, errors='raise', **kwargs):
 #####################
 
 from linref.events.merge import EventsMerge, EventsMergeAttribute
-from linref.events.spatial import ParallelProjector
+from linref.events.spatial import PointProjector, ParallelProjector
