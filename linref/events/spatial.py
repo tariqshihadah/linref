@@ -253,7 +253,10 @@ class PointProjector(SpatialProjector):
         # Perform spatial joins for matched groups
         joined = []
         for group_label, group in projected_groups:
-            joined_i = _joiner(group, target_groups[group_label])
+            joined_i = _joiner(
+                group.drop(columns=self._right_on), 
+                target_groups[group_label]
+            )
             joined.append(joined_i)
         joined = pd.concat(joined, axis=0)
 
