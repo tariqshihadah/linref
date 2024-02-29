@@ -244,7 +244,7 @@ class PointProjector(SpatialProjector):
         
         # Group data for column matching
         if len(self._left_on) == 0:
-            target_groups = {0: target}.items()
+            target_groups = {0: target}
             projected_groups = {0: projected}.items()
         else:
             target_groups = target.groupby(self._left_on)
