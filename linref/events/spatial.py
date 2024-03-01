@@ -88,17 +88,20 @@ class SpatialProjector(object):
             raise ValueError(
                 "Build routes parameter must be coercable to a boolean value.")
 
-    def _check_protected_labels(self):
+    def _check_protected_labels(self, ignore=[]):
         """
         Check that the location label is not already in the target dataframe.
         """
+        # Select test columns
+        test_cols = set(self.projected.columns) - set(ignore)
+
         # Check for invalid column names
-        if (self.target.route in self.projected.columns):
+        if (self.target.route in test_cols):
             raise ValueError(
                 f"Invalid column name '{self.target.route}' found in "
                 "projected geodataframe.")
-        if len(set(self.target.keys) & set(self.projected.columns)) > 0:
-            invalid = set(self.target.keys) & set(self.projected.columns)
+        if len(set(self.target.keys) & test_cols) > 0:
+            invalid = set(self.target.keys) & test_cols
             raise ValueError(
                 f"Target geodataframe contains at least one events collection "
                 f"key column name: {invalid}.")
@@ -140,7 +143,7 @@ class PointProjector(SpatialProjector):
         self._validate_ons(on, left_on, right_on)
         self.build_routes = build_routes
         # Check protected labels
-        self._check_protected_labels()
+        self._check_protected_labels(ignore=self._right_on)
 
     @property
     def buffer(self):
@@ -248,7 +251,7 @@ class PointProjector(SpatialProjector):
             target_groups = {0: target}
             projected_groups = {0: projected}.items()
         else:
-            target_groups = target.groupby(self._left_on)
+            target_groups = target.groupby(self._left_on).groups
             projected_groups = projected.groupby(self._right_on)
 
         # Perform spatial joins for matched groups
@@ -256,7 +259,7 @@ class PointProjector(SpatialProjector):
         for group_label, group in projected_groups:
             joined_i = _joiner(
                 group.drop(columns=self._right_on), 
-                target_groups[group_label]
+                target_groups[group_label if len(self._left_on) != 1 else group_label[0]]
             )
             joined.append(joined_i)
         joined = pd.concat(joined, axis=0)
@@ -271,7 +274,7 @@ class PointProjector(SpatialProjector):
         joined[self.loc_label] = locs
 
         # Prepare and return data
-        return self.__class__(
+        return self.target.__class__(
             joined.drop(columns=[self.target.route]),
             keys=self.target.keys,
             beg=self.loc_label,
