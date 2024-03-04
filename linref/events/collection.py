@@ -101,6 +101,7 @@ Modified:
 # DEPENDENCIES #
 ################
 
+from __future__ import annotations
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -712,7 +713,7 @@ class EventsFrame(object):
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
         agg_geometry=None, agg_routes=None, dropna=False, fillna=None, 
-        reorder=True, merge_lines=True):
+        reorder=True, merge_lines=True) -> EventsCollection:
         """
         Dissolve the events dataframe on a selection of event attributes.
 
@@ -930,7 +931,7 @@ class EventsFrame(object):
         return ec
 
     def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
-            dist_label='DISTANCE', build_routes=True, **kwargs):
+            dist_label='DISTANCE', build_routes=True, **kwargs) -> EventsCollection:
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -2084,7 +2085,7 @@ class EventsCollection(EventsFrame):
         # Return validated keys
         return keys
     
-    def round(self, decimals=0, factor=1, inplace=False):
+    def round(self, decimals=0, factor=1, inplace=False) -> EventsCollection:
         """
         Round the bounds of all events to the specified number of decimals 
         or to a specified rounding factor.
@@ -2117,7 +2118,7 @@ class EventsCollection(EventsFrame):
             ec = self.from_similar(df)
             return ec
         
-    def clip(self, lower=None, upper=None, inplace=False):
+    def clip(self, lower=None, upper=None, inplace=False) -> EventsCollection:
         """
         Clip the bounds of all events at the specified lower and upper values.
         
@@ -2154,7 +2155,7 @@ class EventsCollection(EventsFrame):
         which='both',
         labels=None,
         inplace=False
-    ):
+    ) -> EventsCollection:
         """
         Shift the bounds of all events by the specified value.
 
@@ -2242,7 +2243,7 @@ class EventsCollection(EventsFrame):
             ec.end = label_end
             return ec
 
-    def separate(self, eliminate_inside=False, inplace=False, **kwargs):
+    def separate(self, eliminate_inside=False, inplace=False, **kwargs) -> EventsCollection:
         """
         Separate the bounds of all events so that none directly overlap. 
         This is done using the rangel.RangeCollection.separate() method 
@@ -2325,7 +2326,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other):
+    def merge(self, other) -> EventsMerge:
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 
@@ -2630,3 +2631,5 @@ def check_compatibility(objs, errors='raise', **kwargs):
 
 from linref.events.merge import EventsMerge, EventsMergeAttribute
 from linref.events.spatial import ParallelProjector
+from typing import List, Union
+import geopandas as gpd

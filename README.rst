@@ -56,6 +56,7 @@ Version Notes
 0.1.1 (TBD)
 -------------------
 * Addition of array-like and dataframe label-based length parameter options to the ``EventsCollection.to_windows()`` method. This allows for the creation of segments based on a variable length.
+* Add some type hinting to the `collection` module.
 * Performance improvements
 * Various bug fixes, minor features
 
