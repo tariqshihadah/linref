@@ -101,6 +101,7 @@ Modified:
 # DEPENDENCIES #
 ################
 
+from __future__ import annotations
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -131,7 +132,7 @@ class EventsFrame(object):
 
     def __init__(
         self, df, keys=None, beg=None, end=None, geom=None, route=None, 
-        closed=None, sort=False, **kwargs):
+        closed=None, sort=False, **kwargs) -> None:
         # Log input values
         super(EventsFrame, self).__init__()
         self._df = df
@@ -144,7 +145,7 @@ class EventsFrame(object):
         self._sort = sort
         self.df = df
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Define representation components
         nm = f"{self.__class__.__name__}"
         kwargs = ['df']
@@ -163,14 +164,14 @@ class EventsFrame(object):
         return (self.get_group(key) for key in self.group_keys_unique)
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         """
         The collection's events dataframe.
         """
         return self._df
 
     @df.setter
-    def df(self, df):
+    def df(self, df) -> None:
         # Validate input
         if isinstance(df, pd.DataFrame) or isinstance(df, gpd.GeoDataFrame):
             # Sort dataframe
@@ -199,14 +200,14 @@ class EventsFrame(object):
                 "Input dataframe must be pandas DataFrame class instance.")
 
     @property
-    def size(self):
+    def size(self) -> int:
         """
         Return the size of the events dataframe.
         """
         return self._df.size
 
     @property
-    def shape(self):
+    def shape(self) -> tuple:
         """
         Return the shape of the events dataframe.
         """
@@ -218,7 +219,7 @@ class EventsFrame(object):
         """
         pass
 
-    def _sort_df(self, df):
+    def _sort_df(self, df) -> pd.DataFrame:
         """
         Sort the given dataframe by the collection's keys and begin/end 
         columns, returning the sorted dataframe.
@@ -226,7 +227,7 @@ class EventsFrame(object):
         return df.sort_values(
             by=self.keys + [self.beg, self.end], ascending=True)
 
-    def set_df(self, obj, inplace=False):
+    def set_df(self, obj, inplace=False) -> EventsFrame:
         """
         Set a new events dataframe.
         """
@@ -238,7 +239,7 @@ class EventsFrame(object):
         if not inplace:
             return ef
 
-    def sort(self, inplace=False):
+    def sort(self, inplace=False) -> EventsFrame:
         """
         Sort the events dataframe based on target columns.
         """
@@ -250,7 +251,7 @@ class EventsFrame(object):
         if not inplace:
             return ef
 
-    def cast_gdf(self, inplace=False, **kwargs):
+    def cast_gdf(self, inplace=False, **kwargs) -> EventsFrame:
         """
         Convert the events dataframe to a geodataframe, passing the input 
         keyword arguments, such as crs and geometry, to the gpd.GeoDataFrame 
@@ -268,7 +269,7 @@ class EventsFrame(object):
             ef.df = gdf
             return ef
 
-    def df_exportable(self):
+    def df_exportable(self) -> pd.DataFrame:
         """
         Return a dataframe which is optimized for exporting.
         """
@@ -284,7 +285,7 @@ class EventsFrame(object):
         return df
 
     @property
-    def keys(self):
+    def keys(self) -> list:
         """
         The list of column names within the events dataframe which are queried 
         to define specific events groups (e.g., events on a specific route).
@@ -292,11 +293,11 @@ class EventsFrame(object):
         return self._keys
 
     @property
-    def key_locs(self):
+    def key_locs(self) -> list:
         return self._key_locs
     
     @keys.setter
-    def keys(self, keys):
+    def keys(self, keys) -> None:
         # Address null input
         if keys is None:
             keys = []
@@ -322,14 +323,14 @@ class EventsFrame(object):
         self._key_locs = [self.columns.index(key) for key in keys]
 
     @property
-    def num_keys(self):
+    def num_keys(self) -> int:
         """
         The number of key columns within self.keys.
         """
         return len(self.keys)
     
     @property
-    def key_values(self):
+    def key_values(self) -> dict:
         """
         A dictionary of valid values for each key column.
         """
@@ -338,14 +339,14 @@ class EventsFrame(object):
         return values
 
     @property
-    def columns(self):
+    def columns(self) -> list:
         """
         A list of all columns within the events dataframe.
         """
         return self._df.columns.values.tolist()
 
     @property
-    def targets(self):
+    def targets(self) -> list:
         """
         A list of begin, end, and key columns within the events dataframe.
         """
@@ -354,7 +355,7 @@ class EventsFrame(object):
         return targets
 
     @property
-    def spatials(self):
+    def spatials(self) -> list:
         """
         A list of geometry and route columns within the events dataframe, if 
         defined.
@@ -368,7 +369,7 @@ class EventsFrame(object):
         return spatials
 
     @property
-    def others(self):
+    def others(self) -> list:
         """
         A list of columns within the events dataframe which are not the begin, 
         end, or key columns.
@@ -379,7 +380,7 @@ class EventsFrame(object):
         return others
 
     @property
-    def groups(self):
+    def groups(self) -> pd.core.groupby.generic.DataFrameGroupBy:
         """
         The pandas GroupBy of the events dataframe, grouped by the collection's 
         key columns. This defines the basis for key queries.
@@ -387,27 +388,27 @@ class EventsFrame(object):
         return self._groups
 
     @property
-    def group_keys(self):
+    def group_keys(self) -> list:
         return list(map(tuple, self.df.values[:, self.key_locs]))
     
     @property
-    def group_keys_unique(self):
+    def group_keys_unique(self) -> list:
         return list(set(map(tuple, self.df.values[:, self.key_locs])))
     
     @property
-    def beg(self):
+    def beg(self) -> str:
         return self._beg
     
     @property
-    def beg_loc(self):
+    def beg_loc(self) -> int:
         return self._beg_loc
 
     @property
-    def begs(self):
+    def begs(self) -> np.ndarray:
         return self.df.values[:, self.beg_loc]
     
     @beg.setter
-    def beg(self, beg):
+    def beg(self, beg) -> None:
         # Address null input
         if beg is None:
             raise ValueError("Begin location column cannot be None.")
@@ -420,19 +421,19 @@ class EventsFrame(object):
         self._beg_loc = self.columns.index(beg)
 
     @property
-    def end(self):
+    def end(self) -> str:
         return self._end
     
     @property
-    def end_loc(self):
+    def end_loc(self) -> int:
         return self._end_loc
     
     @property
-    def ends(self):
+    def ends(self) -> np.ndarray:
         return self.df.values[:, self.end_loc]
     
     @end.setter
-    def end(self, end):
+    def end(self, end) -> None:
         # Address null input
         if end is None:
             end = self.beg
@@ -445,22 +446,22 @@ class EventsFrame(object):
         self._end_loc = self.columns.index(end)
 
     @property
-    def lengths(self):
+    def lengths(self) -> np.ndarray:
         """
         Lengths of all event ranges.
         """
         return self.ends - self.begs
 
     @property
-    def geom(self):
+    def geom(self) -> str:
         return self._geom
     
     @property
-    def geom_loc(self):
+    def geom_loc(self) -> int:
         return self._geom_loc
     
     @geom.setter
-    def geom(self, geom):
+    def geom(self, geom) -> None:
         # Address null input
         if geom is None:
             pass
@@ -473,7 +474,7 @@ class EventsFrame(object):
         self._geom_loc = self.columns.index(geom) if not geom is None else None
 
     @property
-    def is_point(self):
+    def is_point(self) -> bool:
         """
         Returns True if the collection's beg and end columns are the same, 
         implying that it is a collection of point events.
@@ -481,15 +482,15 @@ class EventsFrame(object):
         return self._beg == self._end
 
     @property
-    def route(self):
+    def route(self) -> str:
         return self._route
     
     @property
-    def route_loc(self):
+    def route_loc(self) -> int:
         return self._route_loc
     
     @route.setter
-    def route(self, route):
+    def route(self, route) -> None:
         # Address null input
         if route is None:
             pass
@@ -502,7 +503,7 @@ class EventsFrame(object):
         self._route_loc = self.columns.index(route) \
                 if not route is None else None
 
-    def parse_routes(self, col=None, inplace=False, errors='raise'):
+    def parse_routes(self, col=None, inplace=False, errors='raise') -> EventsCollection:
         """
         Parse MLSRoutes data in the provided column, which contains either 
         MLSRoute objects, WKT data for MULTILINESTRINGs or LINESTRINGs with 
@@ -560,7 +561,7 @@ class EventsFrame(object):
             return ec
 
     @property
-    def closed(self):
+    def closed(self) -> str:
         """
         Collection parameter for whether event intervals are closed on the 
         left-side, right-side, both or neither.
@@ -568,14 +569,14 @@ class EventsFrame(object):
         return self._closed
 
     @closed.setter
-    def closed(self, closed):
+    def closed(self, closed) -> None:
         self.set_closed(closed, inplace=True)
     
     @property
-    def shape(self):
+    def shape(self) -> tuple:
         return self.df.shape
     
-    def _validate_cols(self, cols=None, require=False):
+    def _validate_cols(self, cols=None, require=False) -> list:
         """
         Process input columns as list, string, or None, converting to list.
         """
@@ -603,7 +604,7 @@ class EventsFrame(object):
         # Return validated columns
         return cols
 
-    def iter_groups(self):
+    def iter_groups(self) -> iter:
         """
         Return an iterator which will iterate through all groups in the 
         collection, yielding each group's key as well as the associated 
@@ -611,7 +612,7 @@ class EventsFrame(object):
         """
         return ((key, self.get_group(key)) for key in self.group_keys_unique)
 
-    def build_routes(self, label='route', errors='raise'):
+    def build_routes(self, label='route', errors='raise') -> None:
         """
         Build MLSRoute instances for each event based on available geometry 
         and begin and end locations.
@@ -643,7 +644,7 @@ class EventsFrame(object):
         self.df[label] = routes
         self._route = label
 
-    def copy(self, deep=False):
+    def copy(self, deep=False) -> EventsFrame:
         """
         Create an exact copy of the events class instance.
         
@@ -657,7 +658,7 @@ class EventsFrame(object):
         else:
             return copy.copy(self)
     
-    def set_closed(self, closed=None, inplace=False):
+    def set_closed(self, closed=None, inplace=False) -> EventsCollection:
         """
         Change whether ranges are closed on left, right, both, or neither side. 
         
@@ -691,7 +692,7 @@ class EventsFrame(object):
             return ec
 
     def geometry_from_xy(self, x, y, col_name='geometry', crs=None, 
-            inplace=False):
+            inplace=False) -> EventsFrame:
         """
         Use X and Y coordinates in the events dataframe to generate point 
         geometry.
@@ -712,7 +713,7 @@ class EventsFrame(object):
     
     def dissolve(self, attr=None, aggs=None, agg_func=None, agg_suffix='_agg', 
         agg_geometry=None, agg_routes=None, dropna=False, fillna=None, 
-        reorder=True, merge_lines=True):
+        reorder=True, merge_lines=True) -> EventsCollection:
         """
         Dissolve the events dataframe on a selection of event attributes.
 
@@ -929,8 +930,8 @@ class EventsFrame(object):
             closed=self.closed, missing_data='ignore')
         return ec
 
-    def project(self, other, buffer=100, nearest=True, loc_label='LOC', 
-            dist_label='DISTANCE', build_routes=True, **kwargs):
+    def project(self, other, buffer=100, nearest=True, on=None, left_on=None, 
+            right_on=None, loc_label='LOC', build_routes=True, **kwargs) -> EventsFrame:
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -949,6 +950,13 @@ class EventsFrame(object):
             Whether to choose only the nearest match within the defined buffer. 
             If False, all matches will be returned. If True, when multiple 
             equidistant points exist, choose the first result that appears.
+        on, left_on, right_on : label or list, optional
+            Column label or list of column labels which must be matched in 
+            both the left and right dataframes. If not provided, no matching 
+            will be enforced on joined data. Can be provided with `on` if 
+            matching labels are the same in both dataframes or separately 
+            using `left_on` and `right_on` if matching labels are different 
+            in the left and right dataframes.
         loc_label, dist_label : label
             Labels to be used for created columns for projected locations on 
             target events groups and nearest point distances between target 
@@ -960,82 +968,15 @@ class EventsFrame(object):
             Keyword arguments to be passed to the EventsFrame constructor 
             upon completion of the projection.
         """
-        # Validate input geodataframe
-        if not isinstance(other, gpd.GeoDataFrame):
-            raise TypeError("Other object must be gpd.GeoDataFrame instance.")
-        else:
-            try:
-                other_geometry = other.geometry.name
-            except AttributeError:
-                raise AttributeError(
-                    "No geometry data set in other geodataframe.")
-        other = other.copy()
+        # Create projector object
+        proj = PointProjector(
+            self, other, buffer=buffer, nearest=nearest, on=on, 
+            left_on=left_on, right_on=right_on, loc_label=loc_label,
+            build_routes=build_routes, **kwargs)
+        # Perform projection
+        return proj.match()
 
-        # Check for invalid column names
-        if (self.route in other.columns):
-            raise ValueError(
-                f"Invalid column name '{self.route}' found in target "
-                "geodataframe.")
-        if len(set(self.keys) & set(other.columns)) > 0:
-            invalid = set(self.keys) & set(other.columns)
-            raise ValueError(
-                f"Target geodataframe contains at least one events collection "
-                f"key column name {invalid}.")
-
-        # Ensure that geometries and routes are available
-        if self.geom is None:
-            raise ValueError(
-                "No geometry found in events dataframe. If valid shapely "
-                "geometries are available in the dataframe, set this with the "
-                f"{self.__class__.__name__}'s geom property.")
-        elif self.route is None:
-            if build_routes:
-                self.build_routes()
-            else:
-                raise ValueError(
-                    "No routes found in events dataframe. If valid shapely "
-                    "geometries are available in the dataframe, create routes "
-                    "by calling the build_routes() method on the "
-                    f"{self.__class__.__name__} class instance.")
-        
-        # Join the other geodataframe to this one
-        select_cols = self.keys + [self.route, self.geom]
-        if nearest:
-            joined = other.sjoin_nearest(
-                self.df[select_cols],
-                max_distance=buffer,
-                how='left'
-            )
-            # Drop duplicates (required for equidistant ties)
-            joined = joined[~joined.index.duplicated(keep='first')]
-        else:
-            # Buffer geometry for spatial join
-            buffered_geoms = self.df.geometry.buffer(buffer)
-            joined = other.sjoin(
-                self.df[select_cols].set_geometry(buffered_geoms),
-                how='left'
-            )
-
-        # Project input geometries onto event geometries
-        def _project(r):
-            try:
-                return r[self.route].project(r[other_geometry])
-            except AttributeError:
-                return
-        locs = joined.apply(_project, axis=1)
-        joined[loc_label] = locs
-        # return joined # modified to return EC 7/27/2022
-        # Prepare and return data
-        return self.__class__(
-            joined.drop(columns=[self.route]),
-            keys=self.keys,
-            beg=loc_label,
-            closed=self.closed,
-            missing_data='ignore',
-            **kwargs
-        )
-
-    def project_boundaries(target, other, **kwargs):
+    def project_boundaries(target, other, **kwargs) -> EventsFrame:
         """
         Project an input polygon dataframe onto the events dataframe, 
         producing linearly referenced point locations everywhere the events 
@@ -1065,7 +1006,7 @@ class EventsFrame(object):
         kwargs['nearest'] = False
         return target.project(gdf, **kwargs)
 
-    def to_grid(self, dissolve=False, **kwargs):
+    def to_grid(self, dissolve=False, **kwargs) -> EventsFrame:
         """
         Use the events dataframe to create a grid of zero-length, equidistant 
         point events which span the bounds of each event.
@@ -1151,7 +1092,7 @@ class EventsFrame(object):
     def to_windows(
             self, length=1.0, dissolve=False, retain=True, endpoint=False, 
             **kwargs
-        ):
+        ) -> EventsFrame:
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -2084,7 +2025,7 @@ class EventsCollection(EventsFrame):
         # Return validated keys
         return keys
     
-    def round(self, decimals=0, factor=1, inplace=False):
+    def round(self, decimals=0, factor=1, inplace=False) -> EventsCollection:
         """
         Round the bounds of all events to the specified number of decimals 
         or to a specified rounding factor.
@@ -2117,7 +2058,7 @@ class EventsCollection(EventsFrame):
             ec = self.from_similar(df)
             return ec
         
-    def clip(self, lower=None, upper=None, inplace=False):
+    def clip(self, lower=None, upper=None, inplace=False) -> EventsCollection:
         """
         Clip the bounds of all events at the specified lower and upper values.
         
@@ -2154,7 +2095,7 @@ class EventsCollection(EventsFrame):
         which='both',
         labels=None,
         inplace=False
-    ):
+    ) -> EventsCollection:
         """
         Shift the bounds of all events by the specified value.
 
@@ -2242,7 +2183,7 @@ class EventsCollection(EventsFrame):
             ec.end = label_end
             return ec
 
-    def separate(self, eliminate_inside=False, inplace=False, **kwargs):
+    def separate(self, eliminate_inside=False, inplace=False, **kwargs) -> EventsCollection:
         """
         Separate the bounds of all events so that none directly overlap. 
         This is done using the rangel.RangeCollection.separate() method 
@@ -2325,7 +2266,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other):
+    def merge(self, other) -> EventsMerge:
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 
@@ -2345,7 +2286,7 @@ class EventsCollection(EventsFrame):
         return em
 
     def project_parallel(self, other, samples=3, buffer=100, match='all', 
-            choose=1, sort_locs=True, build_routes=True, **kwargs):
+            choose=1, sort_locs=True, build_routes=True, **kwargs) -> EventsCollection:
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 
@@ -2456,7 +2397,7 @@ class EventsCollection(EventsFrame):
                 raise ValueError("No defined group keys.")
         return group
 
-    def get_subset(self, keys, reduce=True, **kwargs):
+    def get_subset(self, keys, reduce=True, **kwargs) -> EventsCollection:
         """
         Retrieve a subset of the events collection based on the provided key 
         values or slices. Returned events must satisfy all keys.
@@ -2511,7 +2452,7 @@ class EventsCollection(EventsFrame):
                 "error.")
         return ec
 
-    def get_matching(self, other, **kwargs):
+    def get_matching(self, other, **kwargs) -> EventsCollection:
         """
         Retrieve a subset of the events collection based on the unique group 
         values present in another provided events collection.
@@ -2543,7 +2484,7 @@ class EventsCollection(EventsFrame):
 # COMMON FUNCTIONS #
 ####################
 
-def from_standard(df, require_end=False, **kwargs):
+def from_standard(df, require_end=False, **kwargs) -> EventsCollection:
     """
     Create an EventsCollection from the input dataframe assuming standard 
     column labels. These standard labels can be modified on the class 
@@ -2582,7 +2523,7 @@ def from_standard(df, require_end=False, **kwargs):
     return ec
 
 
-def check_compatibility(objs, errors='raise', **kwargs):
+def check_compatibility(objs, errors='raise', **kwargs) -> bool:
     """
     Check if the input list of EventsCollections are all compatible for 
     merging, unifying, or similar relational processes. Errors will be raised 
@@ -2629,4 +2570,4 @@ def check_compatibility(objs, errors='raise', **kwargs):
 #####################
 
 from linref.events.merge import EventsMerge, EventsMergeAttribute
-from linref.events.spatial import ParallelProjector
+from linref.events.spatial import PointProjector, ParallelProjector

@@ -24,7 +24,7 @@ Created:
 3/3/2022
 
 Modified:
-3/3/2022
+2/29/2024
 
 ===============================================================================
 """
@@ -42,29 +42,7 @@ from functools import wraps
 from linref.various.geospatial import join_nearby
 
 
-class ParallelProjector(object):
-    """
-    Experimental class for performing projections of linear geometries onto 
-    linear events collections.
-
-    The methodology used by this class involves the following steps:
-
-    1. Create sample points along the projected geometries using a fixed 
-    number of samples per geometry.
-
-    2. Spatially join these sample points to the target EventsCollection's 
-    geometry using the provided buffer distance to identify candidate matches.
-
-    3. Process all possible matches using the .match() method to produce 
-    linear referencing information for the projected geometries based on that 
-    of the target EventsCollection.
-    """
-
-    def __init__(self, target, projected, samples=3, buffer=100) -> None:
-        self.target = target
-        self.projected = projected
-        self.samples = samples
-        self.buffer = buffer
+class SpatialProjector(object):
 
     @property
     def target(self):
@@ -97,7 +75,245 @@ class ParallelProjector(object):
                 "Input projected object must be valid gpd.GeoDataFrame "
                 "instance.")
         self._projected = obj
+
+    @property
+    def build_routes(self):
+        return self._build_routes
     
+    @build_routes.setter
+    def build_routes(self, build_routes):
+        try:
+            self._build_routes = bool(build_routes)
+        except:
+            raise ValueError(
+                "Build routes parameter must be coercable to a boolean value.")
+
+    def _check_protected_labels(self, ignore=[]):
+        """
+        Check that the location label is not already in the target dataframe.
+        """
+        # Select test columns
+        test_cols = set(self.projected.columns) - set(ignore)
+
+        # Check for invalid column names
+        if (self.target.route in test_cols):
+            raise ValueError(
+                f"Invalid column name '{self.target.route}' found in "
+                "projected geodataframe.")
+        if len(set(self.target.keys) & test_cols) > 0:
+            invalid = set(self.target.keys) & test_cols
+            raise ValueError(
+                f"Target geodataframe contains at least one events collection "
+                f"key column name: {invalid}.")
+
+        # Ensure that geometries and routes are available
+        if self.target.geom is None:
+            raise ValueError(
+                "No geometry found in events dataframe. If valid shapely "
+                "geometries are available in the dataframe, set this with the "
+                f"{self.__class__.__name__}'s geom property.")
+        elif self.target.route is None:
+            if self.build_routes:
+                self.target.build_routes()
+            else:
+                raise ValueError(
+                    "No routes found in events dataframe. If valid shapely "
+                    "geometries are available in the dataframe, create routes "
+                    "by calling the build_routes() method on the "
+                    f"{self.__class__.__name__} class instance.")
+    
+
+class PointProjector(SpatialProjector):
+    """
+    Class for performing basic projections of geometries onto linear events 
+    collections.
+    """
+
+    def __init__(
+            self, target, projected, buffer=None, nearest=None, on=None, 
+            left_on=None, right_on=None, loc_label=None, build_routes=None, 
+            **kwargs
+        ) -> None:
+        # Log inputs
+        self.target = target
+        self.projected = projected
+        self.buffer = buffer
+        self.nearest = nearest
+        self.loc_label = loc_label
+        self._validate_ons(on, left_on, right_on)
+        self.build_routes = build_routes
+        # Check protected labels
+        self._check_protected_labels(ignore=self._right_on)
+
+    @property
+    def buffer(self):
+        return self._buffer
+
+    @buffer.setter
+    def buffer(self, buffer):
+        # Validate
+        try:
+            buffer = float(buffer)
+            assert buffer >= 0
+            self._buffer = buffer
+        except:
+            raise ValueError(
+                "Buffer parameter must be a non-negative numeric value.")
+        
+    @property
+    def buffered(self):
+        return self.target.df.geometry.buffer(self._buffer)
+        
+    @property
+    def nearest(self):
+        return self._nearest
+    
+    @nearest.setter
+    def nearest(self, nearest):
+        try:
+            self._nearest = bool(nearest)
+        except:
+            raise ValueError(
+                "Nearest parameter must be coercable to a boolean value."
+            )
+        
+    @property
+    def loc_label(self):
+        return self._loc_label
+    
+    @loc_label.setter
+    def loc_label(self, loc_label):
+        if loc_label is None:
+            raise ValueError("Location label parameter must be provided.")
+        self._loc_label = loc_label
+
+    def _validate_ons(self, on=None, left_on=None, right_on=None):
+        # Check matching parameters
+        if on is None and left_on is None and right_on is None:
+            left_on = []
+            right_on = []
+        elif not on is None:
+            left_on = right_on = self.target._validate_cols(on)
+        elif (not left_on is None and right_on is None) or \
+             (left_on is None and not right_on is None):
+            raise ValueError(
+                "If providing separate left_on and right_on parameters, "
+                "both must be provided.")
+        else:
+            left_on = self.target._validate_cols(left_on)
+            right_on = self.target._validate_cols(right_on)
+            if not len(left_on) == len(right_on):
+                raise ValueError(
+                    "If providing separate left_on and right_on parameters, "
+                    "both must be the same length.")
+        self._left_on = left_on
+        self._right_on = right_on
+
+    def match(self, **kwargs):
+        """
+        Perform the actual matching of nearby geometries to one another based 
+        on input analysis parameters, producing a dataframe which has been 
+        applied to the target EventsCollection's linear referencing system.
+        """
+        # Identify selected columns from target dataframe
+        select_cols = self.target.keys + [self.target.route, self.target.geom]
+        # Select the appropriate spatial joining approach
+        if self.nearest:
+            # Prepare joining dataframes
+            projected = self.projected
+            target = self.target.df[select_cols]
+            def _joiner(left, right):
+                joined = gpd.sjoin_nearest(
+                    left,
+                    right,
+                    max_distance=self._buffer,
+                    how='left'
+                )
+                # Drop duplicates (required for equidistant ties)
+                joined = joined[~joined.index.duplicated(keep='first')]
+                return joined
+        else:
+            # Prepare joining dataframes
+            projected = self.projected
+            target = self.target.df.set_geometry(self.buffered)[select_cols]
+            buffered_geoms = self.target.df.geometry.buffer(self._buffer)
+            def _joiner(left, right):
+                # Buffer geometry for spatial join
+                joined = gpd.sjoin(
+                    left,
+                    self.target.df[select_cols].set_geometry(buffered_geoms),
+                    how='left'
+                )
+                return joined
+        
+        # Group data for column matching
+        if len(self._left_on) == 0:
+            target_groups = {0: target}
+            projected_groups = {0: projected}.items()
+        else:
+            target_groups = target.groupby(self._left_on).groups
+            projected_groups = projected.groupby(self._right_on)
+
+        # Perform spatial joins for matched groups
+        joined = []
+        for group_label, group in projected_groups:
+            joined_i = _joiner(
+                group.drop(columns=self._right_on), 
+                target_groups[group_label if len(self._left_on) != 1 else group_label[0]]
+            )
+            joined.append(joined_i)
+        joined = pd.concat(joined, axis=0)
+
+        # Project input geometries onto event geometries
+        def _project(r):
+            try:
+                return r[self.target.route].project(r[self.projected.geometry.name])
+            except AttributeError:
+                return
+        locs = joined.apply(_project, axis=1)
+        joined[self.loc_label] = locs
+
+        # Prepare and return data
+        return self.target.__class__(
+            joined.drop(columns=[self.target.route]),
+            keys=self.target.keys,
+            beg=self.loc_label,
+            closed=self.target.closed,
+            missing_data='ignore',
+            **kwargs
+        )
+
+
+class ParallelProjector(SpatialProjector):
+    """
+    Experimental class for performing projections of linear geometries onto 
+    linear events collections.
+
+    The methodology used by this class involves the following steps:
+
+    1. Create sample points along the projected geometries using a fixed 
+    number of samples per geometry.
+
+    2. Spatially join these sample points to the target EventsCollection's 
+    geometry using the provided buffer distance to identify candidate matches.
+
+    3. Process all possible matches using the .match() method to produce 
+    linear referencing information for the projected geometries based on that 
+    of the target EventsCollection.
+    """
+
+    def __init__(
+            self, target, projected, samples=3, buffer=100, build_routes=None, 
+            **kwargs
+        ) -> None:
+        self.target = target
+        self.projected = projected
+        self.samples = samples
+        self.buffer = buffer
+        self.build_routes = build_routes
+        # Check protected labels
+        self._check_protected_labels()
+
     @property
     def samples(self):
         return self._samples
