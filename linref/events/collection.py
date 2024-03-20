@@ -404,7 +404,7 @@ class EventsFrame(object):
 
     @property
     def begs(self):
-        return self.df.values[:, self.beg_loc]
+        return self.df.iloc[:, self.beg_loc].values
     
     @beg.setter
     def beg(self, beg):
@@ -429,7 +429,7 @@ class EventsFrame(object):
     
     @property
     def ends(self):
-        return self.df.values[:, self.end_loc]
+        return self.df.iloc[:, self.end_loc].values
     
     @end.setter
     def end(self, end):
