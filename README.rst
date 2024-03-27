@@ -55,7 +55,7 @@ Version Notes
 =============
 0.1.1 (TBD)
 -------------------
-* Addition of array-like and dataframe label-based length parameter options to the ``EventsCollection.to_windows()`` method. This allows for the creation of segments based on a variable length.
+* Addition of array-like, dataframe label-based, and callable ``length`` parameter options to the ``EventsCollection.to_windows()`` method and ``distance`` parameter to the ``EventsCollection.shift()`` method. This allows for the creation of segments based on a variable length. This will be made available to other methods in future versions as well.
 * Performance improvements
 * Various bug fixes, minor features
 
