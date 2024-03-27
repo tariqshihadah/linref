@@ -1159,7 +1159,7 @@ class EventsFrame(object):
 
         Parameters
         ----------
-        length : numerical, array-like, or label, default 1.0
+        length : scalar, array-like, or label, default 1.0
             A length to cut down all events to. If an array is provided, must 
             have a length equal to the number of records in the events 
             dataframe. If a label is provided, it must be a valid label within 
@@ -1199,28 +1199,16 @@ class EventsFrame(object):
         endpoint : bool, default False
             Add a point event at the end of each event range.
         """
+        # Validate
+        lengths = self._validate_array_input(
+            length, 'length', dtypes=(int, float))
+
         # Dissolve events
         if dissolve:
             events = self.dissolve().df
         else:
             events = self.df
-        # Define cut lengths
-        if isinstance(length, str):
-            if not length in events.columns:
-                raise ValueError(f"Provided length label '{length}' is not "
-                    "present within the events dataframe.")
-            else:
-                lengths = events[length].values
-        elif isinstance(length, (int, float)):
-            lengths = np.full(events.shape[0], length)
-        else:
-            try:
-                assert len(length) == events.shape[0]
-                lengths = length
-            except:
-                raise ValueError("Provided length array must be an array-like "
-                    "and have a length equal to the number of records in the "
-                    "events dataframe.")
+
         # Iterate over roads and create sliding window segments
         gen = zip(
             events[self.keys + [self.beg, self.end]].values,
@@ -2084,6 +2072,49 @@ class EventsCollection(EventsFrame):
         # Return validated keys
         return keys
     
+    def _validate_array_input(self, value, dtypes=(int, float), label='value'):
+        """
+        Validate the input to ensure it is a single value of the required 
+        type(s), an array-like of such values with a length equal to the 
+        number of records in the events dataframe, or a label of a column in 
+        the events dataframe.
+        """
+        # Validate value input
+        if value is None:
+            raise ValueError("No input {label} provided.")
+        elif isinstance(value, dtypes):
+            return np.full(self.shape[0], value)
+        elif isinstance(value, str):
+            if not value in self.df.columns:
+                raise ValueError(
+                    f"If provided as a string, input {label} '{value}' must "
+                    "be a valid column label in the events dataframe."
+                )
+            return self.df[value].values
+        elif isinstance(value, (list, tuple)):
+            if len(value) != self.shape[0]:
+                raise ValueError(
+                    "Input {label} array must have a length equal to the "
+                    "number of records in the events dataframe."
+                )
+            return np.array(value)
+        elif isinstance(value, np.ndarray):
+            if value.ndim > 1:
+                raise ValueError(
+                    "Input {label} array must be 1-dimensional."
+                )
+            if len(value) != self.shape[0]:
+                raise ValueError(
+                    "Input {label} array must have a length equal to the "
+                    "number of records in the events dataframe."
+                )
+            return value
+        else:
+            raise ValueError(
+                "Input {label} must be a of dtype {dtypes}, an array-like "
+                "of the same, or a column label in the events dataframe."
+            )
+    
     def round(self, decimals=0, factor=1, inplace=False):
         """
         Round the bounds of all events to the specified number of decimals 
@@ -2160,9 +2191,12 @@ class EventsCollection(EventsFrame):
 
         Parameters
         ----------
-        distance : scalar, default 0
+        distance : scalar, array-like, or column label, default 0
             The amount to shift each event bound by. Negative values will 
-            result in an inversion of the `direction` parameter.
+            result in an inversion of the `direction` parameter. Can be 
+            provided as a single scalar value, an array-like of values with a 
+            length equal to the number of records in the events dataframe, or 
+            a column label in the events dataframe.
         direction : {'positive', 'negative', 'both'}, default 'positive'
             Which direction the event bounds should be shifted.
 
@@ -2187,6 +2221,8 @@ class EventsCollection(EventsFrame):
         # Validation
         _ops_direction = {'positive', 'negative', 'both'}
         _ops_which = {'begs', 'ends', 'both'}
+        distance = self._validate_array_input(
+            distance, label='distance', dtypes=(int, float))
         if not direction in _ops_direction:
             raise ValueError(
                 f"Input `direction` parameter must be one of {_ops_direction}")
