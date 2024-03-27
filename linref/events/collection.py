@@ -1201,7 +1201,7 @@ class EventsFrame(object):
         """
         # Validate
         lengths = self._validate_array_input(
-            length, 'length', dtypes=(int, float))
+            length, label='length', dtypes=(int, float))
 
         # Dissolve events
         if dissolve:
@@ -2072,47 +2072,61 @@ class EventsCollection(EventsFrame):
         # Return validated keys
         return keys
     
-    def _validate_array_input(self, value, dtypes=(int, float), label='value'):
+    def _validate_array_input(self, value, label='value', dtypes=(int, float)):
         """
         Validate the input to ensure it is a single value of the required 
         type(s), an array-like of such values with a length equal to the 
-        number of records in the events dataframe, or a label of a column in 
-        the events dataframe.
+        number of records in the events dataframe, a pd.Series which aligns 
+        with the events dataframe, or a label of a column in the events 
+        dataframe.
         """
         # Validate value input
         if value is None:
-            raise ValueError("No input {label} provided.")
+            raise ValueError(f"No input {label} provided.")
         elif isinstance(value, dtypes):
             return np.full(self.shape[0], value)
         elif isinstance(value, str):
             if not value in self.df.columns:
                 raise ValueError(
                     f"If provided as a string, input {label} '{value}' must "
-                    "be a valid column label in the events dataframe."
+                    f"be a valid column label in the events dataframe."
                 )
             return self.df[value].values
         elif isinstance(value, (list, tuple)):
             if len(value) != self.shape[0]:
                 raise ValueError(
-                    "Input {label} array must have a length equal to the "
-                    "number of records in the events dataframe."
+                    f"Input {label} array must have a length equal to the "
+                    f"number of records in the events dataframe."
                 )
             return np.array(value)
         elif isinstance(value, np.ndarray):
             if value.ndim > 1:
                 raise ValueError(
-                    "Input {label} array must be 1-dimensional."
+                    f"Input {label} array must be 1-dimensional."
                 )
             if len(value) != self.shape[0]:
                 raise ValueError(
-                    "Input {label} array must have a length equal to the "
-                    "number of records in the events dataframe."
+                    f"Input {label} array must have a length equal to the "
+                    f"number of records in the events dataframe."
                 )
             return value
+        elif isinstance(value, pd.Series):
+            if len(value) != self.shape[0]:
+                raise ValueError(
+                    f"Input {label} series must have a length equal to the "
+                    f"number of records in the events dataframe."
+                )
+            try:
+                return value.reindex_like(self.df).values
+            except:
+                raise ValueError(
+                    f"Input {label} series must have an index which aligns "
+                    f"with the events dataframe."
+                )
         else:
             raise ValueError(
-                "Input {label} must be a of dtype {dtypes}, an array-like "
-                "of the same, or a column label in the events dataframe."
+                f"Input {label} must be a of dtype {dtypes}, an array-like "
+                f"of the same, or a column label in the events dataframe."
             )
     
     def round(self, decimals=0, factor=1, inplace=False):
