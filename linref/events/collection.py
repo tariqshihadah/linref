@@ -1159,12 +1159,12 @@ class EventsFrame(object):
 
         Parameters
         ----------
-        length : scalar, array-like, or label, default 1.0
-            A length to cut down all events to. If an array is provided, must 
-            have a length equal to the number of records in the events 
-            dataframe. If a label is provided, it must be a valid label within 
-            the events dataframe, containing valid numerical data defining 
-            segment lengths. Not valid if dissolve=True.
+        length : scalar, array-like, label, or callable, default 1.0
+            A length to cut down all events to. Can be provided as a single 
+            scalar value, an array-like of values with a length equal to the 
+            number of records in the events dataframe, a column label in the 
+            events dataframe, or a callable which can be applied to the events 
+            dataframe along axis=1. Not valid if dissolve=True.
         steps : int, default 1
             A number of steps per window length. The resulting step length will 
             be equal to length / steps. For non-overlapped windows, use a steps 
@@ -2077,8 +2077,9 @@ class EventsCollection(EventsFrame):
         Validate the input to ensure it is a single value of the required 
         type(s), an array-like of such values with a length equal to the 
         number of records in the events dataframe, a pd.Series which aligns 
-        with the events dataframe, or a label of a column in the events 
-        dataframe.
+        with the events dataframe, a label of a column in the events 
+        dataframe, or a callable function which can be applied to the events 
+        dataframe along axis=1 to generate the required values.
         """
         # Validate value input
         if value is None:
@@ -2123,10 +2124,14 @@ class EventsCollection(EventsFrame):
                     f"Input {label} series must have an index which aligns "
                     f"with the events dataframe."
                 )
+        elif callable(value):
+            return self.df.apply(value, axis=1).values
         else:
             raise ValueError(
                 f"Input {label} must be a of dtype {dtypes}, an array-like "
-                f"of the same, or a column label in the events dataframe."
+                f"of the same, a column label in the events dataframe, or a "
+                f"callable which can be applied to the events dataframe along "
+                f"axis=1."
             )
     
     def round(self, decimals=0, factor=1, inplace=False):
@@ -2205,12 +2210,13 @@ class EventsCollection(EventsFrame):
 
         Parameters
         ----------
-        distance : scalar, array-like, or column label, default 0
+        distance : scalar, array-like, label, or callable, default 0
             The amount to shift each event bound by. Negative values will 
             result in an inversion of the `direction` parameter. Can be 
             provided as a single scalar value, an array-like of values with a 
-            length equal to the number of records in the events dataframe, or 
-            a column label in the events dataframe.
+            length equal to the number of records in the events dataframe, 
+            a column label in the events dataframe, or a callable which can 
+            be applied to the events dataframe along axis=1.
         direction : {'positive', 'negative', 'both'}, default 'positive'
             Which direction the event bounds should be shifted.
 
