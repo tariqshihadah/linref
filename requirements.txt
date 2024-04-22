@@ -8,3 +8,4 @@ scipy>=1.4.1
 build
 twine
 ipython
+ipykernel
