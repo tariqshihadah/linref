@@ -50,15 +50,19 @@ class EventsCollection_Base(object):
     def overlay(self):
         pass
 
+    @deprecate_geometry
     def round(self):
         pass
 
+    @deprecate_geometry
     def clip(self):
         pass
 
+    @deprecate_geometry
     def shift(self):
         pass
 
+    @deprecate_geometry
     def separate(self):
         pass
 
