@@ -347,10 +347,10 @@ class EventsFrame(object):
     @property
     def targets(self):
         """
-        A list of begin, end, and key columns within the events dataframe.
+        A list of key, begin, and end columns within the events dataframe.
         """
         # Define target columns
-        targets = [self.beg, self.end] + self.keys
+        targets = self.keys + [self.beg, self.end]
         return targets
 
     @property
