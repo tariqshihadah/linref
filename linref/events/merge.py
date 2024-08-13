@@ -298,6 +298,50 @@ class EventsMergeAttribute(object):
             return res
         return self._to_pandas(*self._agg(_func, empty=empty))
 
+    def max(self, empty=None, nanmax=False):
+        """
+        Return the max of all intersected event values.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        def _func(arr, trace, **kwargs):
+            # Choose all intersecting events
+            if nanmax:
+                res = [np.nanmax(arr[mask_i, :], axis=0).T for \
+                    mask_i in trace.mask]
+            else:
+                res = [np.max(arr[mask_i, :], axis=0).T for \
+                    mask_i in trace.mask]
+            return res
+        return self._to_pandas(*self._agg(_func, empty=empty))
+
+    def min(self, empty=None, nanmin=False):
+        """
+        Return the min of all intersected event values.
+
+        Parameters
+        ----------
+        empty : scalar, string, or other pd.Series-compatible value, optional
+            Value to use to fill when there is no matching events group and 
+            aggregation cannot be performed. If None, values will be filled 
+            with np.nan.
+        """
+        def _func(arr, trace, **kwargs):
+            # Choose all intersecting events
+            if nanmin:
+                res = [np.nanmin(arr[mask_i, :], axis=0).T for \
+                    mask_i in trace.mask]
+            else:
+                res = [np.min(arr[mask_i, :], axis=0).T for \
+                    mask_i in trace.mask]
+            return res
+        return self._to_pandas(*self._agg(_func, empty=empty))
+
     def sumproduct(self, empty=None, normalized=False, dropna=False):
         """
         Return the sum of all event values multiplied by the weights of the 
