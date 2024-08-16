@@ -872,7 +872,7 @@ class EventsFrame(object):
             
             # Identify breaks between consecutive events
             rc = RangeCollection(begs=begs_i, ends=ends_i, centers=None,
-                                 copy=False, sort=False)
+                                 copy=None, sort=False)
             consecutive = rc.are_consecutive(all_=False, when_one=True)
             splitter    = (np.where(np.invert(consecutive))[0] + 1).tolist()
             
