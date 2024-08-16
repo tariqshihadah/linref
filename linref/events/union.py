@@ -196,8 +196,8 @@ class EventsUnion(object):
         keys = np.concatenate(keys, axis=0)
         begs = np.concatenate(begs)
         ends = np.concatenate(ends)
-        indices = np.concatenate(indices, axis=0)
         if get_index:
+            indices = np.concatenate(indices, axis=0)
             indices[indices==-1] = np.nan
             data = pd.DataFrame({
                 **{col: arr for col, arr in zip(self.objs[0].keys, keys.T)},
