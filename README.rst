@@ -53,9 +53,14 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
-0.1.1 (2024-01-31)
+0.1.1 (2024-08-20)
 -------------------
-* Addition of array-like and dataframe label-based length parameter options to the ``EventsCollection.to_windows()`` method. This allows for the creation of segments based on a variable length.
+* Addition of array-like, dataframe label-based, and callable ``length`` parameter options to the ``EventsCollection.to_windows()`` method and ``distance`` parameter to the ``EventsCollection.shift()`` method. This allows for the creation of segments based on a variable length. This will be made available to other methods in future versions as well.
+* Address ``numpy>=2.x`` compatibility issue in ``EventsCollection.dissolve()`` method which was causing errors in some cases. More fixes related to ``numpy`` updates are expected to come in future versions.
+* Address datatype loss issues for LRS columns during ``EventsCollection.to_windows()`` and ``EventsUnion.union()`` methods. This was causing some instances of key columns to be converted to incorrect dtypes.
+* Restructure .targets property to be ``keys + [beg, end]`` for more intuitive and consistent performance.
+* Addition of ``min`` and ``max`` aggregation methods to the ``EventsMergeAttribute`` class.
+* Several example Jupyter Notebooks for common use cases have been added to the ``examples`` folder for user reference. More to come.
 * Performance improvements
 * Various bug fixes, minor features
 
