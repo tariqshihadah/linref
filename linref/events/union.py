@@ -209,6 +209,11 @@ class EventsUnion(object):
                 **{col: arr for col, arr in zip(self.objs[0].keys, keys.T)},
                 **{self.objs[0].beg: begs, self.objs[0].end: ends},
             })
+        # Enforce dtypes
+        dtypes = {col: self.objs[0].df.dtypes[col] for col in self.objs[0].keys}
+        dtypes[self.objs[0].beg] = float
+        dtypes[self.objs[0].end] = float
+        data = data.astype(dtypes, copy=False, errors='ignore')
         
         # Merge resegmented data with original dataframe columns
         if merge and get_index:
