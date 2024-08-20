@@ -874,6 +874,9 @@ class EventsFrame(object):
             rc = RangeCollection(begs=begs_i, ends=ends_i, centers=None,
                                  copy=None, sort=False)
             consecutive = rc.are_consecutive(all_=False, when_one=True)
+            # Address numpy 2.x compatibility
+            if type(consecutive) is bool:
+                consecutive = np.array([consecutive])
             splitter    = (np.where(np.invert(consecutive))[0] + 1).tolist()
             
             # Get aggregation data
