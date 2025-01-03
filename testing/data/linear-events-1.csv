@@ -1,0 +1,101 @@
+id,county,road_name,begin_mp,end_mp,traffic_volume,lane_configuration
+0,Los Angeles,Main St,0.0,1.2,4950,Two-lane
+1,Los Angeles,Main St,1.4,2.5,8500,Two-lane
+2,Los Angeles,Main St,2.5,3.7,3000,Multi-lane
+3,Los Angeles,Main St,3.9,4.8,7150,Two-lane
+4,Los Angeles,Main St,4.8,5.9,2500,Multi-lane
+5,Los Angeles,Main St,6.1,7.1,9800,Multi-lane
+6,Los Angeles,Main St,7.1,8.3,4650,Two-lane
+7,Los Angeles,Main St,8.5,9.4,5550,Multi-lane
+8,Los Angeles,Main St,9.4,10.0,6400,Two-lane
+9,Los Angeles,State St,0.0,1.1,3700,Multi-lane
+10,Los Angeles,State St,1.1,2.3,9250,Two-lane
+11,Los Angeles,State St,2.5,3.4,4500,Two-lane
+12,Los Angeles,State St,3.4,4.6,7850,Multi-lane
+13,Los Angeles,State St,4.8,5.7,2950,Multi-lane
+14,Los Angeles,State St,5.7,6.9,5200,Two-lane
+15,Los Angeles,State St,7.1,8.0,6000,Two-lane
+16,Los Angeles,State St,8.0,9.2,8500,Multi-lane
+17,Los Angeles,State St,9.4,10.3,2500,Two-lane
+18,Harris,Westheimer Rd,0.0,1.2,7150,Multi-lane
+19,Harris,Westheimer Rd,1.2,2.4,3700,Two-lane
+20,Harris,Westheimer Rd,2.6,3.5,4650,Two-lane
+21,Harris,Westheimer Rd,3.5,4.7,9800,Multi-lane
+22,Harris,Westheimer Rd,4.9,5.8,5550,Two-lane
+23,Harris,Westheimer Rd,5.8,7.0,8500,Multi-lane
+24,Harris,Westheimer Rd,7.2,8.1,3000,Two-lane
+25,Harris,Westheimer Rd,8.1,9.3,9250,Two-lane
+26,Maricopa,Central Ave,0.0,1.1,2500,Multi-lane
+27,Maricopa,Central Ave,1.3,2.3,7850,Two-lane
+28,Maricopa,Central Ave,2.3,3.4,6000,Two-lane
+29,Maricopa,Central Ave,3.6,4.6,4650,Multi-lane
+30,Maricopa,Central Ave,4.6,5.7,5550,Two-lane
+31,Maricopa,Central Ave,5.9,6.9,8500,Multi-lane
+32,Maricopa,Central Ave,6.9,8.0,9250,Two-lane
+33,Maricopa,Central Ave,8.2,9.2,3000,Two-lane
+34,Maricopa,Central Ave,9.2,10.3,7150,Multi-lane
+35,San Diego,Balboa Ave,0.0,1.2,9800,Multi-lane
+36,San Diego,Balboa Ave,1.2,2.3,3700,Two-lane
+37,San Diego,Balboa Ave,2.5,3.5,2500,Two-lane
+38,San Diego,Balboa Ave,3.5,4.6,7850,Multi-lane
+39,San Diego,Balboa Ave,4.8,5.8,6000,Two-lane
+40,San Diego,Balboa Ave,5.8,7.0,4650,Multi-lane
+41,San Diego,Balboa Ave,7.2,8.1,5550,Two-lane
+42,San Diego,Balboa Ave,8.1,9.3,8500,Two-lane
+43,Orange,Chapman Ave,0.0,1.1,9250,Multi-lane
+44,Orange,Chapman Ave,1.3,2.3,3000,Two-lane
+45,Orange,Chapman Ave,2.3,3.4,7150,Two-lane
+46,Orange,Chapman Ave,3.6,4.6,9800,Multi-lane
+47,Orange,Chapman Ave,4.6,5.7,3700,Two-lane
+48,Orange,Chapman Ave,5.9,6.9,2500,Multi-lane
+49,Orange,Chapman Ave,6.9,8.0,7850,Two-lane
+50,Orange,Chapman Ave,8.2,9.2,6000,Two-lane
+51,Orange,Chapman Ave,9.2,10.3,4650,Multi-lane
+52,Orange,Flagler St,0.0,1.2,5550,Multi-lane
+53,Orange,Flagler St,1.4,2.4,8500,Two-lane
+54,Orange,Flagler St,2.4,3.5,9250,Multi-lane
+55,Orange,Flagler St,3.7,4.7,3000,Two-lane
+56,Orange,Flagler St,4.7,5.8,7150,Two-lane
+57,Orange,Flagler St,6.0,7.0,9800,Multi-lane
+58,Orange,Flagler St,7.0,8.1,3700,Two-lane
+59,Orange,Flagler St,8.3,9.3,2500,Two-lane
+60,Dallas,Elm St,0.0,1.1,7850,Multi-lane
+61,Dallas,Elm St,1.3,2.3,6000,Two-lane
+62,Dallas,Elm St,2.3,3.4,4650,Multi-lane
+63,Dallas,Elm St,3.6,4.6,5550,Two-lane
+64,Dallas,Elm St,4.6,5.7,8500,Two-lane
+65,Dallas,Elm St,5.9,6.9,9250,Multi-lane
+66,Dallas,Elm St,6.9,8.0,3000,Two-lane
+67,King,1st Ave,0.0,1.2,7150,Multi-lane
+68,King,1st Ave,1.4,2.4,9800,Two-lane
+69,King,1st Ave,2.4,3.5,3700,Multi-lane
+70,King,1st Ave,3.7,4.7,2500,Two-lane
+71,King,1st Ave,4.7,5.8,7850,Two-lane
+72,King,1st Ave,6.0,7.0,6000,Multi-lane
+73,King,1st Ave,7.0,8.1,4650,Two-lane
+74,King,1st Ave,8.3,9.3,5550,Two-lane
+75,Clark,2nd St,0.0,1.1,8500,Multi-lane
+76,Clark,2nd St,1.3,2.3,9250,Two-lane
+77,Clark,2nd St,2.3,3.4,3000,Multi-lane
+78,Clark,2nd St,3.6,4.6,7150,Two-lane
+79,Clark,2nd St,4.6,5.7,9800,Two-lane
+80,Clark,2nd St,5.9,6.9,3700,Multi-lane
+81,Clark,2nd St,6.9,8.0,2500,Two-lane
+82,Clark,2nd St,8.2,9.0,7850,Two-lane
+83,Clark,2nd St,9.0,10.0,6000,Two-lane
+84,Clark,2nd St,10.0,10.3,4650,Two-lane
+85,Clark,3rd St,0.0,1.1,5000,Multi-lane
+86,Clark,3rd St,1.3,2.3,6000,Two-lane
+87,Clark,3rd St,2.3,3.4,7000,Multi-lane
+88,Clark,3rd St,3.6,4.6,8000,Two-lane
+89,Clark,3rd St,4.6,5.7,9000,Two-lane
+90,Clark,3rd St,5.9,6.9,10000,Multi-lane
+91,Clark,3rd St,6.9,8.0,11000,Two-lane
+92,Clark,3rd St,8.2,9.0,12000,Two-lane
+93,Clark,3rd St,9.0,10.0,13000,Two-lane
+94,Clark,3rd St,10.0,10.3,14000,Two-lane
+95,King,4th Ave,0.0,1.2,15000,Multi-lane
+96,King,4th Ave,1.4,2.4,16000,Two-lane
+97,King,4th Ave,2.4,3.5,17000,Multi-lane
+98,King,4th Ave,3.7,4.7,18000,Two-lane
+99,King,4th Ave,4.7,5.8,19000,Two-lane

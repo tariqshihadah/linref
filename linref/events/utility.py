@@ -1,5 +1,5 @@
 import numpy as np
-import common, base
+from linref.events import common, base
 
 def _method_require(**requirements):
     """
@@ -7,14 +7,14 @@ def _method_require(**requirements):
     property requirements.
     """
     def decorator(func):
-        def wrapper(rng, *args, **kwargs):
+        def wrapper(obj, *args, **kwargs):
             for key, value in requirements.items():
-                if getattr(rng, key) != value:
+                if getattr(obj, key) != value:
                     raise ValueError(
                         f"The {func.__name__} method is only available "
-                        f"for {rng.__class__.__name__} instances with {key}={value}."
+                        f"for {obj.__class__.__name__} instances with {key}={value}."
                     )
-            return func(rng, *args, **kwargs)
+            return func(obj, *args, **kwargs)
         return wrapper
     return decorator
 

@@ -410,4 +410,4 @@ def extract_bearing(line, positive=True, invert=False):
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.collection import EventsCollection
+from linref_011.events.collection import EventsCollection

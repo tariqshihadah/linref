@@ -990,4 +990,4 @@ def get_mode(arr):
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.collection import EventsCollection
+from linref_011.events.collection import EventsCollection

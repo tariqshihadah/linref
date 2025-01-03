@@ -1,7 +1,10 @@
+import numpy as np
+import copy
 from pandas.api.extensions import register_dataframe_accessor
 from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import Rangel
+from linref.events.utility import _method_require
 
 class LRS(object):
 
@@ -101,6 +104,10 @@ class LRS_Accessor(object):
         return self
     
     @property
+    def df(self):
+        return self._df
+    
+    @property
     def is_lrs_set(self):
         return len(self._lrs) > 0
 
@@ -139,11 +146,19 @@ class LRS_Accessor(object):
         return self.active_lrs.closed
     
     @property
+    def index(self):
+        return self._df.index.values
+    
+    @property
     def keys(self):
         # Select data from the dataframe if keys are present
         col = self.keys_col
         try:
-            return self._df[col].values
+            # Convert data to list of tuples
+            data = list(zip(*self._df[col].values.T))
+            arr = np.empty(len(data), dtype=object)
+            arr[:] = data
+            return arr # TODO: Allow for 2D groups in events data
         except KeyError:
             return None
         
@@ -155,6 +170,14 @@ class LRS_Accessor(object):
             return self._df[col].values
         except KeyError:
             return None
+        
+    @locs.setter
+    def locs(self, values):
+        if self.locs_col is None:
+            raise ValueError("No locations column in the LRS.")
+        # Set location values in the DataFrame
+        col = self.locs_col
+        self._df[col] = values
                 
     @property
     def begs(self):
@@ -165,6 +188,14 @@ class LRS_Accessor(object):
         except KeyError:
             return None
         
+    @begs.setter
+    def begs(self, values):
+        if self.begs_col is None:
+            raise ValueError("No begins column in the LRS.")
+        # Set begin location values in the DataFrame
+        col = self.begs_col
+        self._df[col] = values
+        
     @property
     def ends(self):
         # Select data from the dataframe if end locations are present
@@ -173,7 +204,77 @@ class LRS_Accessor(object):
             return self._df[col].values
         except KeyError:
             return None
+        
+    @ends.setter
+    def ends(self, values):
+        if self.ends_col is None:
+            raise ValueError("No ends column in the LRS.")
+        # Set end location values in the DataFrame
+        col = self.ends_col
+        self._df[col] = values
     
+    @property
+    def is_grouped(self):
+        """
+        Return whether the active LRS is grouped and the key columns are 
+        present in the dataframe.
+        """
+        if self.keys_col is None:
+            return False
+        else:
+            # Check for presence of key columns in the dataframe
+            return all([key in self._df.columns for key in self.keys_col])
+    
+    @property
+    def is_linear(self):
+        """
+        Return whether the active LRS is linear and the begin and end columns
+        are present in the dataframe.
+        """
+        if self.begs_col is None or self.ends_col is None:
+            return False
+        else:
+            # Check for presence of begin and end columns in the dataframe
+            return all([col in self._df.columns for col in [self.begs_col, self.ends_col]])
+    
+    @property
+    def is_point(self):
+        """
+        Return whether the active LRS is point-based and the location column is
+        present in the dataframe.
+        """
+        if self.locs_col is None:
+            return False
+        elif self.begs_col is not None or self.ends_col is not None:
+            return False
+        else:
+            # Check for presence of location column in the dataframe
+            return self.locs_col in self._df.columns
+    
+    @property
+    def is_located(self):
+        """
+        Return whether the active LRS is located and the location column is 
+        present in the dataframe.
+        """
+        if self.locs_col is None:
+            return False
+        else:
+            # Check for presence of location column in the dataframe
+            return self.locs_col in self._df.columns
+    
+    @property
+    def is_spatial(self):
+        """
+        Return whether the active LRS is spatial and the geometry column is 
+        present in the dataframe.
+        """
+        if self.geom_col is None:
+            return False
+        else:
+            # Check for presence of geometry column in the dataframe
+            return self.geom_col in self._df.columns
+
     @property
     def events(self):
         """
@@ -181,7 +282,7 @@ class LRS_Accessor(object):
         """
         # Create the events object
         return Rangel(
-            index=self._df.index.values,
+            index=self.index,
             groups=self.keys if self.keys_col else None,
             locs=self.locs if self.locs_col else None,
             begs=self.begs if self.begs_col else None,
@@ -189,7 +290,18 @@ class LRS_Accessor(object):
             closed=self.closed,
             force_monotonic=False
         )
-
+    
+    def copy(self, deep=False):
+        """
+        Create an exact copy of the object instance.
+        
+        Parameters
+        ----------
+        deep : bool, default False
+            Whether the created copy should be a deep copy.
+        """
+        return copy.deepcopy(self) if deep else copy.copy(self)
+    
     def activate_lrs(self, index):
         """
         Activate a specific LRS for the DataFrame by selecting the index from 
@@ -219,7 +331,34 @@ class LRS_Accessor(object):
     def clear_lrs(self):
         self._lrs = []
 
-
+    @_method_require(is_linear=True)
+    def extend(self, extend_begs=0, extend_ends=0, inplace=False):
+        """
+        Extend the begin and end locations of the active LRS by the specified 
+        amounts.
+        """
+        # Extend events
+        events = self.events.extend(extend_begs=extend_begs, extend_ends=extend_ends, inplace=False)
+        # Apply changes to the DataFrame
+        obj = self if inplace else self.copy()
+        obj.begs = events.begs
+        obj.ends = events.ends
+        return None if inplace else obj.df
+    
+    def shift(self, shift, inplace=False):
+        """
+        Shift the events of the active LRS by the specified amount.
+        """
+        # Shift events
+        events = self.events.shift(shift, inplace=False)
+        # Apply changes to the DataFrame
+        obj = self if inplace else self.copy()
+        if self.is_located:
+            obj.locs = events.locs
+        if self.is_linear:
+            obj.begs = events.begs
+            obj.ends = events.ends
+        return None if inplace else obj.df
 
 def _only_if_hashing(m):
     def wrapper(*args, **kwargs):

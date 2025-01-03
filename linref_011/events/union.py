@@ -281,4 +281,4 @@ def union(
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.collection import EventsCollection, check_compatibility
+from linref_011.events.collection import EventsCollection, check_compatibility

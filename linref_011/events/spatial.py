@@ -39,7 +39,7 @@ import geopandas as gpd
 import numpy as np
 import copy, warnings
 from functools import wraps
-from linref.various.geospatial import join_nearby
+from linref_011.various.geospatial import join_nearby
 
 
 class ParallelProjector(object):
@@ -291,4 +291,4 @@ class ParallelProjector(object):
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.collection import EventsCollection
+from linref_011.events.collection import EventsCollection

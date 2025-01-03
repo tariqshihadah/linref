@@ -106,7 +106,7 @@ import geopandas as gpd
 import numpy as np
 from shapely.geometry import LineString, MultiLineString, Point
 from shapely.ops import linemerge
-from linref.route import MLSRoute, combine_mpgs
+from linref_011.route import MLSRoute, combine_mpgs
 from rangel import RangeCollection
 import copy, warnings
 
@@ -2687,5 +2687,5 @@ def check_compatibility(objs, errors='raise', **kwargs):
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.merge import EventsMerge, EventsMergeAttribute
-from linref.events.spatial import ParallelProjector
+from linref_011.events.merge import EventsMerge, EventsMergeAttribute
+from linref_011.events.spatial import ParallelProjector

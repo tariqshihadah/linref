@@ -1,0 +1,51 @@
+crash_id,county,road_name,mp
+100,Los Angeles,Main St,0.7
+101,Los Angeles,Main St,1.9
+102,Los Angeles,Main St,2.8
+103,Los Angeles,Main St,4.2
+104,Los Angeles,Main St,5.3
+105,Los Angeles,Main St,6.4
+106,Los Angeles,Main St,7.5
+107,Los Angeles,Main St,8.6
+108,Los Angeles,Main St,9.7
+109,Los Angeles,State St,0.6
+110,Los Angeles,State St,1.4
+111,Los Angeles,State St,2.1
+112,Los Angeles,State St,3.3
+113,Los Angeles,State St,4.5
+114,Los Angeles,State St,5.6
+115,Los Angeles,State St,6.7
+116,Los Angeles,State St,7.8
+117,Los Angeles,State St,8.9
+118,Harris,Westheimer Rd,0.4
+119,Harris,Westheimer Rd,1.6
+120,Harris,Westheimer Rd,2.2
+121,Harris,Westheimer Rd,3.1
+122,Harris,Westheimer Rd,4.3
+123,Harris,Westheimer Rd,5.4
+124,Harris,Westheimer Rd,6.5
+125,Harris,Westheimer Rd,7.6
+126,Harris,Westheimer Rd,8.7
+127,Maricopa,Central Ave,0.3
+128,Maricopa,Central Ave,1.7
+129,Maricopa,Central Ave,2.5
+130,Maricopa,Central Ave,3.2
+131,Maricopa,Central Ave,4.4
+132,Maricopa,Central Ave,5.5
+133,Maricopa,Central Ave,6.6
+134,Maricopa,Central Ave,7.7
+135,Maricopa,Central Ave,8.8
+136,San Diego,Balboa Ave,0.2
+137,San Diego,Balboa Ave,1.8
+138,San Diego,Balboa Ave,2.6
+139,San Diego,Balboa Ave,3.4
+140,San Diego,Balboa Ave,4.1
+141,San Diego,Balboa Ave,5.2
+142,San Diego,Balboa Ave,6.3
+143,San Diego,Balboa Ave,7.4
+144,San Diego,Balboa Ave,8.5
+145,Orange,Chapman Ave,0.1
+146,Orange,Chapman Ave,1.9
+147,Orange,Chapman Ave,2.7
+148,Orange,Chapman Ave,3.5
+149,Orange,Chapman Ave,4.2

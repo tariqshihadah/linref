@@ -1,0 +1,56 @@
+id,county,road_name,begin_mp,end_mp,traffic_volume,lane_configuration
+0,Los Angeles,Main St,3.9,5.2,4950,Two-lane
+1,Los Angeles,Main St,5.3,6.5,8500,Two-lane
+2,Los Angeles,Main St,6.4,7.7,3000,Multi-lane
+3,Los Angeles,Main St,7.8,8.8,7150,Two-lane
+4,Los Angeles,Main St,8.7,9.9,2500,Multi-lane
+5,Los Angeles,Main St,10.0,11.1,9800,Multi-lane
+6,Los Angeles,Main St,11.0,12.3,4650,Two-lane
+7,Los Angeles,Main St,12.4,13.4,5550,Multi-lane
+8,Los Angeles,Main St,13.3,14.0,6400,Two-lane
+9,Los Angeles,State St,3.9,5.1,3700,Multi-lane
+10,Los Angeles,State St,5.0,6.3,9250,Two-lane
+11,Los Angeles,State St,6.4,7.4,4500,Two-lane
+12,Los Angeles,State St,7.3,8.6,7850,Multi-lane
+13,Los Angeles,State St,8.7,9.7,2950,Multi-lane
+14,Los Angeles,State St,9.6,10.9,5200,Two-lane
+15,Los Angeles,State St,11.0,12.0,6000,Two-lane
+16,Los Angeles,State St,11.9,13.2,8500,Multi-lane
+17,Los Angeles,State St,13.3,14.3,2500,Two-lane
+18,Harris,Westheimer Rd,3.9,5.2,7150,Multi-lane
+19,Harris,Westheimer Rd,5.1,6.4,3700,Two-lane
+20,Harris,Westheimer Rd,6.5,7.5,4650,Two-lane
+21,Harris,Westheimer Rd,7.4,8.7,9800,Multi-lane
+22,Harris,Westheimer Rd,8.8,9.8,5550,Two-lane
+23,Harris,Westheimer Rd,9.7,11.0,8500,Multi-lane
+24,Harris,Westheimer Rd,11.1,12.1,3000,Two-lane
+25,Harris,Westheimer Rd,12.0,13.3,9250,Two-lane
+26,Maricopa,Central Ave,3.9,5.1,2500,Multi-lane
+27,Maricopa,Central Ave,5.2,6.3,7850,Two-lane
+28,Maricopa,Central Ave,6.2,7.4,6000,Two-lane
+29,Maricopa,Central Ave,7.5,8.6,4650,Multi-lane
+30,Maricopa,Central Ave,8.5,9.7,5550,Two-lane
+31,Maricopa,Central Ave,9.8,10.9,8500,Multi-lane
+32,Maricopa,Central Ave,10.8,12.0,9250,Two-lane
+33,Maricopa,Central Ave,12.1,13.2,3000,Two-lane
+34,Maricopa,Central Ave,13.1,14.3,7150,Multi-lane
+60,Dallas,Elm St,3.9,5.1,7850,Multi-lane
+61,Dallas,Elm St,5.2,6.3,6000,Two-lane
+62,Dallas,Elm St,6.2,7.4,4650,Multi-lane
+63,Dallas,Elm St,7.5,8.6,5550,Two-lane
+64,Dallas,Elm St,8.5,9.7,8500,Two-lane
+65,Dallas,Elm St,9.8,10.9,9250,Multi-lane
+66,Dallas,Elm St,10.8,12.0,3000,Two-lane
+67,King,1st Ave,3.9,5.2,7150,Multi-lane
+68,King,1st Ave,5.3,6.4,9800,Two-lane
+69,King,1st Ave,6.3,7.5,3700,Multi-lane
+70,King,1st Ave,7.6,8.7,2500,Two-lane
+71,King,1st Ave,8.6,9.8,7850,Two-lane
+72,King,1st Ave,9.9,11.0,6000,Multi-lane
+73,King,1st Ave,10.9,12.1,4650,Two-lane
+74,King,1st Ave,12.2,13.3,5550,Two-lane
+95,King,4th Ave,3.9,5.2,15000,Multi-lane
+96,King,4th Ave,5.3,6.4,16000,Two-lane
+97,King,4th Ave,6.3,7.5,17000,Multi-lane
+98,King,4th Ave,7.6,8.7,18000,Two-lane
+99,King,4th Ave,8.6,9.8,19000,Two-lane

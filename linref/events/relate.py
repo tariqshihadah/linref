@@ -22,8 +22,11 @@ def _grouped_operation_wrapper(func):
             left_index = []
             right_index = []
             res = []
-            for group, left_group in left.iter_groups():
-                right_group = right.select_group(group, inplace=False)
+            for group, left_group in left.reset_index().iter_groups(ungroup=True):
+                try:
+                    right_group = right.reset_index().select_group(group, inplace=False)
+                except KeyError:
+                    continue
                 # Compute operation on group
                 group_res = func(left_group, right_group, *args, **kwargs)
                 # Convert to sparse array and log
@@ -35,8 +38,8 @@ def _grouped_operation_wrapper(func):
             left_index = np.concatenate(left_index, axis=0)
             right_index = np.concatenate(right_index, axis=0)
             # Reorder to match original indices
-            left_select = np.argsort(left_index)[left.index]
-            right_select = np.argsort(right_index)[right.index]
+            left_select = np.argsort(left_index)
+            right_select = np.argsort(right_index)
             res = res.tocsr()[left_select, :][:, right_select]
             return res
     return wrapper
@@ -65,8 +68,8 @@ def _chunked_operation_wrapper(func):
             right_arrays = []
             for j in range(0, right.num_events, chunksize):
                 # Get chunk of events
-                left_chunk = left.select_index(slice(i, i + chunksize), ignore=True, inplace=False)
-                right_chunk = right.select_index(slice(j, j + chunksize), ignore=True, inplace=False)
+                left_chunk = left.select(slice(i, i + chunksize), ignore=True, inplace=False)
+                right_chunk = right.select(slice(j, j + chunksize), ignore=True, inplace=False)
                 # Compute operation on chunk
                 chunk = func(left_chunk, right_chunk, *args, **kwargs)
                 # Convert to sparse array and log
