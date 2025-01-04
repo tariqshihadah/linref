@@ -92,33 +92,33 @@ def _validate_index_selector(rng, selector, ignore=False):
                 f"Index values out of range: {missing_values}")
     return selector
 
-def _validate_group_selector(rng, group):
+def _validate_group_selector(rng, group, ignore_missing=True):
     # Validate input group
     if not rng.is_grouped:
         raise ValueError("Collection is not grouped.")
-    if isinstance(group, (list, np.ndarray)):
-        # Multiple group selection
-        select_multiple = True
+    
+    # Convert input to array
+    try:
+        arr = np.asarray(group, dtype=rng.groups.dtype)
+    except:
+        raise ValueError(
+            "Unable to convert input group to array-like object.")
+    # Check dimensions to determine if multiple groups are selected
+    if arr.ndim > 1:
+        raise ValueError(
+            "Input group selection must be a scalar or 1D array-like object.")
+    
+    # Check for missing groups
+    if not ignore_missing:
         # Ensure that all groups are present
-        group_test = np.in1d(group, rng.unique_groups)
+        group_test = np.isin(arr, rng.unique_groups)
         if not np.all(group_test):
-            missing_groups = group[~group_test]
+            missing_groups = arr[~group_test]
             raise KeyError(
                 f"Groups not found in collection: {missing_groups}")
-    else:
-        # Single group selection
-        select_multiple = False
-        if not group in rng.unique_groups:
-            raise KeyError(
-                f"Group not found in collection: {group}")
-    
+        
     # Identify group indices
-    if select_multiple:
-        index = np.isin(rng.groups, group)
-    else:
-        index = np.equal(rng.groups, group)
-
-    # Return results
+    index = np.isin(rng.groups, arr)
     return index
 
 def _apply_selector(rng, selector, inplace=False):
@@ -210,7 +210,7 @@ def select_index(rng, index, ignore=False, inplace=False):
     selector = _validate_index_selector(rng, index, ignore)
     return _apply_selector(rng, selector, inplace=inplace)
 
-def select_group(rng, group, ungroup=None, inplace=False):
+def select_group(rng, group, ungroup=None, ignore_missing=True, inplace=False):
     """
     Select events by group.
 
@@ -223,11 +223,16 @@ def select_group(rng, group, ungroup=None, inplace=False):
         without their group labels. If None and a single group is selected,
         the result will be ungrouped otherwise the group labels will be
         retained.
+    ignore_missing : bool, default True
+        Whether to ignore missing groups in the selection. If False, an error
+        will be raised if any groups are not found in the collection. If True,
+        missing groups will be ignored; in cases where no groups are found,
+        an empty collection will be returned.
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
     # Validate group input
-    mask = _validate_group_selector(rng, group)
+    mask = _validate_group_selector(rng, group, ignore_missing=ignore_missing)
 
     # Determine ungrouping
     if ungroup is None:

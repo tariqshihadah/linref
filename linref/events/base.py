@@ -424,7 +424,7 @@ class Rangel:
         """
         return selection.select(self, selector, ignore=ignore, inplace=inplace)
 
-    def select_group(self, group, ungroup=None, inplace=False):
+    def select_group(self, group, ungroup=None, ignore_missing=True, inplace=False):
         """
         Select events by group.
 
@@ -437,10 +437,16 @@ class Rangel:
             without their group labels. If None and a single group is selected,
             the result will be ungrouped otherwise the group labels will be
             retained.
+        ignore_missing : bool, default True
+            Whether to ignore missing groups in the selection. If False, an error
+            will be raised if any groups are not found in the collection. If True,
+            missing groups will be ignored; in cases where no groups are found,
+            an empty collection will be returned.
         inplace : bool, default False
             Whether to perform the operation in place, returning None.
         """
-        return selection.select_group(self, group, ungroup=ungroup, inplace=inplace)
+        return selection.select_group(
+            self, group, ungroup=ungroup, ignore_missing=ignore_missing, inplace=inplace)
     
     def drop(self, mask, inplace=False):
         """
@@ -604,6 +610,24 @@ class Rangel:
             Whether to keep the first, last, or none of the duplicated events.
         """
         return analyze.duplicated(self, subset=subset, keep=keep)
+    
+    def next_same_group(self, all_=True, when_one=True):
+        """
+        Whether all or any ranges have the same group as the next range in the
+        collection.
+        """
+        # Validate input
+        if self.num_events == 1:
+            return when_one
+        elif self.num_events == 0:
+            raise ValueError("No ranges in collection.")
+        
+        # Check for same group
+        res = self.groups[1:] == self.groups[:-1]
+        if all_:
+            return res.all()
+        else:
+            return res
             
     def next_overlapping(self, all_=True, when_one=True, enforce_edges=False):
         """

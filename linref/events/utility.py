@@ -127,9 +127,10 @@ def _represent_records(rng):
     records = []
     closed = rng.closed
     if rng.groups is not None:
-        max_len = max([len(x) for x in rng.groups])
+        max_len = max([len(str(x)) for x in rng.groups])
+        group_strings = [str(x) if len(str(x)) <= 20 else str(x)[:17] + '...' for x in rng.groups]
         groups = np.array(
-            [f'group({str(x)[:20]: >{min(max_len, 20)}}) ' for x in rng.groups])
+            [f'group({x: <{min(max_len, 20)}}) ' for x in group_strings])
     else:
         groups = np.full(rng.num_events, '')
     # Define record string template and select features to display
