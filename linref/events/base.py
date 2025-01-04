@@ -255,7 +255,7 @@ class Rangel:
         Get unique group values.
         """
         if self.is_grouped:
-            return np.unique(self.groups, axis=0)
+            return np.unique(self.groups)
         else:
             return None
 
@@ -267,7 +267,7 @@ class Rangel:
             # Create a generic zero-based integer index
             index = np.arange(self.num_events, dtype=int)
         else:
-            index = utility._prepare_nd_data_array(index, 'index', ndim=1)
+            index = utility._prepare_data_array(index, 'index')
             # Check that all indices are unique
             if len(np.unique(index)) < len(index):
                 warnings.warn(
@@ -282,7 +282,7 @@ class Rangel:
         if groups is None:
             pass
         else:
-            groups = utility._prepare_nd_data_array(groups, 'groups', ndim=None)
+            groups = utility._prepare_data_array(groups, 'groups')
         return groups
     
     def _validate_data(self, index, groups, locs, begs, ends, dtype=None, copy=None):
@@ -301,7 +301,7 @@ class Rangel:
                     "For located point events, `locs` must be a 1D scalar array-like object."
                 )
             # Convert locs to a numpy array
-            locs = utility._prepare_nd_data_array(locs, 'locs', dtype=dtype, copy=copy, ndim=1)
+            locs = utility._prepare_data_array(locs, 'locs')
             data_arrays['locs'] = locs
 
         # - Located linear events
@@ -314,16 +314,16 @@ class Rangel:
                     )
             # Convert data to numpy arrays
             else:
-                locs = utility._prepare_nd_data_array(locs, 'locs', dtype=dtype, copy=copy, ndim=1)
+                locs = utility._prepare_data_array(locs, 'locs', dtype=dtype, copy=copy)
                 data_arrays['locs'] = locs
-            begs = utility._prepare_nd_data_array(begs, 'begs', dtype=dtype, copy=copy, ndim=1)
-            ends = utility._prepare_nd_data_array(ends, 'ends', dtype=dtype, copy=copy, ndim=1)
+            begs = utility._prepare_data_array(begs, 'begs', dtype=dtype, copy=copy)
+            ends = utility._prepare_data_array(ends, 'ends', dtype=dtype, copy=copy)
             data_arrays['begs'] = begs; data_arrays['ends'] = ends
 
         # - Unlocated linear events
         elif data_input_case == (False, True, True):
-            begs = utility._prepare_nd_data_array(begs, 'begs', dtype=dtype, copy=copy, ndim=1)
-            ends = utility._prepare_nd_data_array(ends, 'ends', dtype=dtype, copy=copy, ndim=1)
+            begs = utility._prepare_data_array(begs, 'begs', dtype=dtype, copy=copy)
+            ends = utility._prepare_data_array(ends, 'ends', dtype=dtype, copy=copy)
             data_arrays['begs'] = begs; data_arrays['ends'] = ends
         
         # - Invalid input data case
@@ -431,8 +431,7 @@ class Rangel:
         Parameters
         ----------
         group : label or array-like
-            The label of the group to select or a list of the same to select 
-            multiple groups.
+            The label of the group to select or array-like of the same.
         ungroup : bool, default None
             Whether to ungroup the selection, returning the selected events 
             without their group labels. If None and a single group is selected,
@@ -571,7 +570,7 @@ class Rangel:
         
         # Apply changes
         res = self if inplace else self.copy()
-        res = res.select_index(index, ignore=True, inplace=False)
+        res = res.select(index, ignore=True, inplace=False)
         res = res if not return_inverse else (res, index)
         return None if inplace else res
     
@@ -605,41 +604,6 @@ class Rangel:
             Whether to keep the first, last, or none of the duplicated events.
         """
         return analyze.duplicated(self, subset=subset, keep=keep)
-    
-    def next_same_group(self, all_=True, when_one=True):
-        """
-        Whether all or any ranges are in the same group as the next range in 
-        the collection.
-
-        Parameters
-        ----------
-        all_ : bool, default True
-            Whether to aggregate all tests of same group ranges, returning a 
-            single boolean value. If True, will return True if all ranges are 
-            in the same group, False if any adjacent ranges are not in the same 
-            group. If False, will return an array of shape num_events - 1 of 
-            boolean values indicating whether each range is in the same group 
-            as the next.
-        when_one : bool, default True
-            The default boolean value to return when only one range is included 
-            in the collection.
-        """
-        # Validate input
-        if self.groups is None:
-            raise ValueError("No groups in collection.")
-        if self.num_events == 1:
-            return when_one
-        elif self.num_events == 0:
-            raise ValueError("No ranges in collection.")
-        
-        # Check for same group
-        res = self.groups[1:] == self.groups[:-1]
-        if all_:
-            return res.all()
-        else:
-            # Reduce result
-            res = np.all(res, axis=tuple(range(1, res.ndim)))
-            return res
             
     def next_overlapping(self, all_=True, when_one=True, enforce_edges=False):
         """
@@ -668,7 +632,7 @@ class Rangel:
             raise ValueError("No ranges in collection.")
 
         # Check for overlapping
-        cond1 = self.next_same_group(all_=False) if self.groups is not None else True
+        cond1 = self.groups[1:] == self.groups[:-1] if self.groups is not None else True
         if enforce_edges:
             cond2 = self.begs[1:] <= self.ends[:-1]
         else:
@@ -705,7 +669,7 @@ class Rangel:
         # Check for consecutive ranges
         res = (
             (self.begs[1:] == self.ends[:-1]) & 
-            self.next_same_group(all_=False) if self.groups is not None else True
+            (self.groups[1:] == self.groups[:-1]) if self.groups is not None else True
         )
         if all_:
             return res.all()
