@@ -529,24 +529,17 @@ class Rangel:
         rc = self if inplace else self.copy()
         rc._begs, rc._ends = begs, ends
         return None if inplace else rc
-
-    def sort(self, by, ascending=True, return_inverse=False, inplace=False):
+    
+    def argsort(self, by):
         f"""
-        Sort the events by a selected event data anchor.
-        
+        Get the indices which would sort the events by a selected event data
+        anchor.
+
         Parameters
         ----------
         by : {common.keys_all}
             The event data property or list of properties by which all events 
             should be sorted.
-        ascending : bool, default True
-            Whether sorting should be done in ascending order. When False, 
-            events will be sorted in descending order.
-        return_inverse : bool, default False
-            Whether to return an array of the indices which represent the 
-            inverse of the performed sort in addition to the sorted events.
-        inplace : bool, default False
-            Whether to perform the operation in place, returning None.
         """
         # Determine sorting parameters
         if not type(by) is list:
@@ -561,18 +554,30 @@ class Rangel:
         if not self.is_located and 'locs' in by:
             raise ValueError(
                 "Sorting by 'locs' is not available for unlocated events.")
-        if type(ascending) is bool:
-            ascending = [ascending for x in range(len(by))]
-        elif type(ascending) is list and not len(ascending) == len(by):
-            raise ValueError(
-                "Input 'ascending' parameter must be single boolean "
-                "value or must be list of same length as 'by'.")
         
         # Get the arrays for lexsort (reverse order per numpy lexsort)
-        ascending = [1 if x else -1 for x in ascending[::-1]]
-        by = [ascending[i] * getattr(self, x) for i, x in enumerate(by[::-1])]
+        by = [getattr(self, x) for x in by[::-1]]
         # Apply sorting
         index = np.lexsort(by)
+        return index
+
+    def sort(self, by, return_inverse=False, inplace=False):
+        f"""
+        Sort the events by a selected event data anchor.
+        
+        Parameters
+        ----------
+        by : {common.keys_all}
+            The event data property or list of properties by which all events 
+            should be sorted.
+        return_inverse : bool, default False
+            Whether to return an array of the indices which represent the 
+            inverse of the performed sort in addition to the sorted events.
+        inplace : bool, default False
+            Whether to perform the operation in place, returning None.
+        """
+        # Get argsort index
+        index = self.argsort(by)
         
         # Apply changes
         res = self if inplace else self.copy()
@@ -591,10 +596,9 @@ class Rangel:
             by = ['groups', 'locs']
         else:
             by = ['groups', 'begs', 'ends']
-        ascending = [True for x in by]
         
         # Apply sorting
-        return self.sort(by, ascending=ascending, inplace=inplace)
+        return self.sort(by, inplace=inplace)
     
     def duplicated(self, subset=None, keep='first'):
         """
