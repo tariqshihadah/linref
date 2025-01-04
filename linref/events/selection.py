@@ -95,7 +95,7 @@ def _validate_index_selector(rng, selector, ignore=False):
 def _validate_group_selector(rng, group):
     # Validate input group
     if not rng.is_grouped:
-        raise ValueError("No groups in collection.")
+        raise ValueError("Collection is not grouped.")
     if isinstance(group, (list, np.ndarray)):
         # Multiple group selection
         select_multiple = True
