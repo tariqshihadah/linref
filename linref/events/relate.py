@@ -23,9 +23,9 @@ def _grouped_operation_wrapper(func):
             right_index = []
             res = []
             for group, left_group in left.reset_index().iter_groups(ungroup=True):
-                try:
-                    right_group = right.reset_index().select_group(group, inplace=False)
-                except KeyError:
+                # Get right group
+                right_group = right.reset_index().select_group(group, ignore_missing=True, inplace=False)
+                if right_group.num_events == 0:
                     continue
                 # Compute operation on group
                 group_res = func(left_group, right_group, *args, **kwargs)

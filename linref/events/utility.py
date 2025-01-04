@@ -18,10 +18,10 @@ def _method_require(**requirements):
         return wrapper
     return decorator
 
-def _prepare_data_array(data, name, ndim=1, dtype=None, copy=None):
+def _prepare_nd_data_array(data, name, ndim=None, dtype=None, copy=None):
     """
-    Function for validating input data as a scalar np.array using the given 
-    name, number of dimensions, and optional dtype and copy arguments.
+    Function for validating input data as a np.array using the given name, 
+    number of dimensions, and optional dtype and copy arguments.
     """
     # Initialize data as a numpy array
     try:
@@ -29,20 +29,26 @@ def _prepare_data_array(data, name, ndim=1, dtype=None, copy=None):
             data = np.asarray(data, dtype=dtype, copy=copy)
         except TypeError: # numpy 1.X compatibility
             data = np.array(data, dtype=dtype, copy=False)
-        assert data.ndim == ndim
-    except AssertionError:
+        if ndim is not None:
+            if data.ndim != ndim:
+                raise ValueError(
+                    f"Invalid input data for `{name}`. Must be a {ndim}D array-"
+                    "like object."
+                )
+    except:
         if dtype is None:
             raise ValueError(
-                f"Invalid input data for `{name}`. Must be a {ndim}D array-"
+                f"Invalid input data for `{name}`. Must be an array-"
                 "like object."
             )
         else:
             raise ValueError(
-                f"Invalid input data for `{name}`. Must be a {ndim}D array-"
-                f"like object with dtype={dtype}. Provided array has shape="
-                f"{data.shape} and dtype={data.dtype}."
+                f"Invalid input data for `{name}`. Must be an array-like object "
+                f"with dtype={dtype}. Provided array has shape={data.shape} and "
+                f"dtype={data.dtype}."
             )
     return data
+    
 
 def _validate_scalar_or_array_input(rng, value, name, dtype=None, fill=False, nonzero=False):
     """
@@ -127,9 +133,10 @@ def _represent_records(rng):
     records = []
     closed = rng.closed
     if rng.groups is not None:
-        max_len = max([len(x) for x in rng.groups])
+        max_len = max([len(str(x)) for x in rng.groups])
+        group_strings = [str(x) if len(str(x)) <= 20 else str(x)[:17] + '...' for x in rng.groups]
         groups = np.array(
-            [f'group({str(x)[:20]: >{min(max_len, 20)}}) ' for x in rng.groups])
+            [f'group({x: <{min(max_len, 20)}}) ' for x in group_strings])
     else:
         groups = np.full(rng.num_events, '')
     # Define record string template and select features to display

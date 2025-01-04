@@ -92,31 +92,34 @@ def _validate_index_selector(rng, selector, ignore=False):
                 f"Index values out of range: {missing_values}")
     return selector
 
-def _validate_group_selector(rng, group):
+def _validate_group_selector(rng, group, ignore_missing=True):
     # Validate input group
     if not rng.is_grouped:
         raise ValueError("No groups in collection.")
-    if isinstance(group, (list, np.ndarray)):
+    if isinstance(group, list):
         # Multiple group selection
         select_multiple = True
-        # Ensure that all groups are present
-        group_test = np.in1d(group, rng.unique_groups)
-        if not np.all(group_test):
-            missing_groups = group[~group_test]
-            raise KeyError(
-                f"Groups not found in collection: {missing_groups}")
+        if not ignore_missing:
+            # Ensure that all groups are present
+            group_test = np.array([g in rng.groups for g in group])
+            if not np.all(group_test):
+                missing_groups = group[~group_test]
+                raise KeyError(
+                    f"Groups not found in collection: {missing_groups}")
     else:
         # Single group selection
         select_multiple = False
-        if not group in rng.unique_groups:
-            raise KeyError(
-                f"Group not found in collection: {group}")
+        if not ignore_missing:
+            # Ensure that the group is present
+            if not group in rng.groups:
+                raise KeyError(
+                    f"Group not found in collection: {group}")
     
     # Identify group indices
     if select_multiple:
-        index = np.isin(rng.groups, group)
+        index = np.array([np.equal(rng.groups, g).all(axis=tuple(range(1, rng.groups.ndim))) for g in group]).any(axis=0)
     else:
-        index = np.equal(rng.groups, group)
+        index = np.equal(rng.groups, group).all(axis=tuple(range(1, rng.groups.ndim)))
 
     # Return results
     return index
@@ -210,19 +213,24 @@ def select_index(rng, index, ignore=False, inplace=False):
     selector = _validate_index_selector(rng, index, ignore)
     return _apply_selector(rng, selector, inplace=inplace)
 
-def select_group(rng, group, ungroup=None, inplace=False):
+def select_group(rng, group, ungroup=None, ignore_missing=True, inplace=False):
     """
     Select events by group.
 
     Parameters
     ----------
     group : label or array-like
-        The label of the group to select or array-like of the same.
+        The label of the group to select or a list of the same to select 
+        multiple groups.
     ungroup : bool, default None
         Whether to ungroup the selection, returning the selected events 
         without their group labels. If None and a single group is selected,
         the result will be ungrouped otherwise the group labels will be
         retained.
+    ignore_missing : bool, default True
+        Whether to ignore missing groups in the collection. If False, missing
+        groups will raise a KeyError. If True and no groups are present in the
+        collection, an empty collection will be returned.
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
@@ -231,7 +239,7 @@ def select_group(rng, group, ungroup=None, inplace=False):
 
     # Determine ungrouping
     if ungroup is None:
-        ungroup = not isinstance(group, (list, np.ndarray))
+        ungroup = not isinstance(group, list)
     else:
         ungroup = bool(ungroup)
 
