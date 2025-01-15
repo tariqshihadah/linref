@@ -8,7 +8,7 @@ Created:
 10/22/2019
 
 Modified:
-4/6/2022
+1/13/2025
 
 ===============================================================================
 """
@@ -21,11 +21,25 @@ Modified:
 
 from xml.dom.minidom import Attr
 import numpy as np
-from shapely.geometry import LineString, MultiLineString
+from shapely.geometry import LineString, MultiLineString, Point
+from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 import shapely
 from rangel import RangeCollection
 import copy, math
+from typing import Optional, Union, Literal, Type
 
+################
+# Type Aliases #
+################
+
+BreakType = list[list[float]]
+RangeType = list[tuple[float, float]]
+PathType = list[list[tuple[float, float, float]]]
+LineGeomType = Union[LineString, MultiLineString]
+LineGeomCollectionType = Union[list[LineGeomType], tuple[LineGeomType]]
+
+LocateChoiceType = Literal["first", "last", "all"]
+LocateSnapType = Literal[None, "near", "left", "right"]
 
 #############
 # MLS ROUTE #
@@ -62,30 +76,36 @@ class MLSRoute(object):
 
     # Define class options
     _closed_ops = {'left', 'right', 'both', 'neither'}
-    
-    def __init__(self, mls, rte_breaks=None, rte_ranges=None, closed='both',
-                 **kwargs):
+
+    def __init__(
+        self,
+        mls: MultiLineString,
+        rte_breaks: Optional[BreakType] = None,
+        rte_ranges: Optional[RangeType] = None,
+        closed: Literal["left", "right", "both", "neither"] = "both",
+        **kwargs,
+    ) -> None:
         # Validate input parameters
         self.closed = closed
         self.mls = mls
         self.rte_breaks = rte_breaks if rte_ranges is None else \
             self._ranges_to_breaks(rte_ranges)
-            
+
     def __len__(self):
         return self.rte_length
-    
+
     def __str__(self):
         return self.wkt
 
     def __repr__(self):
         return self.wkt
-        
+
     @property
     def mls(self):
         return self._mls
 
     @mls.setter
-    def mls(self, obj):
+    def mls(self, obj: LineGeomType):
         # Validate geometry
         if not isinstance(obj, MultiLineString):
             if isinstance(obj, LineString):
@@ -121,17 +141,17 @@ class MLSRoute(object):
     @property
     def mls_breaks(self):
         return self._mls_breaks
-        
+
     @property
     def mls_ranges(self):
         return self._mls_ranges
-    
+
     @property
     def rte_breaks(self):
         return self._rte_breaks
 
     @rte_breaks.setter
-    def rte_breaks(self, data):
+    def rte_breaks(self, data: Optional[BreakType]):
         # If no data, copy geometry breaks
         if data is None:
             self._rte_breaks = self._mls_breaks.copy()
@@ -153,15 +173,15 @@ class MLSRoute(object):
         # Define M-value ranges
         self._rte_ranges = RangeCollection.from_breaks(
             breaks=data, closed=self._closed, sort=False)
-        
+
     @property
     def rte_ranges(self):
         return self._rte_ranges
-    
+
     @property
     def rte_length(self):
         return self.rte_ranges.total_length
-    
+
     @property
     def mls_length(self):
         try:
@@ -169,7 +189,7 @@ class MLSRoute(object):
         except AttributeError:
             self._mls_length = self.mls.length
             return self._mls_length
-    
+
     @property
     def num_lines(self):
         try:
@@ -177,7 +197,7 @@ class MLSRoute(object):
         except AttributeError:
             self._num_lines = len(self.mls.geoms)
             return self._num_lines
-    
+
     @property
     def vertices(self):
         try:
@@ -186,7 +206,7 @@ class MLSRoute(object):
             self._vertices = [np.insert(x.cumsum(),0,0) \
                               for x in self.element_lengths]
             return self._vertices
-    
+
     @property
     def element_lengths(self):
         try:
@@ -194,20 +214,24 @@ class MLSRoute(object):
         except AttributeError:
             self._element_lengths = self._compute_element_lengths()
             return self._element_lengths
-        
+
     @property
     def closed(self):
         return self._closed
 
     @closed.setter
-    def closed(self, label):
+    def closed(self, label: str):
         if not label in self._closed_ops:
             raise ValueError(
                 f"Closed parameter must be one of {self._closed_ops}.")
         self._closed = label
-    
+
     @classmethod
-    def from_2d_paths(cls, paths, **kwargs):
+    def from_2d_paths(
+        cls, 
+        paths: PathType,
+        **kwargs
+    ) -> 'MLSRoute':
         """
         Create MLSRoute instance from a list of paths, made up of a list of 
         three-element tuples with X, Y, and range location (i.e., M-value).
@@ -218,12 +242,18 @@ class MLSRoute(object):
         for path in paths:
             lines.append(LineString([(x[0], x[1]) for x in path]))
             breaks.append([x[2] for x in path])
-        
+
         # Return generated MLSRoute instance based on input paths
         return cls(MultiLineString(lines), rte_breaks=breaks, **kwargs)
-    
+
     @classmethod
-    def from_lines(cls, lines, begs, ends, **kwargs):
+    def from_lines(
+        cls, 
+        lines: Union[LineGeomType, LineGeomCollectionType],
+        begs: Union[float, list[float]],
+        ends: Union[float, list[float]],
+        **kwargs
+    ) -> 'MLSRoute':
         """
         Create an MLSRoute instance from a list of LineStrings or a single 
         MultiLineString and lists of begin and end mile post values with 
@@ -279,7 +309,7 @@ class MLSRoute(object):
                 "Input lines must be valid shapely linear geometries or list "
                 "or tuple of the same. Provided lines are of type "
                 f"{type(lines)}.")
-        
+
         # Ensure valid breaks information provided
         # - Enforce list-data
         try:
@@ -290,7 +320,7 @@ class MLSRoute(object):
             ends = list(ends)
         except TypeError:
             ends = [ends]
-            
+
         # Check for input type
         # - Single begin/end point provided
         if len(begs) == len(ends) == 1:
@@ -320,12 +350,12 @@ class MLSRoute(object):
                 "equal to the number of lines if providing multiple values. "
                 f"Provided: {len(begs):,.0f} begs, {len(ends):,.0f} ends, "
                 f"{len(mls.geoms):,.0f} lines.")
-        
+
         # Return generated MLSRoute instance based on input parameters
         return cls(full_lines, rte_ranges=ranges, **kwargs)
 
     @classmethod
-    def from_wkt(cls, wkt, **kwargs):
+    def from_wkt(cls, wkt: str, **kwargs) -> 'MLSRoute':
         """
         Create an MLSRoute instance from a WKT string for a MULTILINESTRING or 
         LINESTRING with three to four dimensions, with the last dimension 
@@ -375,7 +405,7 @@ class MLSRoute(object):
         return MLSRoute(MultiLineString(data), rte_breaks=breaks, **kwargs)
 
     @classmethod
-    def concatenate(cls, routes, **kwargs):
+    def concatenate(cls, routes: list['MLSRoute'], **kwargs) -> 'MLSRoute':
         """
         Combine a list of MLSRoute objects into a single MLSRoute.
 
@@ -392,7 +422,7 @@ class MLSRoute(object):
         except:
             raise TypeError(
                 "Input routes must be list-like of MLSRoute class instances.")
-        
+
         # Combine route breaks
         rte_breaks = \
             [rte_break for route in routes for rte_break in route.rte_breaks]
@@ -403,7 +433,7 @@ class MLSRoute(object):
         mr = cls(mls, rte_breaks=rte_breaks, **kwargs)
         return mr
 
-    def _compute_element_lengths(self):
+    def _compute_element_lengths(self) -> list[np.ndarray]:
         """
         Get individual lengths of each linear element of the route 
         MultiLineString.
@@ -416,8 +446,8 @@ class MLSRoute(object):
             lengths.append(np.asarray([LineString(coords[i-1:i+1]).length \
                                        for i in range(1, len(coords))]))
         return lengths
-    
-    def _ranges_to_breaks(self, data):
+
+    def _ranges_to_breaks(self, data: Optional[RangeType]) -> BreakType:
         """
         Convert begin and end range data to breaks for the generation of an 
         MLSRoute instance.
@@ -448,7 +478,7 @@ class MLSRoute(object):
             all_breaks.append(np.concatenate([rng[0], lengths], axis=None))
         return all_breaks
 
-    def to_wkt(self, decimals=None):
+    def to_wkt(self, decimals:Optional[int] = None) -> str:
         """
         Produce a WKT string representing the object with the underlying 
         MultiLineString appended with M values represented in the rte_breaks 
@@ -486,8 +516,8 @@ class MLSRoute(object):
             prefix += ' M '
         # Return combined WKT string
         return prefix + '(' + ', '.join(data) + ')'
-    
-    def copy(self, deep=False):
+
+    def copy(self, deep: bool = False) -> 'MLSRoute':
         """
         Create an exact copy of the MLS route object instance.
         """
@@ -495,9 +525,14 @@ class MLSRoute(object):
             return copy.deepcopy(self)
         else:
             return copy.copy(self)
-        
-    def locate_mls(self, loc, normalized=False, choose='first',
-                   bounded=False):
+
+    def locate_mls(
+        self, 
+        loc: float, 
+        normalized: bool = False, 
+        choose:  LocateChoiceType = 'first',
+        bounded: bool = False
+    ) -> tuple[int, float]:
         """
         Get the range index and the proportional distance along that range
         of the input MLS location.
@@ -517,7 +552,7 @@ class MLSRoute(object):
         # Convert normalized values to MLS values
         if normalized:
             loc = loc * self.mls_length
-            
+
         # Validate input
         if loc < 0:
             if bounded:
@@ -536,11 +571,17 @@ class MLSRoute(object):
                     "the MLS.")
             else:
                 loc = self.mls_length
-        
+
         # Compute and return the index and proportional distance
         return self.mls_ranges.locate(loc, choose=choose)
-        
-    def locate_rte(self, loc, normalized=False, choose='first', snap=None):
+
+    def locate_rte(
+        self,
+        loc: float,
+        normalized=False,
+        choose: LocateChoiceType = "first",
+        snap: LocateSnapType = None,
+    ) -> tuple[int, float]:
         """
         Get the range index and the proportional distance along that range
         of the input route location.
@@ -561,8 +602,14 @@ class MLSRoute(object):
         else:
             # Compute and return the index and proportional distance
             return self.rte_ranges.locate(loc, choose=choose, snap=snap)
-    
-    def normalize(self, loc, by_mls=False, snap=None, **kwargs):
+
+    def normalize(
+        self, 
+        loc: float, 
+        by_mls: bool = False, 
+        snap: LocateSnapType = None, 
+        **kwargs
+    ) -> float:
         """
         Normalize a location as an actual route location or the absolute 
         distance along the route's MultiLineString.
@@ -590,8 +637,13 @@ class MLSRoute(object):
         # Normalize location
         res = loc / self.mls_length
         return res
-    
-    def convert(self, mls_loc=None, rte_loc=None, choose='first'):
+
+    def convert(
+        self,
+        mls_loc: Optional[float] = None,
+        rte_loc: Optional[float] = None,
+        choose: LocateChoiceType = "first",
+    ) -> float:
         """
         Convert an mls location to a reference location or vice versa.
         """
@@ -601,9 +653,14 @@ class MLSRoute(object):
             return self.convert_to_mls(rte_loc, choose=choose)
         else:
             raise ValueError("No locator inputs provided.")
-        
-    def convert_to_rte(self, loc=None, normalized=False, choose='first',
-                       bounded=False):
+
+    def convert_to_rte(
+        self,
+        loc: Optional[float] = None,
+        normalized: bool = False,
+        choose: LocateChoiceType = "first",
+        bounded: bool = False,
+    ) -> float:
         """
         Convert an MLS or normalized reference location to a route location.
         
@@ -631,9 +688,14 @@ class MLSRoute(object):
         reference = self.locate_mls(
             loc=loc, normalized=normalized, choose=choose, bounded=bounded)
         return self.rte_ranges.project(*reference)
-        
-    def convert_to_mls(self, loc=None, normalized=False, choose='first',
-                       snap=None):
+
+    def convert_to_mls(
+        self,
+        loc: Optional[float] = None,
+        normalized: bool = False,
+        choose: LocateChoiceType = "first",
+        snap: LocateSnapType = None,
+    ) -> float:
         """
         Convert a route or normalized reference location to an MLS location.
         
@@ -659,8 +721,13 @@ class MLSRoute(object):
         reference = self.locate_rte(loc=loc, normalized=normalized,
                                     choose=choose, snap=snap)
         return self.mls_ranges.project(*reference)
-        
-    def project(self, obj, by_mls=False, normalized=False):
+
+    def project(
+        self, 
+        obj: BaseGeometry, 
+        by_mls: bool = False, 
+        normalized: bool = False,
+    ) -> float:
         """
         Find the location along the route to a point nearest the input object. 
         This can be done using a normalized proportional distance along the 
@@ -692,9 +759,15 @@ class MLSRoute(object):
                 return self.convert_to_mls(loc=loc, normalized=True)
             else:
                 return self.convert_to_rte(loc=loc, normalized=True)
-            
-    def interpolate(self, loc, by_mls=False, normalized=False, snap=None, 
-            **kwargs):
+
+    def interpolate(
+        self, 
+        loc: float, 
+        by_mls: bool = False, 
+        normalized: bool = False, 
+        snap: LocateSnapType = None,
+        **kwargs,
+    ) -> Point:
         """
         Return a point at the specified location along the route. This can be 
         done using a normalized proportional distance along the route, or the 
@@ -732,8 +805,14 @@ class MLSRoute(object):
         # Interpolate along the MultiLineString
         point = self.mls.interpolate(loc, normalized=False)
         return point
-    
-    def cut(self, beg, end, by_mls=False, normalized=False):
+
+    def cut(
+        self, 
+        beg: float, 
+        end: float, 
+        by_mls: bool = False, 
+        normalized: bool = False,
+    ) -> 'MLSRoute':
         """
         Cut the MLS route at the given begin and end points. This can be done 
         in terms of the route measure information (by_mls=False), in terms of
@@ -771,7 +850,7 @@ class MLSRoute(object):
             end = max(float(end), 0)
         except:
             raise ValueError("Invalid begin or end input values.")
-        
+
         # Convert to MLS locations
         if normalized:
             beg = beg * self.mls_length
@@ -805,28 +884,28 @@ class MLSRoute(object):
             end_point = self.mls.geoms[-1].coords[-1]
             end_index = self.mls_ranges.num_ranges - 1
             end_loc = self.rte_ranges.ends[-1]
-        
+
         # Unique case: begin and end points both fall between the same two
         # vertices
         if beg_index == end_index:
             mls = MultiLineString([LineString([beg_point, end_point])])
             breaks = [[beg_loc, end_loc]]
             return MLSRoute(mls, rte_breaks=breaks, closed=self.closed)
-        
+
         # Construct new MultiLineString based on new begin and end points
         total_size = 0
         lines = []
         breaks = []
-        
+
         # Iterate over the LineStrings in the MLS
         for num, (line, breaks_all) in enumerate(zip(self.mls.geoms,
                  self.rte_breaks)):
-            
+
             # Get the number of ranges in the LineString
             points_all = list(line.coords)
             size = len(points_all)
-            
-            # Compute the start slicing parameter if the LineString is to be 
+
+            # Compute the start slicing parameter if the LineString is to be
             # included
             if beg_index >= total_size + size - 1:
                 # Not included, upstream of cut: skip
@@ -838,8 +917,8 @@ class MLSRoute(object):
             else:
                 # Included: not cut within line
                 i = None
-                    
-            # Compute the stop slicing parameter if the LineString is to be 
+
+            # Compute the stop slicing parameter if the LineString is to be
             # included
             if end_index < total_size:
                 # Not included, downstream of cut: break
@@ -850,7 +929,7 @@ class MLSRoute(object):
             else:
                 # Included: not cut within line
                 j = None
-            
+
             # Collect the valid points based on slicing computations
             if i is None:
                 points_select = []
@@ -872,12 +951,18 @@ class MLSRoute(object):
                 lines.append(LineString(points_select))
                 breaks.append(breaks_select)
                 break
-        
+
         # Create MLS route based on computed results
         mls = MultiLineString(lines)
         return MLSRoute(mls, rte_breaks=breaks, closed=self.closed)
-    
-    def segment(self, cuts, by_mls=False, normalized=False, **kwargs):
+
+    def segment(
+        self, 
+        cuts: list[float], 
+        by_mls: bool = False, 
+        normalized: bool = False, 
+        **kwargs,
+    ) -> list['MLSRoute']:
         """
         Cut the MLS Route into segments based on the given cut points.
         
@@ -913,7 +998,7 @@ class MLSRoute(object):
             raise ValueError(
                 "Must provide segment cuts as array-like of numeric cutting "
                 "point values.")
-        
+
         # Compute the valid ranges of the routes
         beg =  self.mls_ranges.begs.min() if by_mls \
                 else self.rte_ranges.begs.min()
@@ -923,20 +1008,25 @@ class MLSRoute(object):
         # Iterate over cut points
         segments = []
         for beg_i, end_i in zip(cuts[:-1], cuts[1:]):
-            
+
             # Check for valid location
             if end_i < beg or beg_i > end:
                 continue
-            
+
             # Perform cut
             segment_i = self.cut(beg_i, end_i, by_mls=by_mls, 
                                  normalized=normalized)
             # Append new segment to the list of created segments
             segments.append(segment_i)
-        
+
         return segments
 
-    def snap(self, loc, by_mls=False, normalized=False):
+    def snap(
+        self, 
+        loc: float, 
+        by_mls: bool = False, 
+        normalized: bool = False,
+    ) -> float:
         """
         Snap a provided location value to the bounds of the route based on the 
         provided parameters. If the location falls within the bounds of the 
@@ -964,8 +1054,8 @@ class MLSRoute(object):
             return self.mls_ranges.snap(loc)
         else:
             return self.rte_ranges.snap(loc)
-    
-    def bearing(self, positive=True, invert=False):
+
+    def bearing(self, positive: bool = True, invert: bool = False) -> float:
         """
         Approximate the bearing angle of the route, based on the first and 
         last points in the route's MLS.
@@ -983,20 +1073,20 @@ class MLSRoute(object):
         # Capture x and y distance between points
         x_diff = self.mls.geoms[-1].xy[0][-1] - self.mls.geoms[0].xy[0][0]
         y_diff = self.mls.geoms[-1].xy[1][-1] - self.mls.geoms[0].xy[1][0]
-        
+
         # Compute bearing angle
         bearing = math.degrees(math.atan2(y_diff, x_diff))
-        
+
         # Invert if requested
         if invert:
             bearing += 180
-        
+
         # Enforce range
         if positive and bearing < 0:
             bearing += 360
         elif not positive and bearing > 180:
             bearing -= 360
-            
+
         return bearing
 
 
@@ -1004,7 +1094,10 @@ class MLSRoute(object):
 # SUPPORT FUNCTIONS #
 #####################
 
-def combine_mpgs(objs, cls=None):
+def combine_mpgs(
+    objs: list[Union[BaseGeometry,BaseMultipartGeometry]], 
+    cls: Optional[Type[BaseGeometry]]=None
+) -> BaseGeometry:
     """
     Combine multiple multipart geometries into a single multipart geometry of 
     geometry collection.
@@ -1025,7 +1118,11 @@ def combine_mpgs(objs, cls=None):
         new = cls(new)
     return new
 
-def _distribute_dimensions(mls, beg, end):
+def _distribute_dimensions(
+    mls: MultiLineString, 
+    beg: float, 
+    end: float,
+) -> tuple[np.ndarray, np.ndarray]:
     # Validate input
     if not isinstance(mls, MultiLineString):
         raise ValueError("Input MLS must be MultiLineString type.")
@@ -1039,7 +1136,7 @@ def _distribute_dimensions(mls, beg, end):
     ends = proportions + beg
     # Return proportions
     return begs, ends
-    
+
 
 # Sample use
 if __name__ == '__main__':
@@ -1057,5 +1154,3 @@ if __name__ == '__main__':
     
     # Cut the sample route
     test = route.cut(0,0.80, normalized=True)
-        
-        

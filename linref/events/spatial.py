@@ -40,7 +40,8 @@ import numpy as np
 import copy, warnings
 from functools import wraps
 from linref.various.geospatial import join_nearby
-
+from shapely.geometry import LineString
+from typing import Union, Literal
 
 class ParallelProjector(object):
     """
@@ -60,18 +61,24 @@ class ParallelProjector(object):
     of the target EventsCollection.
     """
 
-    def __init__(self, target, projected, samples=3, buffer=100) -> None:
+    def __init__(
+        self,
+        target: "EventsCollection",
+        projected: gpd.GeoDataFrame,
+        samples: int = 3,
+        buffer: float = 100,
+    ) -> None:
         self.target = target
         self.projected = projected
         self.samples = samples
         self.buffer = buffer
 
     @property
-    def target(self):
+    def target(self) -> "EventsCollection":
         return self._target
 
     @target.setter
-    def target(self, obj):
+    def target(self, obj) -> None:
         # Validate object type
         if not isinstance(obj, EventsCollection):
             raise TypeError(
@@ -86,24 +93,24 @@ class ParallelProjector(object):
         self._target = obj
 
     @property
-    def projected(self):
+    def projected(self) -> gpd.GeoDataFrame:
         return self._projected
 
     @projected.setter
-    def projected(self, obj):
+    def projected(self, obj: gpd.GeoDataFrame) -> None:
         # Validate object type
         if not isinstance(obj, gpd.GeoDataFrame):
             raise TypeError(
                 "Input projected object must be valid gpd.GeoDataFrame "
                 "instance.")
         self._projected = obj
-    
+
     @property
-    def samples(self):
+    def samples(self) -> int:
         return self._samples
 
     @samples.setter
-    def samples(self, samples):
+    def samples(self, samples: int) -> None:
         # Validate
         if not isinstance(samples, int):
             raise ValueError("Samples parameter must be an integer.")
@@ -113,11 +120,11 @@ class ParallelProjector(object):
         self._build_sample_points()
 
     @property
-    def buffer(self):
+    def buffer(self) -> float:
         return self._buffer
 
     @buffer.setter
-    def buffer(self, buffer):
+    def buffer(self, buffer: float) -> None:
         # Validate
         try:
             buffer = float(buffer)
@@ -126,23 +133,23 @@ class ParallelProjector(object):
         except:
             raise ValueError(
                 "Buffer parameter must be a non-negative numeric value.")
-        
+
         # Perform spatial join
         self._buffer_join()
 
     @property
-    def sample_locs(self):
+    def sample_locs(self) -> np.ndarray:
         return np.linspace(0, 1, num=self.samples)
 
     @property
-    def sample_points(self):
+    def sample_points(self) -> gpd.GeoDataFrame:
         return self._sample_points
 
     @property
-    def projectors(self):
+    def projectors(self) -> gpd.GeoSeries:
         return self.projected.geometry.values
 
-    def _build_sample_points(self):
+    def _build_sample_points(self) -> None:
         """
         Build sample points along each projector geometry for matching.
         """
@@ -158,7 +165,7 @@ class ParallelProjector(object):
             'geometry': points}, geometry='geometry', crs=self.projected.crs
         )
 
-    def _buffer_join(self):
+    def _buffer_join(self) -> None:
         """
         Join projector sample points to target geometry within buffer for 
         matching.
@@ -176,7 +183,12 @@ class ParallelProjector(object):
         joined = joined.dropna(how='any')
         self._joined = joined
 
-    def match(self, match='all', choose=1, sort_locs=True):
+    def match(
+        self,
+        match: Union[Literal["all"], int] = "all",
+        choose: Union[Literal["all"], int] = 1,
+        sort_locs: bool = True,
+    ) -> pd.DataFrame:
         """
         Perform the actual matching of nearby geometries to one another based 
         on input analysis parameters, producing a dataframe which has been 
@@ -219,8 +231,8 @@ class ParallelProjector(object):
         )
         pair_distances = np.array(
             np.split(mean_distances, proj_index)[1:], dtype=object)
-        
-        # Identify the index of the target(s) with the lowest mean distance for 
+
+        # Identify the index of the target(s) with the lowest mean distance for
         # each projector if requested
         pair_groups = np.split(pair_unique[match_mask,1], proj_index)[1:]
         if choose == 'all':
@@ -245,7 +257,7 @@ class ParallelProjector(object):
         # Select the matched pairs
         matched_pairs = pd.DataFrame({
             '__projector': projectors, '__target': targets})
-        
+
         # Merge matched records
         proj_lines = self.projected.geometry.rename('__proj_lines')
         select = matched_pairs \
@@ -256,7 +268,7 @@ class ParallelProjector(object):
         select = select.reset_index(drop=True)
 
         # Project ends onto matched routes
-        def _project(route, line):
+        def _project(route: MLSRoute, line: LineString) -> tuple[float, float]:
             try:
                 # Project bounds onto target route
                 boundary = line.boundary
@@ -265,12 +277,13 @@ class ParallelProjector(object):
                 return beg_loc, end_loc
             except (AttributeError, IndexError):
                 return np.nan, np.nan
+            
         proj_bounds = np.asarray(list(map(
             _project,
             select[self.target.route].values,
             select['__proj_lines'].values
         )))
-            
+
         # Merge with input and target data
         if sort_locs:
             select[labels[0]] = proj_bounds.min(axis=1)
@@ -285,10 +298,11 @@ class ParallelProjector(object):
             .drop(columns=['__projector','__target','__proj_lines','route'],
                   errors='ignore')
         return select
-    
+
 
 #####################
 # LATE DEPENDENCIES #
 #####################
 
 from linref.events.collection import EventsCollection
+from linref.route import MLSRoute
