@@ -41,30 +41,36 @@ import numpy as np
 import copy, warnings
 from functools import wraps
 from rangel import RangeCollection
+from typing import Union, Optional, Literal, Iterator, Callable, Any
 
+################
+# TYPE ALIASES #
+################
+ColumnLabelType = Union[str, list[str], tuple[str, ...], np.ndarray]
+ArrayLike = Union[list, tuple, np.ndarray, pd.Series]
 
 class EventsMergeAttribute(object):
-    
-    def __init__(self, parent, column):
+
+    def __init__(self, parent: "EventsMerge", column: ColumnLabelType):
         self.parent = parent
         self.column = column
-        
+
     @property
     def parent(self):
         return self._parent
-    
+
     @parent.setter
-    def parent(self, obj):
+    def parent(self, obj: "EventsMerge"):
         if not isinstance(obj, EventsMerge):
             raise TypeError("Input parent must be EventsMerge type.")
         self._parent = obj
-        
+
     @property
     def column(self):
         return self._column
-    
+
     @column.setter
-    def column(self, label):
+    def column(self, label: ColumnLabelType):
         # Multiple labels provided
         if isinstance(label, (list, tuple, np.ndarray)):
             if not set(label).issubset(self.parent.columns):
@@ -85,28 +91,34 @@ class EventsMergeAttribute(object):
             self._ncols = 1
             self._loc = [self.parent.right.columns.index(label)]
             self._column = label
-        
+
     @property
-    def traces(self):
+    def traces(self) -> list["EventsMergeTrace"]:
         try:
             return self.parent.traces
         except AttributeError:
             self.parent.build(inplace=True)
             return self.parent.traces
-    
+
     @property
-    def loc(self):
+    def loc(self) -> list[int]:
         return self._loc
 
     @property
-    def ncols(self):
+    def ncols(self) -> int:
         return self._ncols
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         return self._ndim
 
-    def _to_pandas(self, index, data, as_series=False, squeeze=True):
+    def _to_pandas(
+        self,
+        index: Union[pd.Index, np.ndarray, list],
+        data: ArrayLike,
+        as_series: bool = False,
+        squeeze: bool = True,
+    ) -> Union[pd.Series, pd.DataFrame]:
         # Create pandas object
         if as_series:
             obj = pd.Series(
@@ -124,10 +136,16 @@ class EventsMergeAttribute(object):
                 obj = obj.iloc[:, 0]
         return obj
 
-    def _get_empty(self, empty=None):
+    def _get_empty(self, empty: Optional[Any] = None) -> Any:
         return np.nan if empty is None else empty
 
-    def _agg(self, func, empty=None, as_array=True, **kwargs):
+    def _agg(
+        self,
+        func: Callable,
+        empty: Optional[Any] = None,
+        as_array: bool = True,
+        **kwargs,
+    ) -> Union[tuple[Union[pd.Index, np.ndarray], ArrayLike]]:
         """
         Generic attribute aggregator.
 
@@ -153,7 +171,7 @@ class EventsMergeAttribute(object):
             # Log results from trace
             index.extend(trace.group_left.df.index)
             res.append(res_i)
-        # Combine results for each left group into a single array that is  
+        # Combine results for each left group into a single array that is
         # compatible with the left collection
         if as_array:
             return np.array(index), np.concatenate(res)
@@ -161,7 +179,9 @@ class EventsMergeAttribute(object):
             # Flatten data (relevant for geometry aggregators)
             return index, [i for sub in res for i in sub]
 
-    def all(self, empty=None, **kwargs):
+    def all(
+        self, empty: Optional[Any] = None, **kwargs,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return all values from intersecting events in a list.
 
@@ -172,14 +192,19 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Choose all intersecting events
             res = np.empty((trace.mask.shape[0], self._ncols), dtype=object)
             res[:] = [list(arr[mask_i, :].T) for mask_i in trace.mask]
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def any(self, empty=None, **kwargs):
+    def any(
+        self, empty: Optional[Any] = None, **kwargs,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Indicate whether each record intersects with at least one event.
 
@@ -190,13 +215,18 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Find any intersecting events, apply to all columns
             res = np.tile(trace.mask.any(axis=1), (self._ncols,1)).T
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def unique(self, empty=None, **kwargs):
+    def unique(
+        self, empty: Optional[Any] = None, **kwargs,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return all unique values from intersecting events in a tuple.
 
@@ -207,15 +237,20 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Choose all intersecting events
             res = np.empty((trace.mask.shape[0], self._ncols), dtype=object)
             res[:] = [[list(set(sub)) for sub in arr[mask_i, :].T] \
                 for mask_i in trace.mask]
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def first(self, empty=None):
+    def first(
+        self, empty: Optional[Any] = None,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the first event value according to the order of the provided 
         collection's events dataframe.
@@ -227,7 +262,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Identify the first potential match
             index = np.argmax(trace.mask, axis=1)
             # Identify where matches are made
@@ -235,9 +272,12 @@ class EventsMergeAttribute(object):
             # Fill empty value where no match is made
             res = np.where(valid, arr[index], self._get_empty(empty))
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
-    
-    def last(self, empty=None):
+
+    def last(
+        self, empty: Optional[Any] = None,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the last event value according to the order of the provided 
         collection's events dataframe.
@@ -249,7 +289,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Identify the first potential match
             index = np.argmax(np.flip(trace.mask, axis=1), axis=1)
             # Identify where matches are made
@@ -257,9 +299,12 @@ class EventsMergeAttribute(object):
             # Fill empty value where no match is made
             res = np.where(valid, arr[index], self._get_empty(empty))
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def count(self, empty=None):
+    def count(
+        self, empty: Optional[Any] = None,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the count of all intersected event values.
 
@@ -270,13 +315,17 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Sum count of all intersecting events, apply to all columns
             res = np.tile(trace.mask.sum(axis=1), (self._ncols,1)).T
             return res
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def sum(self, empty=None, nansum=False):
+    def sum(
+        self, empty: Optional[Any] = None, nansum: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the sum of all intersected event values.
 
@@ -287,7 +336,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Choose all intersecting events
             if nansum:
                 res = [np.nansum(arr[mask_i, :], axis=0).T for \
@@ -296,9 +347,12 @@ class EventsMergeAttribute(object):
                 res = [np.sum(arr[mask_i, :], axis=0).T for \
                     mask_i in trace.mask]
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def max(self, empty=None, nanmax=False):
+    def max(
+        self, empty: Optional[Any] = None, nanmax: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the max of all intersected event values.
 
@@ -309,7 +363,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Choose all intersecting events
             if nanmax:
                 res = [np.nanmax(arr[mask_i, :], axis=0).T for \
@@ -320,7 +376,9 @@ class EventsMergeAttribute(object):
             return res
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def min(self, empty=None, nanmin=False):
+    def min(
+        self, empty: Optional[Any] = None, nanmin: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the min of all intersected event values.
 
@@ -331,7 +389,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Choose all intersecting events
             if nanmin:
                 res = [np.nanmin(arr[mask_i, :], axis=0).T for \
@@ -340,9 +400,15 @@ class EventsMergeAttribute(object):
                 res = [np.min(arr[mask_i, :], axis=0).T for \
                     mask_i in trace.mask]
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def sumproduct(self, empty=None, normalized=False, dropna=False):
+    def sumproduct(
+        self,
+        empty: Optional[Any] = None,
+        normalized: bool = False,
+        dropna: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the sum of all event values multiplied by the weights of the 
         intersecting events. If normalized=False, the event values will be 
@@ -365,7 +431,9 @@ class EventsMergeAttribute(object):
         dropna : boolean, default False
             Whether to drop np.nan values before aggregating.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Prepare weights data congruent with array data
             weights = trace.weights
             weights = np.tile(np.expand_dims(weights, 2), (1,1,self._ncols))
@@ -374,13 +442,19 @@ class EventsMergeAttribute(object):
             # Drop nan if requested, zeroing weights where nan values occur
             if dropna:
                 weights = np.where(np.isnan(arr.astype(float)), 0, weights)
-           # Compute sums
+            # Compute sums
             res = np.multiply(
                 arr.reshape(1,-1,self._ncols), weights).sum(axis=1)
             return res
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def mean(self, empty=None, weighted=True, dropna=False):
+    def mean(
+        self,
+        empty: Optional[Any] = None,
+        weighted: bool = True,
+        dropna: bool = False,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return an overlay length-weighted average of all event values. An 
         unweighted simple average can also be computed if weighted=True.
@@ -398,7 +472,9 @@ class EventsMergeAttribute(object):
         dropna : boolean, default False
             Whether to drop np.nan values before aggregating.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Determine event weights
             weights = trace.weights if weighted else trace.mask
             weights = np.tile(np.expand_dims(weights, 2), (1,1,self._ncols))
@@ -414,7 +490,9 @@ class EventsMergeAttribute(object):
             return res
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def most(self, empty=None, dropna=True):
+    def most(
+        self, empty: Optional[Any] = None, dropna: bool = True,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the event value associated with the greatest total overlay 
         length, ignoring missing values by default.
@@ -429,7 +507,9 @@ class EventsMergeAttribute(object):
             Whether to drop np.nan values in intersecting events before 
             aggregating.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Iterate over 2nd dimension
             res = []
             weights = trace.weights
@@ -449,9 +529,12 @@ class EventsMergeAttribute(object):
                 # Aggregate and add to result
                 res.append(get_most(arr_i, weights_i))
             return np.array(res).T
+
         return self._to_pandas(*self._agg(_func, empty=empty))
-        
-    def mode(self, empty=None):
+
+    def mode(
+        self, empty: Optional[Any] = None,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return the most frequent unique event value.
 
@@ -462,7 +545,9 @@ class EventsMergeAttribute(object):
             aggregation cannot be performed. If None, values will be filled 
             with np.nan.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Iterate over all event masks
             res = []
             for mask_i in trace.mask:
@@ -470,9 +555,12 @@ class EventsMergeAttribute(object):
                 res_i = [get_mode(arr_i) for arr_i in arr[mask_i, :].T]
                 res.append(res_i)
             return np.array(res)
+
         return self._to_pandas(*self._agg(_func, empty=empty))
 
-    def value_counts(self, expand=True, dropna=True):
+    def value_counts(
+        self, expand: bool = True, dropna: bool = True,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Return a dataframe of all unique intersecting event values and their 
         occurence counts.
@@ -483,7 +571,9 @@ class EventsMergeAttribute(object):
             Whether to automatically expand the value counts data to a 
             dataframe when a single column is being analyzed.
         """
-        def _func(arr, trace, **kwargs):
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Find null values in array
             if dropna:
                 nanmask = ~pd.isna(arr.T)
@@ -506,6 +596,7 @@ class EventsMergeAttribute(object):
                         {val: count for val, count in zip(unique, counts)})
                 res.append(res_i)
             return np.array(res)
+
         # Generate data and expand if requested
         index, data = self._agg(_func, empty={})
         if self._ndim == 1:
@@ -515,8 +606,10 @@ class EventsMergeAttribute(object):
                 return self._to_pandas(index, data)
         else:
             return self._to_pandas(index, data)
-    
-    def cut(self, empty=None, return_mls=True):
+
+    def cut(
+        self, empty: Optional[Any] = None, return_mls: bool = True,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Cut intersecting event routes at the intersecting begin and end 
         locations, returning the resulting route's geometry or the route itself 
@@ -535,7 +628,10 @@ class EventsMergeAttribute(object):
         if self._ncols != 1:
             raise ValueError("EventsMergeAttribute must represent a single "
                              "column to perform cut.")
-        def _func(arr, trace, **kwargs):
+
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Iterate over all event masks
             indices = np.argmax(trace.mask, axis=1)
             gen = zip(indices, trace.group_left.begs, trace.group_left.ends)
@@ -552,10 +648,17 @@ class EventsMergeAttribute(object):
                         "EventsMergeAttribute must represent a single column "
                         "and must contain MLSRoute objects to be cut.")
             return res
+
         return self._to_pandas(*self._agg(
             _func, empty=empty, as_array=False), as_series=True)
-    
-    def interpolate(self, snap=None, point='begs', empty=None, **kwargs):
+
+    def interpolate(
+        self,
+        snap: Optional[Literal["near", "left", "right"]] = None,
+        point: Literal["begs", "ends", "centers"] = "begs",
+        empty: Optional[Any] = None,
+        **kwargs,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Interpolate along intersecting event routes at the intersecting 
         location (or begin point for linear events), returning the resulting 
@@ -579,7 +682,10 @@ class EventsMergeAttribute(object):
         if self._ncols != 1:
             raise ValueError("EventsMergeAttribute must represent a single "
                              "column to perform interpolate.")
-        def _func(arr, trace, **kwargs):
+
+        def _func(
+            arr: np.ndarray, trace: EventsMergeTrace, **kwargs,
+        ) -> np.ndarray:
             # Iterate over all event masks
             indices = np.argmax(trace.mask, axis=1)
             gen = zip(indices, getattr(trace.group_left, point))
@@ -596,9 +702,10 @@ class EventsMergeAttribute(object):
                         "column and must contain MLSRoute objects to be "
                         "interpolated.")
             return res
+
         return self._to_pandas(*self._agg(
             _func, empty=empty, as_array=False), as_series=True)
-     
+
 
 class EventsMergeTrace(object):
     """
@@ -627,9 +734,16 @@ class EventsMergeTrace(object):
         been discovered between the left group and any right group. When False, 
         no right group will be indicated.
     """
-    
-    def __init__(self, group_left=None, group_right=None, key=None, mask=None, 
-            weights=None, success=True):
+
+    def __init__(
+        self,
+        group_left: Optional[EventsGroup] = None,
+        group_right: Optional[EventsGroup] = None,
+        key: Optional[str] = None,
+        mask: Optional[np.ndarray] = None,
+        weights: Optional[np.ndarray] = None,
+        success: bool = True,
+    ):
         self.group_left = group_left
         self.group_right = group_right
         self.key = key
@@ -644,70 +758,70 @@ class EventsMerge(object):
     and summarizing/retrieving information from these merges. Generated through 
     collection-level merging methods such as EventsCollection.merge.
     """
-    
-    def __init__(self, left, right):
+
+    def __init__(self, left: EventsCollection, right: EventsCollection):
         # Log parameters
         self.left = left
         self.right = right
-        
-    def __getitem__(self, column) -> EventsMergeAttribute:
+
+    def __getitem__(self, column: ColumnLabelType) -> EventsMergeAttribute:
         return EventsMergeAttribute(self, column)
-    
-    def __repr__(self):
+
+    def __repr__(self) -> str:
         text = (
             f"left:  {self.left}\n"
             f"right: {self.right}\n"
             f"(traces {'built' if hasattr(self, '_traces') else 'not built'})"
         )
         return text
-        
+
     @property
-    def left(self):
+    def left(self) -> EventsCollection:
         return self._left
-    
+
     @left.setter
-    def left(self, obj):
+    def left(self, obj: EventsCollection) -> None:
         self._validate_target(obj)
         self._left = obj
-        
+
     @property
-    def right(self):
+    def right(self) -> EventsCollection:
         return self._right
-    
+
     @right.setter
-    def right(self, obj):
+    def right(self, obj: EventsCollection) -> None:
         # Validate and set
         self._validate_target(obj, left=False)
         self._right = obj
-        
+
     @property
-    def traces(self):
+    def traces(self) -> list[EventsMergeTrace]:
         try:
             return self._traces
         except AttributeError:
             self.build(inplace=True)
             return self._traces
-    
+
     @traces.setter
-    def traces(self, obj):
+    def traces(self, obj: list[EventsMergeTrace]) -> None:
         if not isinstance(obj, list):
             raise TypeError("Traces must be a list of EventsMerge_trace "
                             "objects.")
         self._traces = obj
-        
+
     @property
-    def num_keys(self):
+    def num_keys(self) -> int:
         return self.left.num_keys
-        
+
     @property
-    def keys(self):
+    def keys(self) -> list[str]:
         return self.left.keys
-    
+
     @property
-    def columns(self):
+    def columns(self) -> list[str]:
         return self.right.columns
-        
-    def _validate_target(self, obj, left=True):
+
+    def _validate_target(self, obj: EventsCollection, left: bool = True) -> None:
         # Ensure left is set first if the target is the right
         if not (left) and not (hasattr(self, '_left')):
             raise AttributeError("The left target must be set before the right "
@@ -724,8 +838,8 @@ class EventsMerge(object):
             raise ValueError(
                 "Input EventsMerge target must have the same number of keys "
                 f"as the existing left target ({self.num_keys}).")
-            
-    def copy(self, deep=False):
+
+    def copy(self, deep: bool = False) -> "EventsMerge":
         """
         Create an exact copy of the events class instance.
         
@@ -739,7 +853,7 @@ class EventsMerge(object):
         else:
             return copy.copy(self)
 
-    def build(self, inplace=True):
+    def build(self, inplace: bool = True) -> Optional["EventsMerge"]:
         """
         Perform intersects and overlays to produce EventsMergeTrace objects 
         for aggregation.
@@ -768,8 +882,10 @@ class EventsMerge(object):
                     key=key, mask=mask, weights=weights, success=True))
         # Log traces
         self.traces = traces
-    
-    def distribute(self, column=None, **kwargs):
+
+    def distribute(
+        self, column: Optional[Union[str, list[str]]] = None, **kwargs,
+    ) -> Union[pd.Series, pd.DataFrame]:
         """
         Intersect and distribute events over the range collection, scaling 
         their values relative to their indexed distance from their intersecting 
@@ -861,7 +977,7 @@ class EventsMerge(object):
                 obj = obj.squeeze()
         return obj
 
-    def cut(self, **kwargs):
+    def cut(self, **kwargs) -> Union[pd.Series, pd.DataFrame]:
         """
         Cut intersecting event routes at the intersecting begin and end 
         locations, returning the resulting route's geometry or the route itself 
@@ -886,7 +1002,7 @@ class EventsMerge(object):
         # Perform cut
         return ema.cut(**kwargs)
 
-    def interpolate(self, **kwargs):
+    def interpolate(self, **kwargs) -> Union[pd.Series, pd.DataFrame]:
         """
         Interpolate along intersecting event routes at the intersecting 
         location (or begin point for linear events), returning the resulting 
@@ -916,7 +1032,7 @@ class EventsMerge(object):
         # Perform cut
         return ema.interpolate(**kwargs)
 
-    def count(self, **kwargs):
+    def count(self, **kwargs) -> Union[pd.Series, pd.DataFrame]:
         """
         Count the number of intersecting events.
 
@@ -932,7 +1048,7 @@ class EventsMerge(object):
         # Perform aggregation
         return ema.count(**kwargs)
 
-    def any(self, **kwargs):
+    def any(self, **kwargs) -> Union[pd.Series, pd.DataFrame]:
         """
         Indicate whether each record intersects with at least one event.
 
@@ -953,7 +1069,7 @@ class EventsMerge(object):
 # HELPERS #
 ###########
 
-def get_most(arr, weights):
+def get_most(arr: np.ndarray, weights: np.ndarray) -> np.ndarray:
     """
     Select the item from the input 1D array which is associated with the 
     highest total weight from each row in the 2D weights array. Scores are 
@@ -969,8 +1085,8 @@ def get_most(arr, weights):
     splits = np.split(weights[:, sorter], splitter, axis=1)
     select = unique[np.argmax([x.sum(axis=1) for x in splits], axis=0)]
     return select
-    
-def get_mode(arr):
+
+def get_mode(arr: ArrayLike) -> Any:
     """
     Select the item from the input array which appears most frequently.
     
@@ -990,4 +1106,4 @@ def get_mode(arr):
 # LATE DEPENDENCIES #
 #####################
 
-from linref.events.collection import EventsCollection
+from linref.events.collection import EventsCollection, EventsGroup
