@@ -2549,7 +2549,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other: "EventsCollection") -> EventsMerge:
+    def merge(self, other: "EventsCollection") -> "EventsMerge":
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 

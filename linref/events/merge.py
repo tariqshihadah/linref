@@ -737,8 +737,8 @@ class EventsMergeTrace(object):
 
     def __init__(
         self,
-        group_left: Optional[EventsGroup] = None,
-        group_right: Optional[EventsGroup] = None,
+        group_left: Optional["EventsGroup"] = None,
+        group_right: Optional["EventsGroup"] = None,
         key: Optional[str] = None,
         mask: Optional[np.ndarray] = None,
         weights: Optional[np.ndarray] = None,
@@ -759,7 +759,7 @@ class EventsMerge(object):
     collection-level merging methods such as EventsCollection.merge.
     """
 
-    def __init__(self, left: EventsCollection, right: EventsCollection):
+    def __init__(self, left: "EventsCollection", right: "EventsCollection"):
         # Log parameters
         self.left = left
         self.right = right
@@ -776,20 +776,20 @@ class EventsMerge(object):
         return text
 
     @property
-    def left(self) -> EventsCollection:
+    def left(self) -> "EventsCollection":
         return self._left
 
     @left.setter
-    def left(self, obj: EventsCollection) -> None:
+    def left(self, obj: "EventsCollection") -> None:
         self._validate_target(obj)
         self._left = obj
 
     @property
-    def right(self) -> EventsCollection:
+    def right(self) -> "EventsCollection":
         return self._right
 
     @right.setter
-    def right(self, obj: EventsCollection) -> None:
+    def right(self, obj: "EventsCollection") -> None:
         # Validate and set
         self._validate_target(obj, left=False)
         self._right = obj
@@ -821,7 +821,7 @@ class EventsMerge(object):
     def columns(self) -> list[str]:
         return self.right.columns
 
-    def _validate_target(self, obj: EventsCollection, left: bool = True) -> None:
+    def _validate_target(self, obj: "EventsCollection", left: bool = True) -> None:
         # Ensure left is set first if the target is the right
         if not (left) and not (hasattr(self, '_left')):
             raise AttributeError("The left target must be set before the right "

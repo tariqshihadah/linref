@@ -63,7 +63,7 @@ class ParallelProjector(object):
 
     def __init__(
         self,
-        target: EventsCollection,
+        target: "EventsCollection",
         projected: gpd.GeoDataFrame,
         samples: int = 3,
         buffer: float = 100,
@@ -74,7 +74,7 @@ class ParallelProjector(object):
         self.buffer = buffer
 
     @property
-    def target(self) -> EventsCollection:
+    def target(self) -> "EventsCollection":
         return self._target
 
     @target.setter
