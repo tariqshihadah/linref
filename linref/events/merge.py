@@ -41,7 +41,7 @@ import numpy as np
 import copy, warnings
 from functools import wraps
 from rangel import RangeCollection
-from typing import Union, Optional, Literal, Iterator, Callable, Any
+from typing import Union, Optional, Literal, Callable, Any
 
 ################
 # TYPE ALIASES #

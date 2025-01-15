@@ -41,8 +41,9 @@ import numpy as np
 import copy, warnings, math
 from functools import wraps
 from rangel import RangeCollection
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString, MultiLineString
 from shapely import unary_union
+from typing import Union, Optional, Literal, Callable, Any
 
 
 #######################
@@ -50,17 +51,17 @@ from shapely import unary_union
 #######################
 
 def generate_linear_events(
-    df, 
-    keys=None, 
-    beg_label='BEG', 
-    end_label='END', 
-    chain_label='CHAIN', 
-    buffer=None, 
-    scale=1,
-    decimals=None, 
-    breaks='continue', 
-    **kwargs
-):
+    df: gpd.GeoDataFrame,
+    keys: Optional[Union[list[str], tuple[str]]] = None,
+    beg_label: str = "BEG",
+    end_label: str = "END",
+    chain_label: str = "CHAIN",
+    buffer: Optional[float] = None,
+    scale: float = 1,
+    decimals: int = None,
+    breaks: str = "continue",
+    **kwargs,
+) -> EventsCollection:
     """
     Function for generating events information for existing chains of linear 
     geospatial data based on the geographic lengths of chain members. This 
@@ -183,22 +184,22 @@ def generate_linear_events(
         # Create geodataframes for intersecting
         begs = gpd.GeoDataFrame(begs, geometry=geom_column)
         ends = gpd.GeoDataFrame(ends, geometry=geom_column)
-        
+
         # Intersect boundary geometries
         intersection = gpd.sjoin(ends, begs)
         intersection['index_left'] = intersection.index
-        # Get all unique matches between the line end points and other line 
+        # Get all unique matches between the line end points and other line
         # begin points
         pairs = intersection[['index_left','index_right']].values
-        
-        # Remove instances of multiple matches on left or right; only the 
-        # first unique value on the left and right are kept based on original 
+
+        # Remove instances of multiple matches on left or right; only the
+        # first unique value on the left and right are kept based on original
         # sorting of data
         pairs = pairs[np.unique(pairs[:,0], return_index=True)[1]]
         pairs = pairs[np.unique(pairs[:,1], return_index=True)[1]]
-        
-        # Identify single-segment chains with no matches to other segments as 
-        # well as downstream terminals, holding their places with pairs of 
+
+        # Identify single-segment chains with no matches to other segments as
+        # well as downstream terminals, holding their places with pairs of
         # these segments' indices matched with null values
         missing = set(group.index) - set(pairs[:,0])
         missing = np.array([sorted(missing), np.full(len(missing), np.nan)]).T
@@ -210,22 +211,22 @@ def generate_linear_events(
         while pairs.shape[0] > 0:
             # Initialize pairs filter, retaining all pairs
             pairs_filter = np.ones(pairs.shape[0], dtype=bool)
-            
-            # Identify upstream terminals which will be used to begin segment 
+
+            # Identify upstream terminals which will be used to begin segment
             # chains
             terminals = sorted(set(pairs[:,0]) - set(pairs[:,1]))
 
-            # Address complete loops by selecting a terminal from remaining 
+            # Address complete loops by selecting a terminal from remaining
             # data if none remain
             try:
                 assert len(terminals) > 0
             except AssertionError:
                 terminals = [pairs[0,0]]
 
-            # Iterate over upstream terminals, chaining from them to their 
+            # Iterate over upstream terminals, chaining from them to their
             # downstream matches
             for terminal in terminals:
-        
+
                 # Iterate through all subsequent matches to the terminal
                 chains.append([])
                 member = terminal
@@ -235,25 +236,25 @@ def generate_linear_events(
                         chains[chain_index].append(member)
                         # Identify pairs matching the selected chain member
                         member_loc = (pairs[:,0] == member) & pairs_filter
-                        # Check for no matches; if there are none, end the 
+                        # Check for no matches; if there are none, end the
                         # chain and move to the next one
                         assert member_loc.sum() > 0
                         # Update pairs filter to remove matches to the member
                         pairs_filter[member_loc] = False
-                        # Update indexed chain member by selecting the next 
+                        # Update indexed chain member by selecting the next
                         # match
                         member = pairs[member_loc.argmax()][1]
-                        # Check for the end of the chain if the new selected 
-                        # member is null, or if looping is detected; end the 
+                        # Check for the end of the chain if the new selected
+                        # member is null, or if looping is detected; end the
                         # chain in either case
                         assert ~np.isnan(member) # Check for end of chain
                         assert member != terminal # Check for looping
                     except AssertionError:
                         break
-        
+
                 # Update the index of the chain
                 chain_index += 1
-        
+
             # Filter pairs to remove addressed items
             pairs = pairs[pairs_filter]
 
@@ -277,7 +278,7 @@ def generate_linear_events(
     if not decimals is None:
         record_begs = np.round(record_begs, decimals=decimals)
         record_ends = np.round(record_ends, decimals=decimals)
-        
+
     # Synthesize events data
     events = pd.DataFrame(data={
         beg_label: record_begs,
@@ -297,7 +298,10 @@ def generate_linear_events(
     )
     return ec
 
-def find_intersections(df, only_points=True, only_single=True):
+
+def find_intersections(
+    df: gpd.GeoDataFrame, only_points: bool = True, only_single: bool = True
+) -> gpd.GeoDataFrame:
     """
     Generate intersection points for an input geodataframe of linear 
     geometries. Output will be a geodataframe with a single point 
@@ -338,7 +342,11 @@ def find_intersections(df, only_points=True, only_single=True):
     res = res.reset_index(drop=True)
     return res
 
-def extract_direction(line, labels=['E', 'N', 'W', 'S']):
+
+def extract_direction(
+    line: Union[LineString, MultiLineString], 
+    labels: list[str] = ["E", "N", "W", "S"],
+) -> str:
     """
     Approximate the cardinal direction of the line, based on the first and 
     last points in the geometry.
@@ -357,21 +365,26 @@ def extract_direction(line, labels=['E', 'N', 'W', 'S']):
     select = np.digitize(bearing, bins)
     return (labels + [labels[0]])[select]
 
-def extract_bearing(line, positive=True, invert=False):
+
+def extract_bearing(
+    line: Union[LineString, MultiLineString],
+    positive: bool = True,
+    invert: bool = False,
+) -> float:
     """
-    Approximate the bearing angle of the line, based on the first and 
+    Approximate the bearing angle of the line, based on the first and
     last points in the geometry.
-    
+
     Parameters
     ----------
     line : shapely.geometry.LineString or .MultiLineString
         Linear geometry being analyzed.
     positive : bool, default True
-        Whether to enforce a positive range on the computed bearing angle. 
-        If True, the bearing angle will fall on the range [0,360). If 
+        Whether to enforce a positive range on the computed bearing angle.
+        If True, the bearing angle will fall on the range [0,360). If
         False, the bearing angle will fall on the range (-180,180].
     invert : bool, default False
-        Whether to invert the computed bearing angle, effectively 
+        Whether to invert the computed bearing angle, effectively
         reversing the direction of the line.
     """
     # Get first/last coordinates
@@ -389,20 +402,20 @@ def extract_bearing(line, positive=True, invert=False):
     # Get X/Y distances
     x_diff = pt_end[0] - pt_beg[0]
     y_diff = pt_end[1] - pt_beg[1]
-    
+
     # Compute bearing angle
     bearing = math.degrees(math.atan2(y_diff, x_diff))
-    
+
     # Invert if requested
     if invert:
         bearing += 180
-    
+
     # Enforce range
     if positive and bearing < 0:
         bearing += 360
     elif not positive and bearing > 180:
         bearing -= 360
-        
+
     return bearing
 
 
