@@ -2,8 +2,15 @@ import geopandas as gpd
 from shapely.ops import nearest_points
 
 
-def join_nearby(left, right, buffer=100, lsuffix='left', rsuffix='right', 
-                choose='min', dist_label='DISTANCE'):
+def join_nearby(
+    left: gpd.GeoDataFrame,
+    right: gpd.GeoDataFrame,
+    buffer: float = 100,
+    lsuffix: str = "left",
+    rsuffix: str = "right",
+    choose: str = "min",
+    dist_label: str = "DISTANCE",
+) -> gpd.GeoDataFrame:
     """
     Join a geodataframe to the nearest, furthest, or all records from a second 
     geodataframe within a defined buffer area.
@@ -26,20 +33,20 @@ def join_nearby(left, right, buffer=100, lsuffix='left', rsuffix='right',
         columns={'index_left': index_left, 'index_right': index_right})
 
     # Define distance computation function
-    def _get_distance(o1, o2):
+    def _get_distance(o1, o2) -> float:
         # If geometries are valid, compute distance
         try:
             p1, p2 = nearest_points(o1, o2)
             return p1.distance(p2)
         except (AttributeError, ValueError) as e:
             return -1
-            
+
     # Compute distances
     geoms = joined[[left.geometry.name,index_right]].merge(
         right.geometry, left_on=index_right, right_index=True, how='left')
     points = zip(geoms.iloc[:,0], geoms.iloc[:,2])
     joined[dist_label] = list(map(lambda x: _get_distance(*x), points))
-    
+
     # Choose resulting records
     joined = joined.rename_axis(index=index_left) \
         .sort_values(by=[index_left,dist_label], ascending=[True,True])
@@ -53,4 +60,3 @@ def join_nearby(left, right, buffer=100, lsuffix='left', rsuffix='right',
     else:
         raise ValueError("Choose parameter must be 'min', 'max', or 'all'.")
     return joined
-
