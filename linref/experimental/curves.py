@@ -1,6 +1,7 @@
 from shapely.geometry import LineString, MultiLineString
 import numpy as np
 import math
+from typing import Union
 
 
 class CurveDetector(object):
@@ -16,7 +17,7 @@ class CurveDetector(object):
     - Full curve radius estimate
     """
 
-    def __init__(self, line):
+    def __init__(self, line: Union[LineString, MultiLineString]):
         # Log parameters
         self.line = line
 
@@ -24,18 +25,18 @@ class CurveDetector(object):
         self._segment_mask = None
 
     @property
-    def line(self):
+    def line(self) -> Union[LineString, MultiLineString]:
         return self._line
 
     @line.setter
-    def line(self, line):
+    def line(self, line: Union[LineString, MultiLineString]):
         if not isinstance(line, (LineString, MultiLineString)):
             raise TypeError("Input line must be valid shapely linear geometry.")
         else:
             self._line = line
 
     @property
-    def segment_mask(self):
+    def segment_mask(self) -> np.ndarray:
         """
         A boolean array mask indicating which 4-point segments have been 
         detected to be part of a fitted curve.
@@ -43,7 +44,7 @@ class CurveDetector(object):
         return self._segment_mask
 
     @property
-    def point_mask(self):
+    def point_mask(self) -> np.ndarray:
         """
         A boolean array mask indicating which points have been detected to be 
         part of a fitted curve
@@ -55,7 +56,7 @@ class CurveDetector(object):
         return mask
 
     @property
-    def point_map(self):
+    def point_map(self) -> np.ndarray:
         """
         Array of values indicating which points are associated with which 
         curves. Points with a value of 0 are not associated with any unique 
@@ -66,7 +67,7 @@ class CurveDetector(object):
         return res
 
     @property
-    def curves(self):
+    def curves(self) -> list:
         """
         A list of shapely LineStrings for fitted curves.
         """
@@ -79,25 +80,25 @@ class CurveDetector(object):
             # Create curve linestring
             lines.append(LineString(list(zip(self.xs[mask], self.ys[mask]))))
         return lines
-            
+
     @property
-    def size(self):
+    def size(self) -> int:
         return len(self.xs)
 
     @property
-    def xs(self):
+    def xs(self) -> np.ndarray:
         # Compute x values
         xs = np.array(self.line.xy[0], dtype=float)
         return xs
 
     @property
-    def ys(self):
+    def ys(self) -> np.ndarray:
         # Compute x values
         ys = np.array(self.line.xy[1], dtype=float)
         return ys
 
     @property
-    def dx(self):
+    def dx(self) -> np.ndarray:
         """
         X-dimension distance between adjacent points.
         Size = n - 1
@@ -106,7 +107,7 @@ class CurveDetector(object):
         return dx
 
     @property
-    def dy(self):
+    def dy(self) -> np.ndarray:
         """
         Y-dimension distance between adjacent points.
         Size = n - 1
@@ -115,7 +116,7 @@ class CurveDetector(object):
         return dy
 
     @property
-    def bearing(self):
+    def bearing(self) -> np.ndarray:
         """
         Bearing of the ray defined by two adjacent points.
         Size = n - 1
@@ -124,7 +125,7 @@ class CurveDetector(object):
         return bearing
 
     @property
-    def ray_length(self):
+    def ray_length(self) -> np.ndarray:
         """
         Length of the ray defined by two adjacent points.
         Size = n - 1
@@ -133,7 +134,7 @@ class CurveDetector(object):
         return ray_length
 
     @property
-    def relangle(self):
+    def relangle(self) -> np.ndarray:
         """
         Relative angle between two adjacent rays.
         Size = n - 2
@@ -142,7 +143,7 @@ class CurveDetector(object):
         return relangle
 
     @property
-    def direction(self):
+    def direction(self) -> np.ndarray:
         """
         The direction of the relative angle between two adjacent rays, 
         indicating a left-hand angle (1) and a right-hand angle (0).
@@ -152,7 +153,7 @@ class CurveDetector(object):
         return direction
 
     @property
-    def span(self):
+    def span(self) -> np.ndarray:
         """
         Span length of each 3-point arc, measuring between the begin and end 
         points of each arc defined by two adjacent rays.
@@ -161,9 +162,9 @@ class CurveDetector(object):
         dx, dy = self.dx, self.dy
         span = ((dx[:-1]+dx[1:])**2+(dy[:-1]+dy[1:])**2)**0.5
         return span
-    
+
     @property
-    def span_ratio(self):
+    def span_ratio(self) -> np.ndarray:
         """
         Ratio of the smaller ray to the larger ray of each arc defined by 
         two adjacent rays.
@@ -174,7 +175,7 @@ class CurveDetector(object):
         span_ratio = np.where(span_ratio>1, 1/span_ratio, span_ratio)
         return span_ratio
 
-    def span_index(self, span_ratio_sensitivity=0.2):
+    def span_index(self, span_ratio_sensitivity: float = 0.2) -> np.ndarray:
         """
         Abstract quantification of the influence of each arc's span ratio on 
         curve detection given an input sensitivity value between 0 and 1.
@@ -190,7 +191,7 @@ class CurveDetector(object):
         return span_index
 
     @property
-    def radius(self):
+    def radius(self) -> np.ndarray:
         """
         The radius of each arc defined by two adjacent rays.
         Size = n - 2
@@ -202,7 +203,7 @@ class CurveDetector(object):
         return radius
 
     @property
-    def central_angle(self):
+    def central_angle(self) -> np.ndarray:
         """
         The central angle of each arc defined by two adjacent rays.
         Size = n - 2
@@ -211,7 +212,7 @@ class CurveDetector(object):
         return central_angle
 
     @property
-    def arc_length(self):
+    def arc_length(self) -> np.ndarray:
         """
         The actual outer arc length of each arc defined by two adjacent rays.
         Size = n - 2
@@ -220,7 +221,7 @@ class CurveDetector(object):
         return arc_length
 
     @property
-    def radius_max(self):
+    def radius_max(self) -> np.ndarray:
         """
         The maximum radius between all pairs of adjacent arcs (i.e., 4-point 
         segments).
@@ -230,7 +231,7 @@ class CurveDetector(object):
         return radius_max
 
     @property
-    def radius_dif(self):
+    def radius_dif(self) -> np.ndarray:
         """
         The mathematical difference in radius between all pairs of adjacent 
         arcs (i.e., 4-point segments).
@@ -240,7 +241,7 @@ class CurveDetector(object):
         return radius_dif
 
     @property
-    def radius_scale(self):
+    def radius_scale(self) -> np.ndarray:
         """
         The mathematical difference in radius between all pairs of adjacent 
         arcs (i.e., 4-point segments), normalized by the maximum radius between 
@@ -250,7 +251,12 @@ class CurveDetector(object):
         radius_scale = self.radius_dif/self.radius_max
         return radius_scale
 
-    def fit(self, max_radius=10000, max_radius_scale=0.65, span_ratio_sensitivity=0.35):
+    def fit(
+        self,
+        max_radius: float = 10000,
+        max_radius_scale: float = 0.65,
+        span_ratio_sensitivity: float = 0.35,
+    ):
         """
         A test of whether or not adjacent arcs have similar radii based on 
         input detection parameters for the maximum radius scale and the 
@@ -270,8 +276,8 @@ class CurveDetector(object):
             ratio where 0 means no sensitivity and 1 means full sensitivity.
         """
         # Compute span index
-        # - Span index is used to adjust sensitivity to differing radii which 
-        #   may result from inconsistently spaced line points (i.e., large 
+        # - Span index is used to adjust sensitivity to differing radii which
+        #   may result from inconsistently spaced line points (i.e., large
         #   span index values)
         span_index = self.span_index(span_ratio_sensitivity)
         # Compute radius match boolean mask

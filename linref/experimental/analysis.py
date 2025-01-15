@@ -1,19 +1,21 @@
 import numpy as np
 from rangel import RangeCollection
+from typing import Union, Callable, Optional, Any, Literal
+
 
 def rasterize_events(
-    events,
-    values=None,
-    size=1,
-    blur=0,
-    blur_style='linear',
-    normalize=True,
-    bounds=None,
-    fill='cut', 
-    closed='left_mod',
-    rc=None,
-    **kwargs
-):
+    events: Union[np.ndarray, list],
+    values: Optional[Union[float, np.ndarray, list]] = None,
+    size: float = 1,
+    blur: int = 0,
+    blur_style: Union[str, Callable[[int], float]] = "linear",
+    normalize: bool = True,
+    bounds: Optional[tuple[float, float]] = None,
+    fill: Literal["none", "cut", "left", "right"] = "cut",
+    closed: Literal["left", "left_mod", "right", "right_mod", "both", "neither"] = "left_mod",
+    rc: Optional[RangeCollection] = None,
+    **kwargs: Any,
+) -> np.ndarray:
     """
     Digitize and buffer events over a defined range, extending them across 
     uniform steps within the range and scaling their values relative to their 
@@ -101,7 +103,7 @@ def rasterize_events(
     ##################
     # VALIDATE INPUT #
     ##################
-    
+
     # Validate blur style
     if blur_style=='linear':
         blur_function = lambda n: (blur - n) / blur
@@ -112,7 +114,7 @@ def rasterize_events(
     else:
         raise ValueError("Input blur_style must be callable or label of "
                             "valid predefined scaling function.")            
-    
+
     # Validate events
     try:
         events = np.asarray(events, dtype=float)
@@ -129,7 +131,7 @@ def rasterize_events(
     else:
         raise ValueError("Invalid events input. Must be array-like of "
                          "shape (x,), (x, 1), or (x, 2).")
-    
+
     # Validate values data
     if not values is None:
         try:
@@ -145,7 +147,7 @@ def rasterize_events(
                             "number of events provided. Provided: "
                             f"{events.shape[0]} events, {values.shape[0]} "
                             "values.")
-    
+
     # Validate analysis range collection
     if rc is None:
         if bounds is None:
@@ -163,16 +165,16 @@ def rasterize_events(
                                         fill=fill, closed=closed)
     elif not isinstance(rc, RangeCollection):
         raise ValueError("Input range collection is not valid.")
-            
+
     ####################
     # PERFORM ANALYSIS #
     ####################
-    
+
     # Intersect events with analysis range collection
     intx = rc.is_intersecting(beg=events[:,0],
                               end=events[:,1],
                               squeeze=False) * 1
-    
+
     # Blur events
     scale = blur_function(0)
     data = intx * scale
@@ -184,31 +186,32 @@ def rasterize_events(
         forw = buff[:-step * 2, :]
         back = buff[step * 2:, :]
         data += forw + back
-        
+
     # Normalize buffered data
     if normalize:
         denom = data.sum(axis=0)
         data = np.divide(data, denom, out=np.zeros_like(data), where=denom!=0)
-    
+
     # Apply values if used
     if not values is None:
         return np.multiply(data, values)
     else:
         return data
 
+
 def buffer_events(
-    events, 
-    size, 
-    steps, 
-    scaler='linear', 
-    normalize=True, 
-    beg=None, 
-    end=None, 
-    fill='cut', 
-    closed='left_mod', 
-    rc=None,
-    values=None, # ADDED
-):
+    events: Union[np.ndarray, list], 
+    size: float, 
+    steps: int, 
+    scaler: Union[str, Callable[[int], float]] = 'linear', 
+    normalize: bool = True, 
+    beg: Optional[float] = None, 
+    end: Optional[float] = None, 
+    fill: Literal['none', 'cut', 'left', 'right'] = 'cut', 
+    closed: Literal['left', 'left_mod', 'right', 'right_mod', 'both', 'neither'] = 'left_mod', 
+    rc: Optional[RangeCollection] = None,
+    values: Optional[Union[float, np.ndarray, list]] = None, # ADDED
+) -> np.ndarray:
     """
     Digitize and buffer events over a defined range, extending them across 
     uniform steps within the range and scaling their values relative to their 
