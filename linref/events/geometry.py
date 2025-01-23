@@ -40,7 +40,10 @@ class LineStringM:
         if m is not None:
             # Enforce input type
             if not isinstance(m, np.ndarray):
-                raise ValueError('LineStringM m must be a numpy array')
+                try:
+                    m = np.array(m)
+                except:
+                    raise ValueError('LineStringM m must be a numpy array')
             # Enforce input shape
             if len(m) != len(self.geom.coords):
                 raise ValueError('LineStringM m must be same length as coords')
@@ -101,7 +104,7 @@ class LineStringM:
         # Check if M value is within range
         range_test = (m < self.m[0], m > self.m[-1])
         if any(range_test):
-            if snap is None:
+            if not snap:
                 raise ValueError('M value is out of range')
             return 0 if range_test[0] else self.geom.length
         # Find the nearest M value
@@ -113,8 +116,11 @@ class LineStringM:
         # Compute the proportional distance between the two nearest M values
         prop = (m - self.m[index - 1]) / (self.m[index] - self.m[index - 1])
         # Get length up to the indexed vertice
-        distance = LineString(self.geom.coords[:index - 1]).length
-        distance += LineString(self.geom.coords[index - 1: index]).length * prop
+        if index == 1:
+            distance = 0
+        else:
+            distance = LineString(self.geom.coords[:index]).length
+        distance += LineString(self.geom.coords[index - 1: index + 1]).length * prop
         return distance
     
     def m_to_norm_distance(self, m, snap=False):
@@ -151,6 +157,14 @@ class LineStringM:
         # Check if M values are defined
         if self.m is None:
             raise ValueError('M values are not defined')
+        # Check if distance is within range
+        if normalized:
+            distance *= self.geom.length
+        if distance < 0 or distance > self.geom.length:
+            if not snap:
+                raise ValueError('Distance is out of range')
+            return self.m[0] if distance < 0 else self.m[-1]
+        
         # Get the nearest vertice index to the left of the specified distance
         if normalized:
             distance *= self.geom.length
@@ -159,41 +173,16 @@ class LineStringM:
         # Determine which endpoint to use
         if substring.coords[-1] in self.geom.coords:
             endpoint = substring.coords[-1]
+            index = list(self.geom.coords).index(endpoint)
+            return self.m[index]
         else:
             endpoint = substring.coords[-2]
-        index = list(self.geom.coords).index(endpoint)
+            index = list(self.geom.coords).index(endpoint)
 
         # Compute the M value for the substring and remaining distance
-        prop = (distance - substring.length) / \
-            LineString(self.geom.coords[index: index + 1]).length
-        return self.m[index - 1] + (self.m[index + 1] - self.m[index]) * prop
-
-    def vertex_index(self, distance, normalized=False, m=False, snap=False):
-        """
-        Return the index of the nearest upstream vertex from the specified
-        distance along the linear geometry. Exact matches are returned as the
-        index of the coincident vertex.
-
-        Parameters
-        ----------
-        distance : float
-            The distance along the geometry to find the closest vertex to.
-        normalized : bool, default False
-            Whether the distance is normalized (0-1) or absolute.
-        m : bool, default False
-            Whether the distance should be interpreted as an M value.
-        snap : bool, default False
-            Whether to snap the distance to the nearest vertex if it is out of 
-            range. If False, a ValueError will be raised if the distance is out
-            of range.
-        """
-        # Get the nearest vertice index to the left of the specified distance
-        substring = shapely.ops.substring(self.geom, 0, distance)
-        if substring.coords[-1] in self.geom.coords:
-            endpoint = substring.coords[-1]
-        else:
-            endpoint = substring.coords[-2]
-        return list(self.geom.coords).index(endpoint)
+        prop = (distance - LineString(self.geom.coords[: index + 1]).length) / \
+            LineString(self.geom.coords[index: index + 2]).length
+        return self.m[index] + (self.m[index + 1] - self.m[index]) * prop
 
     def interpolate(self, distance, normalized=False, m=False, snap=False):
         """
