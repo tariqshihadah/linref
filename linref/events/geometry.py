@@ -85,6 +85,43 @@ class LineStringM:
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
+    def _check_snapping(self, distance, normalized=False, m=False, snap=False):
+        """
+        Check if snapping is required for the distance input and type.
+        """
+        # Ensure only one distance type is specified
+        if normalized and m:
+            raise ValueError('normalized and m cannot both be True')
+        # Check normalized distance
+        if normalized:
+            if distance < 0 or distance > 1:
+                if not snap:
+                    raise ValueError(
+                        f'Normalized distance {distance} is out of range; '
+                        'must be between 0 and 1')
+                return (0, 1) if distance < 0 else (1, 2)
+            return (distance, 0)
+        # Check M value
+        elif m:
+            if self.m is None:
+                raise ValueError('M values are not defined')
+            if distance < self.m[0] or distance > self.m[-1]:
+                if not snap:
+                    raise ValueError(
+                        f'M value {distance} is out of range; '
+                        f'must be between {self.m[0]} and {self.m[-1]}')
+                return (self.m[0], 1) if distance < self.m[0] else (self.m[-1], 2)
+            return (distance, 0)
+        # Check absolute distance
+        else:
+            if distance < 0 or distance > self.geom.length:
+                if not snap:
+                    raise ValueError(
+                        f'Distance {distance} is out of range; '
+                        f'must be between 0 and {self.geom.length}')
+                return (0, 1) if distance < 0 else (self.geom.length, 2)
+            return (distance, 0)
+    
     def m_to_distance(self, m, snap=False):
         """
         Return the distance along the LineString for the specified M value.
@@ -98,15 +135,10 @@ class LineStringM:
             range. If False, a ValueError will be raised if the M value is out
             of range.
         """
-        # Check if M values are defined
-        if self.m is None:
-            raise ValueError('M values are not defined')
-        # Check if M value is within range
-        range_test = (m < self.m[0], m > self.m[-1])
-        if any(range_test):
-            if not snap:
-                raise ValueError('M value is out of range')
-            return 0 if range_test[0] else self.geom.length
+        # Check input snapping
+        m, snapped = self._check_snapping(m, m=True, snap=snap)
+        if snapped != 0:
+            return 0 if snapped == 1 else self.geom.length
         # Find the nearest M value
         index = np.searchsorted(self.m, m)
         if index == 0:
@@ -157,19 +189,14 @@ class LineStringM:
         # Check if M values are defined
         if self.m is None:
             raise ValueError('M values are not defined')
-        # Check if distance is within range
-        if normalized:
-            distance *= self.geom.length
-        if distance < 0 or distance > self.geom.length:
-            if not snap:
-                raise ValueError('Distance is out of range')
-            return self.m[0] if distance < 0 else self.m[-1]
+        # Check input snapping
+        distance, snapped = self._check_snapping(distance, normalized=normalized, m=False, snap=snap)
+        if snapped != 0:
+            return self.m[0] if snapped == 1 else self.m[-1]
         
         # Get the nearest vertice index to the left of the specified distance
-        if normalized:
-            distance *= self.geom.length
         substring = shapely.ops.substring(
-            self.geom, 0, distance, normalized=False)
+            self.geom, 0, distance, normalized=normalized)
         # Determine which endpoint to use
         if substring.coords[-1] in self.geom.coords:
             endpoint = substring.coords[-1]
@@ -180,7 +207,11 @@ class LineStringM:
             index = list(self.geom.coords).index(endpoint)
 
         # Compute the M value for the substring and remaining distance
-        prop = (distance - LineString(self.geom.coords[: index + 1]).length) / \
+        if index == 0:
+            distance_to_vertice = 0
+        else:
+            distance_to_vertice = LineString(self.geom.coords[: index + 1]).length
+        prop = (distance - distance_to_vertice) / \
             LineString(self.geom.coords[index: index + 2]).length
         return self.m[index] + (self.m[index + 1] - self.m[index]) * prop
 
@@ -201,10 +232,13 @@ class LineStringM:
             range. If False, a ValueError will be raised if the distance is out
             of range.
         """
+        # Check input snapping
+        distance = self._check_snapping(distance, normalized=normalized, m=m, snap=snap)[0]
+        # Compute the interpolated point
         if normalized:
             return self.geom.interpolate(distance, normalized=True)
         if m:
-            distance = self.m_to_distance(distance, snap=True)
+            distance = self.m_to_distance(distance, snap=False)
         return self.geom.interpolate(distance, normalized=False)
 
     def cut(self, beg, end, normalized=False, m=False, snap=False):
@@ -227,15 +261,35 @@ class LineStringM:
             of range. If False, a ValueError will be raised if the distances are
             out of range.
         """
-        # Compute the substring of the LineString
-        if normalized:
-            new_geom = shapely.ops.substring(self.geom, beg, end, normalized=True)
+        # Validate input parameters
+        if normalized and m:
+            raise ValueError('normalized and m cannot both be True')
+        # Check input snapping and transform if needed
+        if m:
+            beg = self.m_to_distance(beg, snap=snap)
+            end = self.m_to_distance(end, snap=snap)
         else:
-            if m:
-                beg = self.m_to_distance(beg, snap=snap)
-                end = self.m_to_distance(end, snap=snap)
-            new_geom = shapely.ops.substring(self.geom, beg, end, normalized=False)
+            beg = self._check_snapping(beg, normalized=normalized, m=m, snap=snap)[0]
+            end = self._check_snapping(end, normalized=normalized, m=m, snap=snap)[0]
+
+        # Compute the substring of the LineString
+        new_geom = shapely.ops.substring(self.geom, beg, end, normalized=normalized)
+
+        # Address zero-length geometries
+        if new_geom.length == 0:
+            # Warn for now
+            warnings.warn('Zero-length geometry created', RuntimeWarning)
+            new_geom = LineString([new_geom.coords[0], new_geom.coords[0]])
         
         # Compute the M values for the substring
-
+        if self.m is not None:
+            beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
+            end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
+            m = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
+            m = np.insert(m, 0, beg_m)
+            m = np.append(m, end_m)
+            display(m, beg_m, end_m, new_geom.coords[:])
+        else:
+            m = None
+        return LineStringM(new_geom, m=m)
         
