@@ -303,15 +303,38 @@ class LineStringM:
 # Helper functions
 #
 
-def linemerge_m(objs):
+def linemerge_m(objs, allow_multiple=False, allow_mismatch=False, squeeze=False):
+    """
+    Merge multiple LineStringM objects into a single LineStringM object 
+    or list of non-contiguous LineStringM objects.
+
+    Parameters
+    ----------
+    objs : list of LineStringM
+        The LineStringM objects to merge.
+    allow_multiple : bool, default False
+        Whether to allow multiple merged geometries to be returned. Note, 
+        unless squeeze is True, results will always be returned as a list, 
+        even if allow_multiple is False.
+    allow_mismatch : bool, default False
+        Whether to allow the M values of the merged geometries to be mismatched.
+    squeeze : bool, default False
+        Whether to return a single LineStringM object when possible.
+    """
     # Validate input objects
     
     # Merge geometries
     merged_geom = shapely.ops.linemerge([obj.geom for obj in objs], directed=True)
+
+    # Check if the merged geometry is a single or multiple geometries
     try:
         geom_iter = merged_geom.geoms
     except AttributeError:
         geom_iter = [merged_geom]
+    if len(geom_iter) > 1 and not allow_multiple:
+        raise ValueError(
+            'Multiple merged geometries detected. Set allow_multiple=True '
+            'to perform merge anyways.')
 
     # Determine the order of merged geometries
     orders = []
@@ -331,7 +354,11 @@ def linemerge_m(objs):
                 if node in obj.geom.coords:
                     if node_m is not None:
                         if node_m != obj.m[0]:
-                            warnings.warn('Inconsistent m values detected in merged geometry')
+                            msg = 'Inconsistent m values detected in merged geometry'
+                            if not allow_mismatch:
+                                raise ValueError(msg)
+                            else:
+                                warnings.warn(msg)
                     order.append(i)
                     indices.remove(i)
                     node = obj.geom.coords[-1]
@@ -349,4 +376,9 @@ def linemerge_m(objs):
         for j in order[1:]:
             m = np.append(m, objs[j].m[1:])
         new_objs.append(LineStringM(merged_geom_i, m))
-    return new_objs
+
+    # Return the merged geometries
+    if squeeze and len(new_objs) == 1:
+        return new_objs[0]
+    else:
+        return new_objs
