@@ -378,9 +378,18 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def dissolve(self, retain=[]):
+    def dissolve(self, retain=[], inverse_index=True, inverse_label='dissolved_index'):
         """
         Merge consecutive ranges. For best results, input events should be sorted.
+
+        Parameters
+        ----------
+        retain : list, default []
+            A list of column labels to retain during the dissolve operation.
+        inverse_index : bool, default True
+            Whether to append an inverse index to the dissolved events dataframe.
+        inverse_label : str, default 'dissolved_index'
+            The label for the inverse index column.
         """
         # Validate input parameters
         if not isinstance(retain, list):
@@ -402,7 +411,8 @@ class LRS_Accessor(object):
             end_name=self.ends_col,
         )
         # Append inverse index
-        df['dissolved_index'] = index
+        if inverse_index:
+            df[inverse_label] = index
         return df
 
 def _only_if_hashing(m):
