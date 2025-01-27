@@ -12,6 +12,12 @@ class LineStringM:
         self.geom = geom
         self.m = m
 
+    def __str__(self):
+        return self.wkt + r' # linref compatibility approximation'
+    
+    def __repr__(self):
+        return self.__str__()
+
     @property
     def geom(self):
         return self._geom
@@ -288,8 +294,59 @@ class LineStringM:
             m = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
             m = np.insert(m, 0, beg_m)
             m = np.append(m, end_m)
-            display(m, beg_m, end_m, new_geom.coords[:])
         else:
             m = None
         return LineStringM(new_geom, m=m)
         
+
+#
+# Helper functions
+#
+
+def linemerge_m(objs):
+    # Validate input objects
+    
+    # Merge geometries
+    merged_geom = shapely.ops.linemerge([obj.geom for obj in objs], directed=True)
+    try:
+        geom_iter = merged_geom.geoms
+    except AttributeError:
+        geom_iter = [merged_geom]
+
+    # Determine the order of merged geometries
+    orders = []
+    indices = list(range(len(objs)))
+    # Iterate over multipart geometries
+    for merged_geom_i in geom_iter:
+        order = []
+        # Identify the first node in the current merged geometry
+        node = merged_geom_i.coords[0]
+        node_m = None
+        # Find the original geometry that starts at the first node
+        recurse = True
+        while recurse:
+            for i in indices:
+                # Check if the node is present in the indexed geometry
+                obj = objs[i]
+                if node in obj.geom.coords:
+                    if node_m is not None:
+                        if node_m != obj.m[0]:
+                            warnings.warn('Inconsistent m values detected in merged geometry')
+                    order.append(i)
+                    indices.remove(i)
+                    node = obj.geom.coords[-1]
+                    node_m = obj.m[-1]
+                    if node == merged_geom_i.coords[-1]:
+                        recurse = False
+                    break
+        orders.append(order)
+
+    # Merge LineStringM objects
+    new_objs = []
+    for merged_geom_i, order in zip(geom_iter, orders):
+        # Initialize the m data from the first ordered object
+        m = objs[order[0]].m
+        for j in order[1:]:
+            m = np.append(m, objs[j].m[1:])
+        new_objs.append(LineStringM(merged_geom_i, m))
+    return new_objs
