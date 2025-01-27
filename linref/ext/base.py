@@ -151,17 +151,7 @@ class LRS_Accessor(object):
     
     @property
     def keys(self):
-        # Select data from the dataframe if keys are present
-        col = self.keys_col
-        try:
-            # Convert data to list of tuples
-            #data = list(zip(*self._df[col].values.T))
-            #arr = np.empty(len(data), dtype=object)
-            #arr[:] = data
-            return self._df[col].to_records(index=False)
-            #return arr # TODO: Allow for 2D groups in events data
-        except KeyError:
-            return None
+        return self.get_keys(require=False)
         
     @property
     def locs(self):
@@ -282,9 +272,35 @@ class LRS_Accessor(object):
         Return the events object for the active LRS.
         """
         # Create the events object
+        return self.get_events()
+    
+    def get_keys(self, col=None, require=True):
+        # Select data from the dataframe if keys are present
+        if col is None:
+            col = self.keys_col
+        if col is None:
+            return None
+        try:
+            # Convert data to list of tuples
+            return self._df[col].to_records(index=False)
+        except KeyError as e:
+            if require:
+                raise e
+            return None
+        
+    def get_events(self, keys_col=None, require=True):
+        """
+        Return the events object for the active LRS.
+        """
+        # Get keys if needed
+        if keys_col is None:
+            keys = self.keys
+        else:
+            keys = self.get_keys(col=keys_col, require=require)
+        # Create the events object
         return Rangel(
             index=self.index,
-            groups=self.keys if self.keys_col else None,
+            groups=keys,
             locs=self.locs if self.locs_col else None,
             begs=self.begs if self.begs_col else None,
             ends=self.ends if self.ends_col else None,
@@ -361,13 +377,33 @@ class LRS_Accessor(object):
             obj.ends = events.ends
         return None if inplace else obj.df
     
-    def dissolve(self):
+    @_method_require(is_linear=True)
+    def dissolve(self, retain=[]):
         """
         Merge consecutive ranges. For best results, input events should be sorted.
         """
+        # Validate input parameters
+        if not isinstance(retain, list):
+            raise ValueError("Input `retain` must be a list of valid dataframe column labels.")
+        # Define key values to retain during dissolve
+        if self.is_grouped:
+            keys_col = self.keys_col + retain
+        else:
+            keys_col = retain
         # Dissolve events
-        dissolved, index = self.events.dissolve(return_index=True)
-        return dissolved, index
+        events = self.get_events(keys_col=keys_col, require=True)
+        dissolved, index = events.dissolve(return_index=True)
+        # Convert events to dataframe
+        df = dissolved.to_frame(
+            index_name=self._df.index.name,
+            group_name=keys_col,
+            loc_name=self.locs_col,
+            beg_name=self.begs_col,
+            end_name=self.ends_col,
+        )
+        # Append inverse index
+        df['dissolved_index'] = index
+        return df
 
 def _only_if_hashing(m):
     def wrapper(*args, **kwargs):
