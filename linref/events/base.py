@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+import pandas as pd
 import copy, hashlib
 from scipy import sparse as sp
 import warnings
@@ -358,6 +359,30 @@ class Rangel:
             self._index = index
         else:
             self.reset_index(inplace=True)
+
+    def to_frame(self, index_name=None, group_name=None, loc_name='loc', beg_name='beg', end_name='end'):
+        """
+        Convert the collection to a pandas DataFrame.
+        """
+        # Define frame data
+        data = []
+        index = self.index if self.index is not None else self.generic_index
+        if self.is_grouped:
+            groups = pd.DataFrame(index=index, data=self.groups, columns=group_name)
+            data.append(groups)
+        if self.is_located:
+            locs = pd.DataFrame(index=index, data=self.locs, columns=[loc_name])
+            data.append(locs)
+        if self.is_linear:
+            begs = pd.DataFrame(index=index, data=self.begs, columns=[beg_name])
+            ends = pd.DataFrame(index=index, data=self.ends, columns=[end_name])
+            data.extend([begs, ends])
+        # Concatenate data
+        frame = pd.concat(data, axis=1)
+        # Set index name
+        if not index_name is None:
+            frame.index.name = index_name
+        return frame
     
     def from_similar(self, index=None, groups=None, locs=None, begs=None, ends=None, **kwargs):
         """

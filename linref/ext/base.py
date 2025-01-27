@@ -1,5 +1,5 @@
 import numpy as np
-import copy
+import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
 from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
@@ -155,10 +155,11 @@ class LRS_Accessor(object):
         col = self.keys_col
         try:
             # Convert data to list of tuples
-            data = list(zip(*self._df[col].values.T))
-            arr = np.empty(len(data), dtype=object)
-            arr[:] = data
-            return arr # TODO: Allow for 2D groups in events data
+            #data = list(zip(*self._df[col].values.T))
+            #arr = np.empty(len(data), dtype=object)
+            #arr[:] = data
+            return self._df[col].to_records(index=False)
+            #return arr # TODO: Allow for 2D groups in events data
         except KeyError:
             return None
         
@@ -359,12 +360,21 @@ class LRS_Accessor(object):
             obj.begs = events.begs
             obj.ends = events.ends
         return None if inplace else obj.df
+    
+    def dissolve(self):
+        """
+        Merge consecutive ranges. For best results, input events should be sorted.
+        """
+        # Dissolve events
+        dissolved, index = self.events.dissolve(return_index=True)
+        return dissolved, index
 
 def _only_if_hashing(m):
     def wrapper(*args, **kwargs):
         if args[0].hashing:
             return m(*args, **kwargs)
     return wrapper
+
 
 class LRS_Manager:
     """
