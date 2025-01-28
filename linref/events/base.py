@@ -768,17 +768,17 @@ class EventsData:
             raise ValueError("No groups in collection.")
 
         # Get group indices with groupby routine
-        sorted_rng = self.sort_standard(inplace=False)
-        unique_groups, splitter_i = np.unique(sorted_rng.groups, return_index=True)
-        splitter_j = np.append(splitter_i[1:], len(sorted_rng.groups))
+        sorted_events = self.sort_standard(inplace=False)
+        unique_groups, splitter_i = np.unique(sorted_events.groups, return_index=True)
+        splitter_j = np.append(splitter_i[1:], len(sorted_events.groups))
         
         # Iterate over groups
         for group, i, j in zip(unique_groups, splitter_i, splitter_j):
-            rng = sorted_rng.select(slice(i, j), inplace=False)
+            events = sorted_events.select(slice(i, j), inplace=False)
             # Ungroup if necessary
             if ungroup:
-                rng = rng.ungroup()
-            yield group, rng
+                events = events.ungroup()
+            yield group, events
         
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def separate(self):

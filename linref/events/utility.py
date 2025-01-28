@@ -44,7 +44,7 @@ def _prepare_data_array(data, name, ndim=1, dtype=None, copy=None):
             )
     return data
 
-def _validate_scalar_or_array_input(rng, value, name, dtype=None, fill=False, nonzero=False):
+def _validate_scalar_or_array_input(events, value, name, dtype=None, fill=False, nonzero=False):
     """
     Function for validating input values as a scalar or array-like object with 
     the same length as the number of events in the input range.
@@ -52,11 +52,11 @@ def _validate_scalar_or_array_input(rng, value, name, dtype=None, fill=False, no
     # Validate input
     if np.isscalar(value):
         if fill:
-            value = np.full(rng.num_events, value)
+            value = np.full(events.num_events, value)
     else:
         try:
             value = np.asarray(value, dtype=dtype)
-            assert len(value) == rng.num_events
+            assert len(value) == events.num_events
         except:
             raise ValueError(
                 f"Input '{name}' must be a scalar or an array-like with a "
@@ -69,16 +69,16 @@ def _validate_scalar_or_array_input(rng, value, name, dtype=None, fill=False, no
             )
     return value
 
-def _stringify_instance(rng):
+def _stringify_instance(events):
     # Determine event type
     typologies = []
-    typologies.append('grouped' if rng.is_grouped else 'ungrouped')
-    if rng.is_point:
+    typologies.append('grouped' if events.is_grouped else 'ungrouped')
+    if events.is_point:
         typologies.append('point')
     else:
-        if rng.is_located:
+        if events.is_located:
             typologies.append('located')
-        if rng.is_monotonic:
+        if events.is_monotonic:
             typologies.append('monotonic')
         else:
             typologies.append('non-monotonic')
@@ -86,29 +86,29 @@ def _stringify_instance(rng):
     event_type = ', '.join(typologies[:-1]) + ' ' + typologies[-1]
 
     # Set closed string
-    closed = f", closed={rng.closed}" if rng.is_linear else ''
+    closed = f", closed={events.closed}" if events.is_linear else ''
 
     # Create text string
     text = (
-        f"{rng.__class__.__name__}({rng.num_events:,.0f} {event_type} events{closed})"
+        f"{events.__class__.__name__}({events.num_events:,.0f} {event_type} events{closed})"
     )
     return text
 
-def _represent_records(rng):
+def _represent_records(events):
     """
     Create a string representation of a EventsData instance, displaying only the 
     first and last few records.
     """
     # If no ranges present, return self as a string
-    if rng.num_events == 0:
-        return str(rng)
+    if events.num_events == 0:
+        return str(events)
     # Determine number of records to show
     display_max = common.display_max
-    if rng.num_events > display_max:
+    if events.num_events > display_max:
         # Define head/skip/tail selections
         display_head = (display_max // 2) + (display_max % 2)
         display_tail = (display_max // 2)
-        display_skip = rng.num_events - display_max
+        display_skip = events.num_events - display_max
         # Define bool mask
         display_select = np.array(
             [True]  * display_head + 
@@ -116,43 +116,43 @@ def _represent_records(rng):
             [True]  * display_tail)
     else:
         # Default head/skip/tail selections
-        display_head = rng.num_events
+        display_head = events.num_events
         display_tail = display_skip = 0
-        display_select = np.array([True] * rng.num_events)
+        display_select = np.array([True] * events.num_events)
     # Determine numbers of left and right digits to display
-    ld = len(str(int(rng.arr[display_select].max())))
+    ld = len(str(int(events.arr[display_select].max())))
     rd = 3
     digits = ld + rd + 1
     # Create formatter
     records = []
-    closed = rng.closed
-    if rng.groups is not None:
-        max_len = max([len(str(x)) for x in rng.groups])
-        group_strings = [str(x) if len(str(x)) <= 20 else str(x)[:17] + '...' for x in rng.groups]
+    closed = events.closed
+    if events.groups is not None:
+        max_len = max([len(str(x)) for x in events.groups])
+        group_strings = [str(x) if len(str(x)) <= 20 else str(x)[:17] + '...' for x in events.groups]
         groups = np.array(
             [f'group({x: <{min(max_len, 20)}}) ' for x in group_strings])
     else:
-        groups = np.full(rng.num_events, '')
+        groups = np.full(events.num_events, '')
     # Define record string template and select features to display
-    if rng.is_point:
+    if events.is_point:
         display_features = {
-            'index': rng.index[display_select],
+            'index': events.index[display_select],
             'groups': groups[display_select],
-            'locs': rng.locs[display_select],
-            'modified_edges': rng.modified_edges[display_select],
+            'locs': events.locs[display_select],
+            'modified_edges': events.modified_edges[display_select],
         }
         record_template = '{index}, {groups}@ {locs: >{digits}.{rd}f}'
-    elif rng.is_linear:
+    elif events.is_linear:
         display_features = {
-            'index': rng.index[display_select],
+            'index': events.index[display_select],
             'groups': groups[display_select],
-            'begs': rng.begs[display_select],
-            'ends': rng.ends[display_select],
-            'modified_edges': rng.modified_edges[display_select],
+            'begs': events.begs[display_select],
+            'ends': events.ends[display_select],
+            'modified_edges': events.modified_edges[display_select],
         }
         record_template = '{index}, {groups}{lb}{begs: >{digits}.{rd}f}, {ends: >{digits}.{rd}f}{rb}'
-        if rng.is_located:
-            display_features['locs'] = rng.locs[display_select]
+        if events.is_located:
+            display_features['locs'] = events.locs[display_select]
             record_template += ' @ {locs: >{digits}.{rd}f}'
 
     # Iterate over selected features and create strings
@@ -175,4 +175,4 @@ def _represent_records(rng):
         records = \
             records[:display_head] + [spacer] + records[-display_tail:]
     # Format full text string and return
-    return '\n'.join(records) + '\n' + str(rng)
+    return '\n'.join(records) + '\n' + str(events)

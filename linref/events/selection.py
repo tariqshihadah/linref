@@ -1,7 +1,7 @@
 import numpy as np
 from linref.events import base, utility
 
-def _validate_any_selector(rng, selector, ignore=False):
+def _validate_any_selector(events, selector, ignore=False):
     """
     Function for validating input selector as a slice, boolean array, or array
     of indices aligned with the input range's actual or generic index values.
@@ -12,16 +12,16 @@ def _validate_any_selector(rng, selector, ignore=False):
     elif isinstance(selector, (list, tuple, np.ndarray)):
         selector = np.asarray(selector)
         if selector.dtype == bool:
-            selector = _validate_boolean_selector(rng, selector)
+            selector = _validate_boolean_selector(events, selector)
         else:
-            selector = _validate_index_selector(rng, selector, ignore)
+            selector = _validate_index_selector(events, selector, ignore)
     else:
         raise ValueError(
             "Input selector must be a slice object, boolean array, or an "
             "array of event indices.")
     return selector
 
-def _validate_slice_selector(rng, selector):
+def _validate_slice_selector(events, selector):
     """
     Function for validating input selector as a slice object.
     """
@@ -31,7 +31,7 @@ def _validate_slice_selector(rng, selector):
             "Input selector must be a slice object.")
     return selector
 
-def _validate_boolean_selector(rng, selector):
+def _validate_boolean_selector(events, selector):
     """
     Function for validating input selector as a boolean array.
     """
@@ -44,16 +44,16 @@ def _validate_boolean_selector(rng, selector):
     if not selector.ndim == 1:
         raise ValueError(
             "Input selector must be a 1D array-like object.")
-    if not len(selector) == rng.num_events:
+    if not len(selector) == events.num_events:
         raise ValueError(
             "Input selector must be the same length as the number of events. "
-            f"Expected {rng.num_events}, received {len(selector)}.")
+            f"Expected {events.num_events}, received {len(selector)}.")
     if not selector.dtype == bool:
         raise ValueError(
             "Input selector must be a boolean array.")
     return selector
 
-def _validate_index_selector(rng, selector, ignore=False):
+def _validate_index_selector(events, selector, ignore=False):
     """
     Function for validating input selector as an array of indices.
     """
@@ -74,32 +74,32 @@ def _validate_index_selector(rng, selector, ignore=False):
     # Apply to index values
     if not ignore:
         # Ensure that all values are present in the index
-        selector_test = np.in1d(selector, rng._index)
+        selector_test = np.in1d(selector, events._index)
         if not np.all(selector_test):
             missing_values = selector[~selector_test]
             raise ValueError(
                 f"Index values not found: {missing_values}")
         # Sort the event index values
-        sorter = np.argsort(rng._index)
+        sorter = np.argsort(events._index)
         # Apply the selector to the sorted index values
-        selector = np.searchsorted(rng._index[sorter], selector)
+        selector = np.searchsorted(events._index[sorter], selector)
     else:
         # Ensure that all values are within the range of the number of events
-        selector_test = (selector >= 0) & (selector < rng.num_events)
+        selector_test = (selector >= 0) & (selector < events.num_events)
         if not np.all(selector_test):
             missing_values = selector[~selector_test]
             raise ValueError(
                 f"Index values out of range: {missing_values}")
     return selector
 
-def _validate_group_selector(rng, group, ignore_missing=True):
+def _validate_group_selector(events, group, ignore_missing=True):
     # Validate input group
-    if not rng.is_grouped:
+    if not events.is_grouped:
         raise ValueError("Collection is not grouped.")
     
     # Convert input to array
     try:
-        arr = np.asarray(group, dtype=rng.groups.dtype)
+        arr = np.asarray(group, dtype=events.groups.dtype)
     except:
         raise ValueError(
             "Unable to convert input group to array-like object.")
@@ -111,41 +111,41 @@ def _validate_group_selector(rng, group, ignore_missing=True):
     # Check for missing groups
     if not ignore_missing:
         # Ensure that all groups are present
-        group_test = np.isin(arr, rng.unique_groups)
+        group_test = np.isin(arr, events.unique_groups)
         if not np.all(group_test):
             missing_groups = arr[~group_test]
             raise KeyError(
                 f"Groups not found in collection: {missing_groups}")
         
     # Identify group indices
-    index = np.isin(rng.groups, arr)
+    index = np.isin(events.groups, arr)
     return index
 
-def _apply_selector(rng, selector, inplace=False):
+def _apply_selector(events, selector, inplace=False):
     """
     Apply a selector to the input events.
     """
     # Apply selection
-    rc = rng if inplace else rng.copy()
+    selected = events if inplace else events.copy()
     try:
-        rc._index = rng._index[selector]
-        rc._groups = rng._groups[selector] if rng._groups is not None else None
-        rc._locs = rng._locs[selector] if rng._locs is not None else None
-        rc._begs = rng._begs[selector] if rng._begs is not None else None
-        rc._ends = rng._ends[selector] if rng._ends is not None else None
+        selected._index = events._index[selector]
+        selected._groups = events._groups[selector] if events._groups is not None else None
+        selected._locs = events._locs[selector] if events._locs is not None else None
+        selected._begs = events._begs[selector] if events._begs is not None else None
+        selected._ends = events._ends[selector] if events._ends is not None else None
     except:
         raise ValueError(
             f"Invalid selection: {selector}")
-    return None if inplace else rc
+    return None if inplace else selected
 
-def select(rng, selector, ignore=False, inplace=False):
+def select(events, selector, ignore=False, inplace=False):
     """
     Select events by index, slice, or boolean mask. Use ignore=True to use 
     a generic, 0-based index, ignoring the current index values.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     selector : array-like or slice
         Array-like of event indices, a boolean mask aligned to the events, 
@@ -156,48 +156,48 @@ def select(rng, selector, ignore=False, inplace=False):
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
-    selector = _validate_any_selector(rng, selector, ignore=ignore)
-    return _apply_selector(rng, selector, inplace=inplace)
+    selector = _validate_any_selector(events, selector, ignore=ignore)
+    return _apply_selector(events, selector, inplace=inplace)
 
-def select_slice(rng, slice_, inplace=False):
+def select_slice(events, slice_, inplace=False):
     """
     Select events by slice.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     slice_ : slice
         Slice object to select events.
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
-    selector = _validate_slice_selector(rng, slice_)
-    return _apply_selector(rng, selector, inplace=inplace)
+    selector = _validate_slice_selector(events, slice_)
+    return _apply_selector(events, selector, inplace=inplace)
 
-def select_mask(rng, mask, inplace=False):
+def select_mask(events, mask, inplace=False):
     """
     Select events by boolean mask.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     mask : array-like
         Boolean mask aligned to the events.
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
-    selector = _validate_boolean_selector(rng, mask)
-    return _apply_selector(rng, selector, inplace=inplace)
+    selector = _validate_boolean_selector(events, mask)
+    return _apply_selector(events, selector, inplace=inplace)
 
-def select_index(rng, index, ignore=False, inplace=False):
+def select_index(events, index, ignore=False, inplace=False):
     """
     Select events by index values.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     index : array-like
         Array-like of event indices to select.
@@ -207,10 +207,10 @@ def select_index(rng, index, ignore=False, inplace=False):
     inplace : bool, default False
         Whether to perform the operation in place, returning None.
     """
-    selector = _validate_index_selector(rng, index, ignore)
-    return _apply_selector(rng, selector, inplace=inplace)
+    selector = _validate_index_selector(events, index, ignore)
+    return _apply_selector(events, selector, inplace=inplace)
 
-def select_group(rng, group, ungroup=None, ignore_missing=True, inplace=False):
+def select_group(events, group, ungroup=None, ignore_missing=True, inplace=False):
     """
     Select events by group.
 
@@ -232,7 +232,7 @@ def select_group(rng, group, ungroup=None, ignore_missing=True, inplace=False):
         Whether to perform the operation in place, returning None.
     """
     # Validate group input
-    mask = _validate_group_selector(rng, group, ignore_missing=ignore_missing)
+    mask = _validate_group_selector(events, group, ignore_missing=ignore_missing)
 
     # Determine ungrouping
     if ungroup is None:
@@ -241,20 +241,20 @@ def select_group(rng, group, ungroup=None, ignore_missing=True, inplace=False):
         ungroup = bool(ungroup)
 
     # Apply selection
-    rng = rng if inplace else rng.copy()
-    select_mask(rng, mask, inplace=True)
+    events = events if inplace else events.copy()
+    select_mask(events, mask, inplace=True)
     if ungroup:
-        rng.ungroup(inplace=True)
+        events.ungroup(inplace=True)
 
-    return None if inplace else rng
+    return None if inplace else events
 
-def drop(rng, selector, inplace=False):
+def drop(events, selector, inplace=False):
     """
     Drop events by boolean mask.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     mask : array-like
         Boolean mask aligned to the events.
@@ -262,17 +262,17 @@ def drop(rng, selector, inplace=False):
         Whether to perform the operation in place, returning None.
     """
     # Validate boolean mask input and invert
-    selector = _validate_boolean_selector(rng, selector)
+    selector = _validate_boolean_selector(events, selector)
     np.logical_not(selector, out=selector)
-    return _apply_selector(rng, selector, inplace=inplace)
+    return _apply_selector(events, selector, inplace=inplace)
 
-def drop_group(rng, group, inplace=False):
+def drop_group(events, group, inplace=False):
     """
     Drop events by group.
     
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         The events object to select from.
     group : label or array-like
         The label of the group to drop or array-like of the same.
@@ -280,10 +280,10 @@ def drop_group(rng, group, inplace=False):
         Whether to perform the operation in place, returning None.
     """
     # Validate group input
-    mask = _validate_group_selector(rng, group)
+    mask = _validate_group_selector(events, group)
 
     # Apply selection
-    rng = rng if inplace else rng.copy()
-    drop(rng, mask, inplace=True)
+    events = events if inplace else events.copy()
+    drop(events, mask, inplace=True)
 
-    return None if inplace else rng
+    return None if inplace else events

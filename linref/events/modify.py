@@ -1,48 +1,48 @@
 import numpy as np
 from linref.events import base, utility
 
-def dissolve(rng, return_index=False):
+def dissolve(events, return_index=False):
     """
     Merge consecutive ranges. For best results, input events should be sorted.
     """
     # Validate input
-    if not isinstance(rng, base.EventsData):
+    if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    if not rng.is_linear:
+    if not events.is_linear:
         raise ValueError("Input object must be a linear EventsData instance.")
-    if rng.is_empty:
+    if events.is_empty:
         return base.EventsData()
     
     # Identify edges of dissolvable events
-    consecutive_strings = rng.consecutive_strings()
+    consecutive_strings = events.consecutive_strings()
     string_number, string_start = \
         np.unique(consecutive_strings, return_index=True)
     
     # Initialize new event edges
     index = []
-    groups = [rng.groups[0] if rng.groups is not None else None]
-    begs = [rng.begs[0]]
+    groups = [events.groups[0] if events.groups is not None else None]
+    begs = [events.begs[0]]
     ends = []
     
     # Get min and max bounds of dissolved events
     if len(string_start) > 1:
         for i, j in zip(string_start[:-1], string_start[1:]):
-            ends.append(rng.ends[j - 1])
-            begs.append(rng.begs[j])
-            index.append(rng.index[i:j])
-            groups.append(rng.groups[j] if rng.groups is not None else None)
+            ends.append(events.ends[j - 1])
+            begs.append(events.begs[j])
+            index.append(events.index[i:j])
+            groups.append(events.groups[j] if events.groups is not None else None)
     
     # Add final end point
-    ends.append(rng.ends[-1])
-    index.append(rng.index[string_start[-1]:])
+    ends.append(events.ends[-1])
+    index.append(events.index[string_start[-1]:])
     
     # Prepare output class instance
-    res = rng.from_similar(
+    res = events.from_similar(
         index=None,
-        groups=groups if rng.groups is not None else None,
+        groups=groups if events.groups is not None else None,
         begs=begs, 
         ends=ends, 
-        closed=rng.closed
+        closed=events.closed
     )
 
     # Return results
@@ -50,13 +50,13 @@ def dissolve(rng, return_index=False):
         return res, index
     return res
 
-def concatenate(rngs, ignore_index=False, closed=None):
+def concatenate(objs, ignore_index=False, closed=None):
     """
     Concatenate multiple ranges of events, returning a single collection.
 
     Parameters
     ----------
-    rngs : list
+    objs : list
         List of EventsData instances to concatenate.
     ignore_index : bool, default False
         Whether to ignore the index values of the input objects, returning a
@@ -69,16 +69,16 @@ def concatenate(rngs, ignore_index=False, closed=None):
         inferred from the first object in the list for linear events.
     """
     # Validate input
-    if not isinstance(rngs, list):
+    if not isinstance(objs, list):
         raise TypeError("Input must be a list of EventsData class instances.")
-    if len(rngs) == 0:
+    if len(objs) == 0:
         raise ValueError("No events to concatenate.")
-    if not all(isinstance(rng, base.EventsData) for rng in rngs):
+    if not all(isinstance(obj, base.EventsData) for obj in objs):
         raise TypeError("All input objects must be EventsData class instances.")
     # Ensure all objects have the same characteristics
-    test_linear = [rng.is_linear for rng in rngs]
-    test_located = [rng.is_located for rng in rngs]
-    test_grouped = [rng.is_grouped for rng in rngs]
+    test_linear = [obj.is_linear for obj in objs]
+    test_located = [obj.is_located for obj in objs]
+    test_grouped = [obj.is_grouped for obj in objs]
     if not len(set(test_linear)) == 1:
         raise ValueError(
             "All input events must have the same structure. Mix of linear and "
@@ -91,7 +91,7 @@ def concatenate(rngs, ignore_index=False, closed=None):
         raise ValueError(
             "All input events must have the same structure. Mix of grouped and "
             "ungrouped events detected.")
-    if (not all(rng.is_linear for rng in rngs)) and closed is not None:
+    if (not all(obj.is_linear for obj in objs)) and closed is not None:
         raise ValueError(
             "The 'closed' parameter is only applicable to linear events.")
     
@@ -102,41 +102,41 @@ def concatenate(rngs, ignore_index=False, closed=None):
 
     # Concatenate events
     if is_located:
-        locs = np.concatenate([rng.locs for rng in rngs])
+        locs = np.concatenate([obj.locs for obj in objs])
     else:
         locs = None
     if is_linear:
-        begs = np.concatenate([rng.begs for rng in rngs])
-        ends = np.concatenate([rng.ends for rng in rngs])
+        begs = np.concatenate([obj.begs for obj in objs])
+        ends = np.concatenate([obj.ends for obj in objs])
     else:
         begs = None
         ends = None
     if is_grouped:
-        groups = np.concatenate([rng.groups for rng in rngs])
+        groups = np.concatenate([obj.groups for obj in objs])
     else:
         groups = None
     if ignore_index:
         index = None
     else:
-        index = np.concatenate([rng.index for rng in rngs])
+        index = np.concatenate([obj.index for obj in objs])
 
     # Return concatenated events
-    return rngs[0].from_similar(
+    return objs[0].from_similar(
         index=index,
         groups=groups,
         locs=locs,
         begs=begs,
         ends=ends,
-        closed=closed if closed is not None else rngs[0].closed
+        closed=closed if closed is not None else objs[0].closed
     )
 
-def extend(rng, extend_begs=0, extend_ends=0, inplace=False):
+def extend(events, extend_begs=0, extend_ends=0, inplace=False):
     """
     Extend the range of events by a specified amount in either or both directions.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         Input range of events.
     extend_begs : float or array-like, optional
         Amount to extend the beginning and end of each event range. If an array-like
@@ -151,32 +151,32 @@ def extend(rng, extend_begs=0, extend_ends=0, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.EventsData):
+    if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    extend_begs = utility._validate_scalar_or_array_input(rng, extend_begs, 'extend_begs')
-    extend_ends = utility._validate_scalar_or_array_input(rng, extend_ends, 'extend_ends')
+    extend_begs = utility._validate_scalar_or_array_input(events, extend_begs, 'extend_begs')
+    extend_ends = utility._validate_scalar_or_array_input(events, extend_ends, 'extend_ends')
 
     # Select object to modify
-    rng = rng if inplace else rng.copy()
+    events = events if inplace else events.copy()
 
     # Select methodology
-    if rng.is_point:
-        rng._begs = rng.locs - extend_begs
-        rng._ends = rng.locs + extend_ends
+    if events.is_point:
+        events._begs = events.locs - extend_begs
+        events._ends = events.locs + extend_ends
     else:
-        rng._begs = rng._begs - extend_begs
-        rng._ends = rng._ends + extend_ends
+        events._begs = events._begs - extend_begs
+        events._ends = events._ends + extend_ends
     
     # Return results
-    return None if inplace else rng
+    return None if inplace else events
 
-def shift(rng, shift, inplace=False):
+def shift(events, shift, inplace=False):
     """
     Shift the range of events by a specified amount.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         Input range of events.
     shift : float or array-like
         Amount to shift all events. If an array-like is provided, it must
@@ -186,31 +186,31 @@ def shift(rng, shift, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.EventsData):
+    if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    shift = utility._validate_scalar_or_array_input(rng, shift, 'shift')
+    shift = utility._validate_scalar_or_array_input(events, shift, 'shift')
 
     # Select object to modify
-    rng = rng if inplace else rng.copy()
+    events = events if inplace else events.copy()
 
     # Select methodology
-    if rng.is_located:
-        rng._locs = rng._locs + shift
-    if rng.is_linear:
-        rng._begs = rng._begs + shift
-        rng._ends = rng._ends + shift
+    if events.is_located:
+        events._locs = events._locs + shift
+    if events.is_linear:
+        events._begs = events._begs + shift
+        events._ends = events._ends + shift
     
     # Return results
-    return None if inplace else rng
+    return None if inplace else events
 
-def round(rng, decimals=None, factor=None, inplace=False):
+def round(events, decimals=None, factor=None, inplace=False):
     """
     Round the bounds and locations of events to a specified number of decimal 
     places or using a specified rounding factor.
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         Input range of events.
     decimals : int, optional
         Number of decimal places to round to. If an array-like is provided, it must
@@ -223,33 +223,33 @@ def round(rng, decimals=None, factor=None, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.EventsData):
+    if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
     if decimals is not None:
         if not isinstance(decimals, int):
             raise TypeError("'decimals' must be an integer.")
         _rounder = lambda x: np.round(x, decimals=decimals)
     elif factor is not None:
-        factor = utility._validate_scalar_or_array_input(rng, factor, 'factor', nonzero=True)
+        factor = utility._validate_scalar_or_array_input(events, factor, 'factor', nonzero=True)
         _rounder = lambda x: np.round(x / factor, decimals=0) * factor
     else:
         raise ValueError("Either 'decimals' or 'factor' must be provided.")
     
     # Select object to modify
-    rng = rng if inplace else rng.copy()
+    events = events if inplace else events.copy()
 
     # Select methodology
     
-    if rng.is_located:
-        rng._locs = _rounder(rng._locs)
-    if rng.is_linear:
-        rng._begs = _rounder(rng._begs)
-        rng._ends = _rounder(rng._ends)
+    if events.is_located:
+        events._locs = _rounder(events._locs)
+    if events.is_linear:
+        events._begs = _rounder(events._begs)
+        events._ends = _rounder(events._ends)
 
     # Return results
-    return None if inplace else rng
+    return None if inplace else events
 
-def separate(rng, by='centers', inplace=False):
+def separate(events, by='centers', inplace=False):
     """
     Address overlapping ranges by distributing overlaps between adjacent
     events. Distributions are made equally and are based on a specified 
@@ -258,7 +258,7 @@ def separate(rng, by='centers', inplace=False):
 
     Parameters
     ----------
-    rng : EventsData
+    events : EventsData
         Input range of events.
     by : str {'locs', 'begs', 'ends', 'centers'}, default 'centers'
         The anchor point of each event to be used when distributing 
@@ -267,18 +267,18 @@ def separate(rng, by='centers', inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.EventsData):
+    if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    if not rng.is_linear:
+    if not events.is_linear:
         raise ValueError("Input object must be a linear EventsData instance.")
-    if rng.is_empty:
+    if events.is_empty:
         raise ValueError("No events to separate.")
     if not by in [None, 'locs', 'begs', 'ends', 'centers']:
         raise ValueError("Separate 'by' must be either 'locs', 'begs', "
             "'ends', 'centers' or None.")
 
     # Select object to modify
-    modified = rng if inplace else rng.copy()
+    modified = events if inplace else events.copy()
 
     # Prepare sorted events for processing
     modified, inv = modified.sort(
