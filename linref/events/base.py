@@ -448,6 +448,19 @@ class Rangel:
             Whether to perform the operation in place, returning None.
         """
         return selection.select(self, selector, ignore=ignore, inplace=inplace)
+    
+    def select_slice(self, slice_, inplace=False):
+        """
+        Select events by slice.
+
+        Parameters
+        ----------
+        slice_ : slice
+            Slice object to select events.
+        inplace : bool, default False
+            Whether to perform the operation in place, returning None.
+        """
+        return selection.select_slice(self, slice_, inplace=inplace)
 
     def select_group(self, group, ungroup=None, ignore_missing=True, inplace=False):
         """
@@ -814,7 +827,7 @@ class Rangel:
         return relate.EventsRelation(self, other, cache=cache)
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def overlay(self, other: Rangel, normalize=True, norm_by='right', chunksize=1000):
+    def overlay(self, other: Rangel, normalize=True, norm_by='right', chunksize=1000, grouped=True):
         """
         Compute the overlay of two collections of events.
 
@@ -833,7 +846,12 @@ class Rangel:
         chunksize : int or None, default 1000
             The maximum number of events to process in a single chunk.
             Input chunksize will affect the memory usage and performance of
-            the function.
+            the function. This does not affect actual results, only 
+            computation.
+        grouped : bool, default True
+            Whether to process the overlay operation for each group separately.
+            This will affect the memory usage and performance of the function. 
+            This does not affect actual results, only computation.
         """
         # Create relationship
         relation = relate.EventsRelation(self, other, cache=False)
@@ -846,7 +864,7 @@ class Rangel:
         )
 
     @utility._method_require(is_empty=False)
-    def intersect(self, other: Rangel, enforce_edges=True, chunksize=1000):
+    def intersect(self, other: Rangel, enforce_edges=True, chunksize=1000, grouped=True):
         """
         Identify intersections between two collections of events.
 
@@ -862,7 +880,12 @@ class Rangel:
         chunksize : int or None, default 1000
             The maximum number of events to process in a single chunk.
             Input chunksize will affect the memory usage and performance of
-            the function.
+            the function. This does not affect actual results, only 
+            computation.
+        grouped : bool, default True
+            Whether to process the overlay operation for each group separately.
+            This will affect the memory usage and performance of the function. 
+            This does not affect actual results, only computation.
         """
         # Create relationship
         relation = relate.EventsRelation(self, other, cache=False)

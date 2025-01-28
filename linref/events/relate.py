@@ -7,8 +7,10 @@ class EventsRelation(object):
 
     def __init__(self, left, right, cache=True):
         self.cache = cache
-        self.left = left
-        self.right = right
+        self._left = left
+        self._right = right
+        self._validate_events()
+        self.reset_cache()
 
     @property
     def left(self):
@@ -16,11 +18,9 @@ class EventsRelation(object):
     
     @left.setter
     def left(self, value):
-        if not isinstance(value, base.Rangel):
-            raise TypeError("Input object must be a Rangel class instance.")
         self._left = value
-        if self._cache:
-            self.reset_cache()
+        self._validate_events()
+        self.reset_cache()
 
     @property
     def right(self):
@@ -28,11 +28,9 @@ class EventsRelation(object):
     
     @right.setter
     def right(self, value):
-        if not isinstance(value, base.Rangel):
-            raise TypeError("Input object must be a Rangel class instance.")
         self._right = value
-        if self._cache:
-            self.reset_cache()
+        self._validate_events()
+        self.reset_cache()
 
     @property
     def cache(self):
@@ -58,11 +56,20 @@ class EventsRelation(object):
     def intersect_data(self):
         return self._intersect_data
     
+    def _validate_events(self):
+        """
+        Validate the input events.
+        """
+        if not isinstance(self.left, base.Rangel) or not isinstance(self.right, base.Rangel):
+            raise TypeError("Input objects must be Rangel class instances.")
+        if self.left.is_grouped != self.right.is_grouped:
+            raise ValueError("Input objects must have the same grouping status.")
+
     def reset_cache(self):
         self._overlay_data = None
         self._intersect_data = None
         
-    def overlay(self, normalize=True, norm_by='right', chunksize=1000):
+    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True):
         """
         Compute the overlay of the left and right events.
         
@@ -76,10 +83,15 @@ class EventsRelation(object):
             `normalize` is True.
             - 'right' : Normalize by the length of the right events.
             - 'left' : Normalize by the length of the left events.
-        chunksize : int, default 1000
-            The maximum number of elements to process in a single chunk.
+        chunksize : int or None, default 1000
+            The maximum number of events to process in a single chunk.
             Input chunksize will affect the memory usage and performance of
-            the function.
+            the function. This does not affect actual results, only 
+            computation.
+        grouped : bool, default True
+            Whether to process the overlay operation for each group separately.
+            This will affect the memory usage and performance of the function. 
+            This does not affect actual results, only computation.
         """
 
         # Perform overlay
@@ -88,14 +100,15 @@ class EventsRelation(object):
             self.right,
             normalize=normalize,
             norm_by=norm_by,
-            chunksize=chunksize
+            chunksize=chunksize,
+            grouped=grouped
         )
         # Cache results
         if self._cache:
             self._overlay_data = arr
         return arr
     
-    def intersect(self, enforce_edges=True, chunksize=1000):
+    def intersect(self, enforce_edges=True, chunksize=1000, grouped=True):
         """
         Compute the intersection of the left and right events.
 
@@ -105,38 +118,47 @@ class EventsRelation(object):
             Whether to enforce edge cases when computing intersections.
             If True, edge cases will be tested for intersections. Ignored 
             for point to point intersections.
-        chunksize : int, default 1000
-            The maximum number of elements to process in a single chunk.
+        chunksize : int or None, default 1000
+            The maximum number of events to process in a single chunk.
             Input chunksize will affect the memory usage and performance of
-            the function.
+            the function. This does not affect actual results, only 
+            computation.
+        grouped : bool, default True
+            Whether to process the overlay operation for each group separately.
+            This will affect the memory usage and performance of the function. 
+            This does not affect actual results, only computation.
         """
         # Perform intersect
         if self.left.is_point and self.right.is_point:
             arr = intersect_point_point(
                 self.left,
                 self.right,
-                chunksize=chunksize
+                chunksize=chunksize,
+                grouped=grouped
             )
         elif self.left.is_point and self.right.is_linear:
             arr = intersect_point_linear(
                 self.left,
                 self.right,
                 enforce_edges=enforce_edges,
-                chunksize=chunksize
+                chunksize=chunksize,
+                grouped=grouped
             )
         elif self.left.is_linear and self.right.is_point:
             arr = intersect_point_linear(
                 self.right,
                 self.left,
                 enforce_edges=enforce_edges,
-                chunksize=chunksize
+                chunksize=chunksize,
+                grouped=grouped
             )
         elif self.left.is_linear and self.right.is_linear:
             arr = intersect_linear_linear(
                 self.left,
                 self.right,
                 enforce_edges=enforce_edges,
-                chunksize=chunksize
+                chunksize=chunksize,
+                grouped=grouped
             )
         else:
             raise ValueError("Invalid event types for intersection operation.")
@@ -157,7 +179,8 @@ def _grouped_operation_wrapper(func):
             raise ValueError("Input objects must have the same grouping status.")
 
         # Check if grouped
-        if not left.is_grouped:
+        grouped = kwargs.pop('grouped', True)
+        if not left.is_grouped or not grouped:
             # Return group-less operation
             return func(left, right, *args, **kwargs)
         else:
@@ -167,7 +190,8 @@ def _grouped_operation_wrapper(func):
             res = []
             for group, left_group in left.reset_index().iter_groups(ungroup=True):
                 # Get right group
-                right_group = right.reset_index().select_group(group, ignore_missing=True, inplace=False)
+                right_group = right.reset_index().select_group(
+                    group, ungroup=True, ignore_missing=True, inplace=False)
                 if right_group.num_events == 0:
                     continue
                 # Compute operation on group
@@ -205,14 +229,14 @@ def _chunked_operation_wrapper(func):
             res = sp.coo_array(chunk)
             return res
         
-        # Iterate over chunks
+        # Iterate over chunks in both dimensions
         left_arrays = []
         for i in range(0, left.num_events, chunksize):
             right_arrays = []
             for j in range(0, right.num_events, chunksize):
                 # Get chunk of events
-                left_chunk = left.select(slice(i, i + chunksize), ignore=True, inplace=False)
-                right_chunk = right.select(slice(j, j + chunksize), ignore=True, inplace=False)
+                left_chunk = left.select_slice(slice(i, i + chunksize), inplace=False)
+                right_chunk = right.select_slice(slice(j, j + chunksize), inplace=False)
                 # Compute operation on chunk
                 chunk = func(left_chunk, right_chunk, *args, **kwargs)
                 # Convert to sparse array and log
@@ -290,7 +314,7 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
     # Apply group masking if necessary
     if left.is_grouped:
         # Identify matching groups
-        mask = np.equal(left.groups.reshape(-1, 1), right.groups.reshape(1, -1))
+        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
         np.multiply(overlap, mask, out=overlap)
     
     return overlap
@@ -317,7 +341,7 @@ def intersect_point_point(left, right, chunksize=None):
     # Apply group masking if necessary
     if left.is_grouped:
         # Identify matching groups
-        mask = np.equal(left.groups.reshape(-1, 1), right.groups.reshape(1, -1))
+        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
         np.logical_and(res, mask, out=res)
     
     return res
@@ -368,7 +392,7 @@ def intersect_point_linear(left, right, enforce_edges=True, chunksize=None):
     # Apply group masking if necessary
     if left.is_grouped:
         # Identify matching groups
-        np.equal(left.groups.reshape(-1, 1), right.groups.reshape(1, -1), out=mask)
+        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
         np.logical_and(res, mask, out=res)
     
     return res
@@ -448,7 +472,7 @@ def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None):
     # Apply group masking if necessary
     if left.is_grouped:
         # Identify matching groups
-        np.equal(left.groups.reshape(-1, 1), right.groups.reshape(1, -1), out=mask)
+        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
         np.logical_and(res, mask, out=res)
     
     return res
