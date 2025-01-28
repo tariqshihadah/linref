@@ -1,10 +1,12 @@
 import numpy as np
+import pandas as pd
 import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
 from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import Rangel
 from linref.events.utility import _method_require
+
 
 class LRS(object):
 
@@ -79,6 +81,9 @@ class LRS(object):
 @register_dataframe_accessor("lr")
 class LRS_Accessor(object):
 
+    # Initialize default LRS list
+    _default_lrs = []
+
     def __init__(self, df):
         # Log dataframe
         self._df = df
@@ -107,6 +112,18 @@ class LRS_Accessor(object):
     def df(self):
         return self._df
     
+    @df.setter
+    def df(self, df):
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("Input DataFrame must be of type `pandas.DataFrame`.")
+        self._df = df
+    
+    @property
+    def lrs(self):
+        if len(self._lrs) > 0:
+            return self._lrs
+        return self._default_lrs
+        
     @property
     def is_lrs_set(self):
         return len(self._lrs) > 0
@@ -323,6 +340,12 @@ class LRS_Accessor(object):
         """
         Activate a specific LRS for the DataFrame by selecting the index from 
         the list of LRS objects.
+
+        Parameters
+        ----------
+        index : int
+            The index of the LRS object to activate. Used to index the list of
+            LRS objects stored in the DataFrame.
         """
         if index >= len(self._lrs):
             raise ValueError(

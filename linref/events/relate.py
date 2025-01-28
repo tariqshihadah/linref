@@ -2,6 +2,149 @@ import numpy as np
 from linref.events import base
 from scipy import sparse as sp
 
+
+class EventsRelation(object):
+
+    def __init__(self, left, right, cache=True):
+        self.cache = cache
+        self.left = left
+        self.right = right
+
+    @property
+    def left(self):
+        return self._left
+    
+    @left.setter
+    def left(self, value):
+        if not isinstance(value, base.Rangel):
+            raise TypeError("Input object must be a Rangel class instance.")
+        self._left = value
+        if self._cache:
+            self.reset_cache()
+
+    @property
+    def right(self):
+        return self._right
+    
+    @right.setter
+    def right(self, value):
+        if not isinstance(value, base.Rangel):
+            raise TypeError("Input object must be a Rangel class instance.")
+        self._right = value
+        if self._cache:
+            self.reset_cache()
+
+    @property
+    def cache(self):
+        return self._cache
+    
+    @cache.setter
+    def cache(self, value):
+        if not isinstance(value, bool):
+            raise TypeError("The 'cache' parameter must be a boolean.")
+        self._cache = value
+        if not value:
+            self.reset_cache()
+
+    @property
+    def shape(self):
+        return self.left.num_events, self.right.num_events
+    
+    @property
+    def overlay_data(self):
+        return self._overlay_data
+        
+    @property
+    def intersect_data(self):
+        return self._intersect_data
+    
+    def reset_cache(self):
+        self._overlay_data = None
+        self._intersect_data = None
+        
+    def overlay(self, normalize=True, norm_by='right', chunksize=1000):
+        """
+        Compute the overlay of the left and right events.
+        
+        Parameters
+        ----------
+        normalize : bool, default True
+            Whether overlapping lengths should be normalized to give a 
+            proportional result with a float value between 0 and 1.
+        norm_by : str, default 'right'
+            How overlapping lengths should be normalized. Only applied if
+            `normalize` is True.
+            - 'right' : Normalize by the length of the right events.
+            - 'left' : Normalize by the length of the left events.
+        chunksize : int, default 1000
+            The maximum number of elements to process in a single chunk.
+            Input chunksize will affect the memory usage and performance of
+            the function.
+        """
+
+        # Perform overlay
+        arr = overlay(
+            self.left,
+            self.right,
+            normalize=normalize,
+            norm_by=norm_by,
+            chunksize=chunksize
+        )
+        # Cache results
+        if self._cache:
+            self._overlay_data = arr
+        return arr
+    
+    def intersect(self, enforce_edges=True, chunksize=1000):
+        """
+        Compute the intersection of the left and right events.
+
+        Parameters
+        ----------
+        enforce_edges : bool, default True
+            Whether to enforce edge cases when computing intersections.
+            If True, edge cases will be tested for intersections. Ignored 
+            for point to point intersections.
+        chunksize : int, default 1000
+            The maximum number of elements to process in a single chunk.
+            Input chunksize will affect the memory usage and performance of
+            the function.
+        """
+        # Perform intersect
+        if self.left.is_point and self.right.is_point:
+            arr = intersect_point_point(
+                self.left,
+                self.right,
+                chunksize=chunksize
+            )
+        elif self.left.is_point and self.right.is_linear:
+            arr = intersect_point_linear(
+                self.left,
+                self.right,
+                enforce_edges=enforce_edges,
+                chunksize=chunksize
+            )
+        elif self.left.is_linear and self.right.is_point:
+            arr = intersect_point_linear(
+                self.right,
+                self.left,
+                enforce_edges=enforce_edges,
+                chunksize=chunksize
+            )
+        elif self.left.is_linear and self.right.is_linear:
+            arr = intersect_linear_linear(
+                self.left,
+                self.right,
+                enforce_edges=enforce_edges,
+                chunksize=chunksize
+            )
+        else:
+            raise ValueError("Invalid event types for intersection operation.")
+        # Cache results
+        if self._cache:
+            self._intersect_data = arr
+        return arr
+
 def _grouped_operation_wrapper(func):
     """
     Decorator for wrapping functions that operate on grouped data.
@@ -106,6 +249,16 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
     """
     _norm_by_options = {'right', 'left'}
     
+    # Validate inputs
+    if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
+        raise TypeError("Input objects must be Rangel class instances.")
+    if left.is_grouped != right.is_grouped:
+        raise ValueError("Input collections must have the same grouping status.")
+    if not left.is_linear or not right.is_linear:
+        raise ValueError("Input events must be linear.")
+    if not left.is_monotonic or not right.is_monotonic:
+        raise ValueError("Input events must be monotonic.")
+
     # Compute overlap lengths
     lefts = left.ends.reshape(-1, 1) - right.begs.reshape(1, -1)
     rights = right.ends.reshape(1, -1) - left.begs.reshape(-1, 1)
@@ -144,7 +297,7 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersection_point_point(left, right, chunksize=None):
+def intersect_point_point(left, right, chunksize=None):
     """
     Identify intersections between two collections of point events.
     """
@@ -152,7 +305,7 @@ def intersection_point_point(left, right, chunksize=None):
     if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
         raise TypeError("Input objects must be Rangel class instances.")
     if left.is_grouped != right.is_grouped:
-        raise ValueError("Input objects must have the same grouping status.")
+        raise ValueError("Input collections must have the same grouping status.")
 
     # Reshape arrays for broadcasting
     left_locs = left.locs.reshape(-1, 1)
@@ -171,7 +324,7 @@ def intersection_point_point(left, right, chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersection_point_linear(left, right, enforce_edges=True, chunksize=None):
+def intersect_point_linear(left, right, enforce_edges=True, chunksize=None):
     """
     Identify intersections between a collection of point events and a collection 
     of linear events.
@@ -222,7 +375,7 @@ def intersection_point_linear(left, right, enforce_edges=True, chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersection_linear_linear(left, right, enforce_edges=True, chunksize=None):
+def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None):
     """
     Identify intersections between two collections of linear events.
     """
