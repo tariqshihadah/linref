@@ -4,7 +4,7 @@ import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
 from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
-from linref.events.base import Rangel
+from linref.events.base import EventsData
 from linref.events.utility import _method_require
 
 
@@ -315,7 +315,7 @@ class LRS_Accessor(object):
         else:
             keys = self.get_keys(col=keys_col, require=require)
         # Create the events object
-        return Rangel(
+        return EventsData(
             index=self.index,
             groups=keys,
             locs=self.locs if self.locs_col else None,

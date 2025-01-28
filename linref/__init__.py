@@ -1,4 +1,4 @@
-from linref.events.base import Rangel
+from linref.events.base import EventsData
 from linref.ext.base import LRS, LRS_Accessor
 
 # Expose extension settings

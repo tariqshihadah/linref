@@ -6,12 +6,12 @@ def dissolve(rng, return_index=False):
     Merge consecutive ranges. For best results, input events should be sorted.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     if not rng.is_linear:
-        raise ValueError("Input object must be a linear Rangel instance.")
+        raise ValueError("Input object must be a linear EventsData instance.")
     if rng.is_empty:
-        return base.Rangel()
+        return base.EventsData()
     
     # Identify edges of dissolvable events
     consecutive_strings = rng.consecutive_strings()
@@ -57,7 +57,7 @@ def concatenate(rngs, ignore_index=False, closed=None):
     Parameters
     ----------
     rngs : list
-        List of Rangel instances to concatenate.
+        List of EventsData instances to concatenate.
     ignore_index : bool, default False
         Whether to ignore the index values of the input objects, returning a
         new collection with a new generic 0-based index.
@@ -70,11 +70,11 @@ def concatenate(rngs, ignore_index=False, closed=None):
     """
     # Validate input
     if not isinstance(rngs, list):
-        raise TypeError("Input must be a list of Rangel class instances.")
+        raise TypeError("Input must be a list of EventsData class instances.")
     if len(rngs) == 0:
         raise ValueError("No events to concatenate.")
-    if not all(isinstance(rng, base.Rangel) for rng in rngs):
-        raise TypeError("All input objects must be Rangel class instances.")
+    if not all(isinstance(rng, base.EventsData) for rng in rngs):
+        raise TypeError("All input objects must be EventsData class instances.")
     # Ensure all objects have the same characteristics
     test_linear = [rng.is_linear for rng in rngs]
     test_located = [rng.is_located for rng in rngs]
@@ -136,7 +136,7 @@ def extend(rng, extend_begs=0, extend_ends=0, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         Input range of events.
     extend_begs : float or array-like, optional
         Amount to extend the beginning and end of each event range. If an array-like
@@ -151,8 +151,8 @@ def extend(rng, extend_begs=0, extend_ends=0, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     extend_begs = utility._validate_scalar_or_array_input(rng, extend_begs, 'extend_begs')
     extend_ends = utility._validate_scalar_or_array_input(rng, extend_ends, 'extend_ends')
 
@@ -176,7 +176,7 @@ def shift(rng, shift, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         Input range of events.
     shift : float or array-like
         Amount to shift all events. If an array-like is provided, it must
@@ -186,8 +186,8 @@ def shift(rng, shift, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     shift = utility._validate_scalar_or_array_input(rng, shift, 'shift')
 
     # Select object to modify
@@ -210,7 +210,7 @@ def round(rng, decimals=None, factor=None, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         Input range of events.
     decimals : int, optional
         Number of decimal places to round to. If an array-like is provided, it must
@@ -223,8 +223,8 @@ def round(rng, decimals=None, factor=None, inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     if decimals is not None:
         if not isinstance(decimals, int):
             raise TypeError("'decimals' must be an integer.")
@@ -258,7 +258,7 @@ def separate(rng, by='centers', inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         Input range of events.
     by : str {'locs', 'begs', 'ends', 'centers'}, default 'centers'
         The anchor point of each event to be used when distributing 
@@ -267,10 +267,10 @@ def separate(rng, by='centers', inplace=False):
         If True, modify the input object in place. Default is False.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     if not rng.is_linear:
-        raise ValueError("Input object must be a linear Rangel instance.")
+        raise ValueError("Input object must be a linear EventsData instance.")
     if rng.is_empty:
         raise ValueError("No events to separate.")
     if not by in [None, 'locs', 'begs', 'ends', 'centers']:

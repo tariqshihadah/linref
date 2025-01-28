@@ -96,7 +96,7 @@ def _stringify_instance(rng):
 
 def _represent_records(rng):
     """
-    Create a string representation of a Rangel instance, displaying only the 
+    Create a string representation of a EventsData instance, displaying only the 
     first and last few records.
     """
     # If no ranges present, return self as a string

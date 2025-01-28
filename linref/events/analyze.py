@@ -8,7 +8,7 @@ def duplicated(rng, subset=None, keep='first'):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to analyze.
     subset : array-like, default None
         Array-like of event anchors to use for duplicated comparison. If None,
@@ -17,8 +17,8 @@ def duplicated(rng, subset=None, keep='first'):
         Whether to keep the first, last, or none of the duplicated events.
     """
     # Validate input
-    if not isinstance(rng, base.Rangel):
-        raise TypeError("Input object must be a Rangel class instance.")
+    if not isinstance(rng, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
     if subset is None:
         subset = rng.anchors
     else:

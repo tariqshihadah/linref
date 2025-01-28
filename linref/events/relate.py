@@ -60,8 +60,8 @@ class EventsRelation(object):
         """
         Validate the input events.
         """
-        if not isinstance(self.left, base.Rangel) or not isinstance(self.right, base.Rangel):
-            raise TypeError("Input objects must be Rangel class instances.")
+        if not isinstance(self.left, base.EventsData) or not isinstance(self.right, base.EventsData):
+            raise TypeError("Input objects must be EventsData class instances.")
         if self.left.is_grouped != self.right.is_grouped:
             raise ValueError("Input objects must have the same grouping status.")
 
@@ -173,8 +173,8 @@ def _grouped_operation_wrapper(func):
     """
     def wrapper(left, right, *args, **kwargs):
         # Validate inputs
-        if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
-            raise TypeError("Input objects must be Rangel class instances.")
+        if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+            raise TypeError("Input objects must be EventsData class instances.")
         if left.is_grouped != right.is_grouped:
             raise ValueError("Input objects must have the same grouping status.")
 
@@ -256,8 +256,8 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
 
     Parameters
     ----------
-    left, right : Rangel
-        Input Rangel instances to overlay.
+    left, right : EventsData
+        Input EventsData instances to overlay.
     normalize : bool, default True
         Whether overlapping lengths should be normalized to give a 
         proportional result with a float value between 0 and 1.
@@ -274,8 +274,8 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
     _norm_by_options = {'right', 'left'}
     
     # Validate inputs
-    if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
-        raise TypeError("Input objects must be Rangel class instances.")
+    if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+        raise TypeError("Input objects must be EventsData class instances.")
     if left.is_grouped != right.is_grouped:
         raise ValueError("Input collections must have the same grouping status.")
     if not left.is_linear or not right.is_linear:
@@ -326,8 +326,8 @@ def intersect_point_point(left, right, chunksize=None):
     Identify intersections between two collections of point events.
     """
     # Validate inputs
-    if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
-        raise TypeError("Input objects must be Rangel class instances.")
+    if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+        raise TypeError("Input objects must be EventsData class instances.")
     if left.is_grouped != right.is_grouped:
         raise ValueError("Input collections must have the same grouping status.")
 
@@ -354,8 +354,8 @@ def intersect_point_linear(left, right, enforce_edges=True, chunksize=None):
     of linear events.
     """
     # Validate inputs
-    if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
-        raise TypeError("Input objects must be Rangel class instances.")
+    if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+        raise TypeError("Input objects must be EventsData class instances.")
     if left.is_grouped != right.is_grouped:
         raise ValueError("Input objects must have the same grouping status.")
 
@@ -404,8 +404,8 @@ def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None):
     Identify intersections between two collections of linear events.
     """
     # Validate inputs
-    if not isinstance(left, base.Rangel) or not isinstance(right, base.Rangel):
-        raise TypeError("Input objects must be Rangel class instances.")
+    if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+        raise TypeError("Input objects must be EventsData class instances.")
     if left.is_grouped != right.is_grouped:
         raise ValueError("Input objects must have the same grouping status.")
 

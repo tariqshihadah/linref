@@ -145,7 +145,7 @@ def select(rng, selector, ignore=False, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     selector : array-like or slice
         Array-like of event indices, a boolean mask aligned to the events, 
@@ -165,7 +165,7 @@ def select_slice(rng, slice_, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     slice_ : slice
         Slice object to select events.
@@ -181,7 +181,7 @@ def select_mask(rng, mask, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     mask : array-like
         Boolean mask aligned to the events.
@@ -197,7 +197,7 @@ def select_index(rng, index, ignore=False, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     index : array-like
         Array-like of event indices to select.
@@ -254,7 +254,7 @@ def drop(rng, selector, inplace=False):
 
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     mask : array-like
         Boolean mask aligned to the events.
@@ -272,7 +272,7 @@ def drop_group(rng, group, inplace=False):
     
     Parameters
     ----------
-    rng : Rangel
+    rng : EventsData
         The events object to select from.
     group : label or array-like
         The label of the group to drop or array-like of the same.

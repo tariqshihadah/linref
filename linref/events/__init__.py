@@ -1,1 +1,1 @@
-from linref.events.base import Rangel
+from linref.events.base import EventsData

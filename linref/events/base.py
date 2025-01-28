@@ -9,7 +9,7 @@ import warnings
 from linref.events import common, utility, relate, modify, selection, analyze
 
 
-class Rangel:
+class EventsData:
     """
     Class for managing collections of events with linear or point data.
     """
@@ -806,13 +806,13 @@ class Rangel:
         pass
 
     @utility._method_require(is_empty=False)
-    def relate(self, other: Rangel, cache=True):
+    def relate(self, other: EventsData, cache=True):
         """
         Create an events data relationship between two collections of events.
 
         Parameters
         ----------
-        other : Rangel
+        other : EventsData
             The other collection of events to relate.
         cache : bool, default True
             Whether to cache computed relationship operations, such as 
@@ -827,14 +827,14 @@ class Rangel:
         return relate.EventsRelation(self, other, cache=cache)
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def overlay(self, other: Rangel, normalize=True, norm_by='right', chunksize=1000, grouped=True):
+    def overlay(self, other: EventsData, normalize=True, norm_by='right', chunksize=1000, grouped=True):
         """
         Compute the overlay of two collections of events.
 
         Parameters
         ----------
-        left, right : Rangel
-            Input Rangel instances to overlay.
+        left, right : EventsData
+            Input EventsData instances to overlay.
         normalize : bool, default True
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
@@ -864,13 +864,13 @@ class Rangel:
         )
 
     @utility._method_require(is_empty=False)
-    def intersect(self, other: Rangel, enforce_edges=True, chunksize=1000, grouped=True):
+    def intersect(self, other: EventsData, enforce_edges=True, chunksize=1000, grouped=True):
         """
         Identify intersections between two collections of events.
 
         Parameters
         ----------
-        other : Rangel
+        other : EventsData
             The other collection of events to test for intersections.
         enforce_edges : bool, default True
             Whether to consider cases of coincident begin and end points, 
