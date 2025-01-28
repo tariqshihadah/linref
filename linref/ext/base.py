@@ -352,9 +352,11 @@ class LRS_Accessor(object):
                 f"Invalid LRS index: {index}. Must be less than {len(self._lrs)}.")
         self._active_index = index
 
-    def set_lrs(self, lrs, append=False):
+    def set_lrs(self, lrs=None, append=False, **kwargs):
         # Validate LRS object type
-        if isinstance(lrs, LRS):
+        if lrs is None:
+            lrs = [LRS(**kwargs)]
+        elif isinstance(lrs, LRS):
             lrs = [lrs]
         elif not all([isinstance(lrs, LRS) for lrs in lrs]):
             raise ValueError("Input LRS objects must be of type `LRS`.")
@@ -365,11 +367,35 @@ class LRS_Accessor(object):
         else:
             self._lrs = lrs
         
-    def add_lrs(self, lrs):
-        self.set_lrs(lrs, append=True)
+    def add_lrs(self, lrs=None, **kwargs):
+        self.set_lrs(lrs=lrs, append=True, **kwargs)
 
     def clear_lrs(self):
         self._lrs = []
+
+    @classmethod
+    def set_default_lrs(cls, lrs=None, append=False, **kwargs):
+        # Validate LRS object type
+        if lrs is None:
+            lrs = [LRS(**kwargs)]
+        elif isinstance(lrs, LRS):
+            lrs = [lrs]
+        elif not all([isinstance(lrs, LRS) for lrs in lrs]):
+            raise ValueError("Input LRS objects must be of type `LRS`.")
+        
+        # Append or replace LRS objects
+        if append:
+            cls._default_lrs.extend(lrs)
+        else:
+            cls._default_lrs = lrs
+
+    @classmethod
+    def add_default_lrs(cls, lrs=None, **kwargs):
+        cls.set_default_lrs(lrs=lrs, append=True, **kwargs)
+
+    @classmethod
+    def clear_default_lrs(cls):
+        cls._default_lrs = []
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False):
@@ -437,192 +463,3 @@ class LRS_Accessor(object):
         if inverse_index:
             df[inverse_label] = index
         return df
-
-def _only_if_hashing(m):
-    def wrapper(*args, **kwargs):
-        if args[0].hashing:
-            return m(*args, **kwargs)
-    return wrapper
-
-
-class LRS_Manager:
-    """
-    Class for managing linear referencing system data in `pandas` DataFrames.
-    """
-
-    def __init__(self, df, lrs, hashing=True):
-        # Log DataFrame and LRS objects
-        self.df = df
-        self.lrs = lrs
-        self.hashing = hashing
-
-        # Set column indices for LRS keys and location information to improve performance
-        self._set_column_indices()
-
-        # Create data hashes to log current dataframe state
-        self._hash_columns(save=True, compare=False)
-        self._hash_lrs_data(save=True, compare=False)
-
-    @property
-    def df(self):
-        return self._df
-
-    @df.setter
-    def df(self, df):
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("Input DataFrame must be of type `pandas.DataFrame`.")
-        self._df = df
-        
-    def _set_column_indices(self):
-        """
-        Set the indices of the columns in the DataFrame that correspond to the LRS keys.
-        """
-        # Get the indices of the LRS keys in the DataFrame
-        self._key_indices = [self.df.columns.get_loc(key) for key in self.lrs.keys]
-        self._beg_index = self.df.columns.get_loc(self.lrs.beg) if self.lrs.beg else None
-        self._end_index = self.df.columns.get_loc(self.lrs.end) if self.lrs.end else None
-        self._loc_index = self.df.columns.get_loc(self.lrs.loc) if self.lrs.loc else None
-        self._geom_index = self.df.columns.get_loc(self.lrs.geom) if self.lrs.geom else None
-
-    @_only_if_hashing
-    def _hash_columns(self, save=False, compare=False):
-        """ 
-        Hash the columns of the DataFrame to ensure that the LRS is applied to the correct columns.
-        """
-        # Hash the columns of the DataFrame
-        columns_hash = hashlib.sha256(self.df.columns.to_numpy()).hexdigest()
-
-        # Save hash information
-        if compare:
-            # Log comparisons with previous hashes
-            self._columns_hash_status = self._columns_hash == columns_hash
-        else:
-            # Set comparison to successful
-            self._columns_hash_status = True
-        if save:
-            # Save latest hashes
-            self._columns_hash = columns_hash
-
-    @_only_if_hashing
-    def _hash_lrs_data(self, save=False, compare=False):
-        """
-        Hash the LRS data to easily check for changes to LRS locational information.
-        """
-        # Hash key columns
-        key_hash = hashlib.sha256(self.df.iloc[:, self._key_indices].to_numpy()).hexdigest()
-        # Hash location columns
-        if self.lrs.is_linear:
-            beg_hash = hashlib.sha256(self.df.iloc[:, self._beg_index].to_numpy()).hexdigest()
-            end_hash = hashlib.sha256(self.df.iloc[:, self._end_index].to_numpy()).hexdigest()
-        else:
-            beg_hash = None
-            end_hash = None
-        if self.lrs.is_point or self.lrs.is_locational:
-            loc_hash = hashlib.sha256(self.df.iloc[:, self._loc_index].to_numpy()).hexdigest()
-        else:
-            loc_hash = None
-        # Hash geometry columns
-        if self.lrs.geom:
-            geom_hash = hashlib.sha256(self.df.iloc[:, self._geom_index].to_numpy()).hexdigest()
-        else:
-            geom_hash = None
-
-        # Save hash information
-        if compare:
-            # Log comparisons with previous hashes
-            self._key_hash_status = self._key_hash == key_hash
-            self._beg_hash_status = self._beg_hash == beg_hash
-            self._end_hash_status = self._end_hash == end_hash
-            self._loc_hash_status = self._loc_hash == loc_hash
-            self._geom_hash_status = self._geom_hash == geom_hash
-        else:
-            # Set comparison to successful
-            self._key_hash_status = True
-            self._beg_hash_status = True
-            self._end_hash_status = True
-            self._loc_hash_status = True
-            self._geom_hash_status = True
-        if save:
-            # Save latest hashes
-            self._key_hash = key_hash
-            self._beg_hash = beg_hash
-            self._end_hash = end_hash
-            self._loc_hash = loc_hash
-            self._geom_hash = geom_hash
-
-
-
-#@pd.api.extensions.register_dataframe_accessor("lrs")
-class LRS_Accessor:
-
-    def __init__(self, obj):
-        # Log extended DataFrame
-        self._obj = obj
-        # Set null LRS
-        self._lrs = []
-        self._lrs_data = []
-
-    def __repr__(self):
-        if self.is_lrs_set:
-            lrs_lines = '\n'.join(['- ' + str(o) for o in self._lrs])
-        else:
-            lrs_lines = "- No LRS set"
-        return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
-
-    def __str__(self):
-        if self.is_lrs_set:
-            lrs_lines = '\n'.join(['- ' + str(o) for o in self._lrs])
-        else:
-            lrs_lines = "- No LRS set"
-        return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
-
-    @property
-    def lrs(self):
-        return self._lrs
-
-    @property
-    def lrs_managers(self):
-        return self._lrs_managers
-
-    @property
-    def managers(self):
-        return self._lrs_managers
-
-    @lrs.setter
-    def lrs(self, lrs):
-        # Check for valid LRS objects and create managers
-        lrs_managers = [LRS_Manager(self._obj, lrs) for lrs in lrs]
-        # Set LRS objects
-        self._lrs = lrs
-        self._lrs_managers = lrs_managers
-
-    @property
-    def is_lrs_set(self):
-        return len(self._lrs) > 0
-
-    def set_lrs(self, lrs=None, **kwargs):
-        """
-        Set one or more linear referencing systems (LRS) for the DataFrame. The LRS objects can be provided as a 
-        single `LRS` object or a list of `LRS` objects using the `lrs` keyword argument, or as a set of keyword 
-        arguments to create a new `LRS` object.
-        """
-        # Check for valid LRS objects
-        if lrs is not None:
-            if isinstance(lrs, LRS):
-                lrs = [lrs]
-            elif isinstance(lrs, list):
-                if not all([isinstance(lrs, LRS) for lrs in lrs]):
-                    raise ValueError("Input LRS objects must be of type `LRS`.")
-            else:
-                raise ValueError("Input LRS objects must be of type `LRS` or a list of `LRS` objects.")
-        else:
-            # Create LRS objects from keyword arguments
-            lrs = [LRS(**kwargs)]
-        # Set LRS objects
-        self.lrs = lrs
-
-    def clear_lrs(self):
-        """
-        Clear all linear referencing systems (LRS) from the DataFrame.
-        """
-        self._lrs = []
