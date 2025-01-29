@@ -3,7 +3,70 @@ from linref.events import base
 from scipy import sparse as sp
 
 
+def _validate_agg_axis_wrapper(func):
+    """
+    Decorator for validating aggregation axis input.
+    """
+    def wrapper(*args, **kwargs):
+        axis = kwargs.get('axis', 1)
+        if axis not in {0, 1}:
+            raise ValueError("Invalid axis provided. Must be 0 or 1.")
+        return func(*args, **kwargs)
+    return wrapper
+
+def _validate_agg_data_wrapper(func):
+    """
+    Decorator for validating aggregation data input.
+    """
+    def wrapper(*args, **kwargs):
+        axis = kwargs.get('axis', 1)
+        data = kwargs.pop('data', None)
+        # Check axis
+        if axis not in {0, 1}:
+            raise ValueError("Invalid axis provided. Must be 0 or 1.")
+        # Check shape and dimensionality
+        if data is None:
+            data = np.ones((args[0].shape[axis], 1))
+            kwargs['squeeze'] = True
+        else:
+            if not isinstance(data, np.ndarray):
+                raise TypeError(
+                    "Input aggregation data must be a numpy array.")
+            if data.ndim not in {1, 2}:
+                raise ValueError(
+                    "Input aggregation data must be a 1D or 2D numpy array.")
+            elif data.ndim == 1:
+                data = data.reshape(-1, 1)
+                kwargs['squeeze'] = True
+            if axis == 0 and data.shape[0] != args[0].left.num_events:
+                raise ValueError(
+                    "When axis=0, the input aggregation data's first dimension "
+                    "must be equal to the number of events in the left "
+                    "collection.")
+            if axis == 1 and data.shape[0] != args[0].right.num_events:
+                raise ValueError(
+                    "When axis=1, the input aggregation data's first dimension "
+                    "must be equal to the number of events in the right "
+                    "collection.")
+        return func(*args, data=data, **kwargs)
+    return wrapper
+
+def _squeeze_output_wrapper(func):
+    """
+    Decorator for squeezing output arrays.
+    """
+    def wrapper(*args, **kwargs):
+        squeeze = kwargs.get('squeeze', None)
+        arr = func(*args, **kwargs)
+        if squeeze:
+            return np.squeeze(arr)
+        return arr
+    return wrapper
+
+
 class EventsRelation(object):
+
+    _valid_relate_agg_methods = {'overlay', 'intersect'}
 
     def __init__(self, left, right, cache=True):
         self.cache = cache
@@ -64,10 +127,32 @@ class EventsRelation(object):
             raise TypeError("Input objects must be EventsData class instances.")
         if self.left.is_grouped != self.right.is_grouped:
             raise ValueError("Input objects must have the same grouping status.")
+        
+    def _get_method_data(self, method):
+        if method == 'overlay':
+            return self._get_overlay_data()
+        elif method == 'intersect':
+            return self._get_intersect_data()
+        else:
+            raise ValueError(
+                f"Invalid method provided ({method}). Must be one of "
+                f"{self._valid_relate_agg_methods}.")
+        
+    def _get_intersect_data(self, **kwargs):
+        if self.intersect_data is None:
+            return self.intersect(**kwargs)
+        return self.intersect_data
+    
+    def _get_overlay_data(self, **kwargs):
+        if self.overlay_data is None:
+            return self.overlay(**kwargs)
+        return self.overlay_data
 
     def reset_cache(self):
         self._overlay_data = None
+        self._overlay_kwargs = None
         self._intersect_data = None
+        self._intersect_kwargs = None
         
     def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True):
         """
@@ -106,6 +191,12 @@ class EventsRelation(object):
         # Cache results
         if self._cache:
             self._overlay_data = arr
+            self._overlay_kwargs = {
+                'normalize': normalize,
+                'norm_by': norm_by,
+                'chunksize': chunksize,
+                'grouped': grouped
+            }
         return arr
     
     def intersect(self, enforce_edges=True, chunksize=1000, grouped=True):
@@ -165,7 +256,98 @@ class EventsRelation(object):
         # Cache results
         if self._cache:
             self._intersect_data = arr
+            self._intersect_kwargs = {
+                'enforce_edges': enforce_edges,
+                'chunksize': chunksize,
+                'grouped': grouped
+            }
         return arr
+    
+    #
+    # Aggregation methods
+    #
+
+    @_validate_agg_axis_wrapper
+    def count(self, axis=1, **kwargs):
+        """
+        Count the number of intersections or overlays along the specified axis.
+
+        Parameters
+        ----------
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        **kwargs
+            Additional keyword arguments to pass to the intersection or overlay
+            methods if they have not been previously computed and cached.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,), 
+            where m is the number of events in the right dataframe if axis=0
+            or the number of events in the left dataframe if axis=1.
+        """
+        # Check for cached data
+        arr = self._get_overlay_data(**kwargs)
+
+        # Perform aggregation
+        return arr.sum(axis=axis)
+    
+    @_validate_agg_data_wrapper
+    @_squeeze_output_wrapper
+    def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs):
+        """
+        Sum the input data along the specified axis of the events relationship,
+        multiplying by the overlay or intersection data and summing the result.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to sum along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataset. If None, the events relationship data will be
+            summed directly.
+        method : {'intersect', 'overlay'}, default 'overlay'
+            The method to use for the events relationship data being 
+            multiplied.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+        **kwargs
+            Additional keyword arguments to pass to the intersection or overlay
+            methods if they have not been previously computed and cached.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            or (m, x), where m is the number of events in the right dataframe
+            if axis=0 or the number of events in the left dataframe if axis=1,
+            and x is the number of columns in the input data array. If the 
+            squeeze parameter is True, the output array will be squeezed to a
+            1D array if possible.
+        """
+        # Check for cached data
+        arr = self._get_method_data(method)
+        
+        # Perform aggregation
+        aggregated = []
+        for column in data.T:
+            # Reshape column for broadcasting
+            column = column.reshape(-1, 1) if axis == 0 else column.reshape(1, -1)
+            aggregated.append(arr.multiply(column).sum(axis=axis))
+        
+        # Concatenate results
+        return np.vstack(aggregated).T
+
 
 def _grouped_operation_wrapper(func):
     """
