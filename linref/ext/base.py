@@ -428,7 +428,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def dissolve(self, retain=[], inverse_index=True, inverse_label='dissolved_index'):
+    def dissolve(self, retain=[], inverse_index=True, inverse_label='dissolved_index', return_relation=False):
         """
         Merge consecutive ranges. For best results, input events should be sorted.
 
@@ -440,6 +440,10 @@ class LRS_Accessor(object):
             Whether to append an inverse index to the dissolved events dataframe.
         inverse_label : str, default 'dissolved_index'
             The label for the inverse index column.
+        return_relation : bool, default False
+            Whether to return an EventsRelation object which describes the
+            relationship between the dissolved (left) and original (right) 
+            events.
         """
         # Validate input parameters
         if not isinstance(retain, list):
@@ -451,9 +455,9 @@ class LRS_Accessor(object):
             key_col = retain
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
-        dissolved, index = events.dissolve(return_index=True)
+        output = events.dissolve(return_index=True, return_relation=return_relation)
         # Convert events to dataframe
-        df = dissolved.to_frame(
+        df = output[0].to_frame(
             index_name=self._df.index.name,
             group_name=key_col,
             loc_name=self.loc_col,
@@ -462,8 +466,8 @@ class LRS_Accessor(object):
         )
         # Append inverse index
         if inverse_index:
-            df[inverse_label] = index
-        return df
+            df[inverse_label] = output[1]
+        return df, output[-1] if return_relation else df
     
     def relate(self, other, cache=True):
         """
