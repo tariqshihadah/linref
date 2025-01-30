@@ -1,7 +1,8 @@
 import numpy as np
-from linref.events import base, utility
+from linref.events import base, utility, relate
+from scipy import sparse as sp
 
-def dissolve(events, return_index=False):
+def dissolve(events, return_index=False, return_relation=False):
     """
     Merge consecutive ranges. For best results, input events should be sorted.
     """
@@ -37,7 +38,7 @@ def dissolve(events, return_index=False):
     index.append(events.index[string_start[-1]:])
     
     # Prepare output class instance
-    res = events.from_similar(
+    dissolved = events.from_similar(
         index=None,
         groups=groups if events.groups is not None else None,
         begs=begs, 
@@ -46,9 +47,23 @@ def dissolve(events, return_index=False):
     )
 
     # Return results
+    outputs = [dissolved]
     if return_index:
-        return res, index
-    return res
+        outputs.append(index)
+    if return_relation:
+        # Prepare relation array
+        row_index = np.repeat(np.arange(len(index)), np.array(list(map(len, index))))
+        col_index = np.concatenate(index)
+        arr = sp.csr_array(
+            (np.ones(len(row_index)), (row_index, col_index)), 
+            shape=(len(index), events.num_events)
+        )
+        # Prepare relation object
+        relation = relate.EventsRelation(dissolved, events, cache=True)
+        relation._intersect_data = arr
+        relation._intersect_kwargs = {}
+        outputs.append(relation)
+    return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
 def concatenate(objs, ignore_index=False, closed=None):
     """

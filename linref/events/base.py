@@ -785,7 +785,7 @@ class EventsData:
         pass
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def dissolve(self, keep_index=False, return_index=False):
+    def dissolve(self, keep_index=False, return_index=False, return_relation=False):
         """
         Dissolve consecutive linear events into single events. For best 
         results, input events should be sorted.
@@ -798,8 +798,16 @@ class EventsData:
         return_index : bool, default False
             Whether to return a list of arrays indicating the indices of the 
             original events which were dissolved into each new event.
+        return_relation : bool, default False
+            Whether to return an EventsRelation object which describes the
+            relationship between the dissolved (left) and original (right) 
+            events.
         """
-        return modify.dissolve(self, return_index=return_index)
+        return modify.dissolve(
+            self,
+            return_index=return_index,
+            return_relation=return_relation
+        )
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def resegment(self):
