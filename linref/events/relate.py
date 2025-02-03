@@ -297,6 +297,49 @@ class EventsRelation(object):
     
     @_validate_agg_data_wrapper
     @_squeeze_output_wrapper
+    def list(self, data=None, axis=1, squeeze=True, **kwargs):
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+
+        # Iterate over sparse rows
+        output = []
+        for row in arr:
+            # Get data values
+            values = data[row.indices]
+            # Log values
+            output.append(values.T.tolist())
+        
+        # Convert to numpy array of lists
+        output_array = np.empty((len(output), data.shape[1]), dtype=object)
+        output_array[:] = output
+        return output_array
+    
+    def set(self, data=None, axis=1, squeeze=True, **kwargs):
+        # Pull list outputs and apply set operation
+        output_array = self.list(data=data, axis=axis, squeeze=False, **kwargs)
+        output_array = np.vectorize(set)(output_array)
+        return output_array
+    
+    @_validate_agg_data_wrapper
+    @_squeeze_output_wrapper
+    def unique(self, data=None, axis=1, squeeze=True, **kwargs):
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+
+        # Iterate over sparse rows
+        for row in arr:
+            # Get data values
+            values = data[row.indices]
+            # Get unique values
+            unique, counts = np.unique(values, return_counts=True)
+    
+    @_validate_agg_data_wrapper
+    @_squeeze_output_wrapper
+    def value_counts(self, data=None, axis=1, squeeze=True, **kwargs):
+        pass
+    
+    @_validate_agg_data_wrapper
+    @_squeeze_output_wrapper
     def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs):
         """
         Sum the input data along the specified axis of the events relationship,
