@@ -799,16 +799,17 @@ class EventsData:
         pass
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def dissolve(self, keep_index=False, return_index=False, return_relation=False):
+    def dissolve(self, sort=False, return_index=False, return_relation=False):
         """
         Dissolve consecutive linear events into single events. For best 
         results, input events should be sorted.
 
         Parameters
         ----------
-        keep_index : bool or {'first', 'last'}, default False
-            Whether to keep the index of the first or last event in each  
-            dissolved event. If False, a new index will be created.
+        sort : bool, default False
+            Whether to sort the events before dissolving. If True, results 
+            will still be aligned to the original events. Unsorted events
+            may produce unexpected results.
         return_index : bool, default False
             Whether to return a list of arrays indicating the indices of the 
             original events which were dissolved into each new event.
@@ -819,6 +820,7 @@ class EventsData:
         """
         return modify.dissolve(
             self,
+            sort=sort,
             return_index=return_index,
             return_relation=return_relation
         )

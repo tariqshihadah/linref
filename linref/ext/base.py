@@ -398,6 +398,21 @@ class LRS_Accessor(object):
     def clear_default_lrs(cls):
         cls._default_lrs = []
 
+    def sort_standard(self, return_inverse=False, inplace=False):
+        """
+        Sort the DataFrame in standard order based on the active LRS columns.
+        """
+        # Get sorter
+        sorter = self.events.sort_standard(return_inverse=True)[1]
+        # Apply changes to the DataFrame
+        df = self.df
+        if inplace:
+            df = df.iloc[sorter]
+            return
+        else:
+            df = df.iloc[sorter]
+            return (df, sorter) if return_inverse else df
+
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False):
         """
@@ -428,7 +443,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def dissolve(self, retain=[], inverse_index=True, inverse_label='dissolved_index', return_relation=False):
+    def dissolve(self, retain=[], sort=False, inverse_index=True, inverse_label='dissolved_index', return_relation=False):
         """
         Merge consecutive ranges. For best results, input events should be sorted.
 
@@ -436,6 +451,10 @@ class LRS_Accessor(object):
         ----------
         retain : list, default []
             A list of column labels to retain during the dissolve operation.
+        sort : bool, default False
+            Whether to sort the events before dissolving. If True, results 
+            will still be aligned to the original events. Unsorted events
+            may produce unexpected results.
         inverse_index : bool, default True
             Whether to append an inverse index to the dissolved events dataframe.
         inverse_label : str, default 'dissolved_index'
@@ -455,7 +474,7 @@ class LRS_Accessor(object):
             key_col = retain
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
-        output = events.dissolve(return_index=True, return_relation=return_relation)
+        output = events.dissolve(sort=sort, return_index=True, return_relation=return_relation)
         # Convert events to dataframe
         df = output[0].to_frame(
             index_name=self._df.index.name,

@@ -334,6 +334,7 @@ class EventsRelation(object):
     def list(self, data=None, axis=1, squeeze=True, **kwargs):
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
+        arr = arr if axis == 1 else arr.T
 
         # Iterate over sparse rows
         output = []
@@ -358,6 +359,7 @@ class EventsRelation(object):
     def value_counts(self, data=None, axis=1, **kwargs):
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
+        arr = arr if axis == 1 else arr.T
 
         # Iterate over sparse rows
         output = []
@@ -368,7 +370,8 @@ class EventsRelation(object):
             output.append(dict(zip(*np.unique(values, return_counts=True))))
         
         # Convert to numpy array of lists
-        output = pd.DataFrame(output, index=self.left.index).fillna(0)
+        index = self.left.index if axis == 1 else self.right.index
+        output = pd.DataFrame(output, index=index).fillna(0)
         return output
     
     @_validate_agg_2d_data_wrapper

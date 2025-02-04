@@ -2,9 +2,24 @@ import numpy as np
 from linref.events import base, utility, relate
 from scipy import sparse as sp
 
-def dissolve(events, return_index=False, return_relation=False):
+def dissolve(events, sort=False, return_index=False, return_relation=False):
     """
     Merge consecutive ranges. For best results, input events should be sorted.
+
+    Parameters
+    ----------
+    events : EventsData
+        Input range of events to dissolve.
+    sort : bool, default False
+        Whether to sort the input events before dissolving. If True, results 
+        will still be aligned to the original input events. Unsorted events
+        may produce unexpected results.
+    return_index : bool, default False
+        Whether to return the inverse index of the dissolved events as a list
+        of arrays of indices to the original events.
+    return_relation : bool, default False
+        Whether to return an EventsRelation object between the dissolved 
+        events and the input events to allow for easy aggregation of data.
     """
     # Validate input
     if not isinstance(events, base.EventsData):
@@ -14,9 +29,15 @@ def dissolve(events, return_index=False, return_relation=False):
     if events.is_empty:
         return base.EventsData()
     
+    # Sort events if requested
+    if sort:
+        events_original = events.copy()
+        events, events_sorter = \
+            events.sort_standard(return_inverse=True, inplace=False)
+    
     # Define indices to align inverse index and relation index to the input 
     # events
-    INDEX_GENERIC = events.generic_index
+    INDEX_GENERIC = events_sorter if sort else events.generic_index
     INDEX_INVERSE = events.index
     
     # Identify edges of dissolvable events
