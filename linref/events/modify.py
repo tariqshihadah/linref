@@ -14,28 +14,36 @@ def dissolve(events, return_index=False, return_relation=False):
     if events.is_empty:
         return base.EventsData()
     
+    # Define indices to align inverse index and relation index to the input 
+    # events
+    INDEX_GENERIC = events.generic_index
+    INDEX_INVERSE = events.index
+    
     # Identify edges of dissolvable events
     consecutive_strings = events.consecutive_strings()
     string_number, string_start = \
         np.unique(consecutive_strings, return_index=True)
     
     # Initialize new event edges
-    index = []
+    indices_generic = []
+    indices_inverse = []
     groups = [events.groups[0] if events.groups is not None else None]
     begs = [events.begs[0]]
-    ends = []
+    ends = [] 
     
     # Get min and max bounds of dissolved events
     if len(string_start) > 1:
         for i, j in zip(string_start[:-1], string_start[1:]):
             ends.append(events.ends[j - 1])
             begs.append(events.begs[j])
-            index.append(events.index[i:j])
+            indices_generic.append(INDEX_GENERIC[i:j])
+            indices_inverse.append(INDEX_INVERSE[i:j])
             groups.append(events.groups[j] if events.groups is not None else None)
     
     # Add final end point
     ends.append(events.ends[-1])
-    index.append(events.index[string_start[-1]:])
+    indices_generic.append(INDEX_GENERIC[string_start[-1]:])
+    indices_inverse.append(INDEX_INVERSE[string_start[-1]:])
     
     # Prepare output class instance
     dissolved = events.from_similar(
@@ -49,14 +57,18 @@ def dissolve(events, return_index=False, return_relation=False):
     # Return results
     outputs = [dissolved]
     if return_index:
-        outputs.append(index)
+        outputs.append(indices_inverse)
     if return_relation:
         # Prepare relation array
-        row_index = np.repeat(np.arange(len(index)), np.array(list(map(len, index))))
-        col_index = np.concatenate(index)
+        row_index = np.repeat(
+            np.arange(len(indices_generic)),
+            np.array(list(map(len, indices_generic)))
+        )
+        col_index = np.concatenate(indices_generic)
+        display(row_index, col_index, indices_inverse, indices_generic)
         arr = sp.csr_array(
             (np.ones(len(row_index)), (row_index, col_index)), 
-            shape=(len(index), events.num_events)
+            shape=(len(indices_generic), events.num_events)
         )
         # Prepare relation object
         relation = relate.EventsRelation(dissolved, events, cache=True)
