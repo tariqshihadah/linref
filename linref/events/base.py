@@ -638,10 +638,13 @@ class EventsData:
             Whether to perform the operation in place, returning None.
         """
         # Determine sorting parameters
-        if self.is_point:
-            by = ['groups', 'locs']
-        else:
-            by = ['groups', 'begs', 'ends']
+        by = []
+        if self.is_grouped:
+            by.append('groups')
+        if self.is_linear:
+            by.extend(['begs', 'ends'])
+        if self.is_located:
+            by.append('locs')
         
         # Apply sorting
         return self.sort(by, return_inverse=return_inverse, inplace=inplace)
