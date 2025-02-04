@@ -623,11 +623,19 @@ class EventsData:
         res = res if not return_inverse else (res, index)
         return None if inplace else res
     
-    def sort_standard(self, inplace=False):
+    def sort_standard(self, return_inverse=False, inplace=False):
         """
         Sort the events by their positional information in the standard order
         of 'groups', 'begs', 'ends' for linear events and 'groups', 'locs' 
         for point events.
+
+        Parameters
+        ----------
+        return_inverse : bool, default False
+            Whether to return an array of the indices which represent the 
+            inverse of the performed sort in addition to the sorted events.
+        inplace : bool, default False
+            Whether to perform the operation in place, returning None.
         """
         # Determine sorting parameters
         if self.is_point:
@@ -636,7 +644,7 @@ class EventsData:
             by = ['groups', 'begs', 'ends']
         
         # Apply sorting
-        return self.sort(by, inplace=inplace)
+        return self.sort(by, return_inverse=return_inverse, inplace=inplace)
     
     def duplicated(self, subset=None, keep='first'):
         """

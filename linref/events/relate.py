@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from linref.events import base
 from scipy import sparse as sp
 
@@ -14,7 +15,7 @@ def _validate_agg_axis_wrapper(func):
         return func(*args, **kwargs)
     return wrapper
 
-def _validate_agg_data_wrapper(func):
+def _validate_agg_2d_data_wrapper(func):
     """
     Decorator for validating aggregation data input.
     """
@@ -38,6 +39,39 @@ def _validate_agg_data_wrapper(func):
             elif data.ndim == 1:
                 data = data.reshape(-1, 1)
                 kwargs['squeeze'] = True
+            if axis == 0 and data.shape[0] != args[0].left.num_events:
+                raise ValueError(
+                    "When axis=0, the input aggregation data's first dimension "
+                    "must be equal to the number of events in the left "
+                    "collection.")
+            if axis == 1 and data.shape[0] != args[0].right.num_events:
+                raise ValueError(
+                    "When axis=1, the input aggregation data's first dimension "
+                    "must be equal to the number of events in the right "
+                    "collection.")
+        return func(*args, data=data, **kwargs)
+    return wrapper
+
+def _validate_agg_1d_data_wrapper(func):
+    """
+    Decorator for validating aggregation data input.
+    """
+    def wrapper(*args, **kwargs):
+        axis = kwargs.get('axis', 1)
+        data = kwargs.pop('data', None)
+        # Check axis
+        if axis not in {0, 1}:
+            raise ValueError("Invalid axis provided. Must be 0 or 1.")
+        # Check shape and dimensionality
+        if data is None:
+            data = np.ones((args[0].shape[axis],))
+        else:
+            if not isinstance(data, np.ndarray):
+                raise TypeError(
+                    "Input aggregation data must be a numpy array.")
+            if data.ndim != 1:
+                raise ValueError(
+                    "Input aggregation data must be a 1D numpy array.")
             if axis == 0 and data.shape[0] != args[0].left.num_events:
                 raise ValueError(
                     "When axis=0, the input aggregation data's first dimension "
@@ -295,7 +329,7 @@ class EventsRelation(object):
         # Perform aggregation
         return arr.sum(axis=axis)
     
-    @_validate_agg_data_wrapper
+    @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
     def list(self, data=None, axis=1, squeeze=True, **kwargs):
         # Check for cached data
@@ -320,25 +354,24 @@ class EventsRelation(object):
         output_array = np.vectorize(set)(output_array)
         return output_array
     
-    @_validate_agg_data_wrapper
-    @_squeeze_output_wrapper
-    def unique(self, data=None, axis=1, squeeze=True, **kwargs):
+    @_validate_agg_1d_data_wrapper
+    def value_counts(self, data=None, axis=1, **kwargs):
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
 
         # Iterate over sparse rows
+        output = []
         for row in arr:
             # Get data values
             values = data[row.indices]
-            # Get unique values
-            unique, counts = np.unique(values, return_counts=True)
+            # Log values
+            output.append(dict(zip(*np.unique(values, return_counts=True))))
+        
+        # Convert to numpy array of lists
+        output = pd.DataFrame(output, index=self.left.index).fillna(0)
+        return output
     
-    @_validate_agg_data_wrapper
-    @_squeeze_output_wrapper
-    def value_counts(self, data=None, axis=1, squeeze=True, **kwargs):
-        pass
-    
-    @_validate_agg_data_wrapper
+    @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
     def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs):
         """
