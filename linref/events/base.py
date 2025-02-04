@@ -709,6 +709,7 @@ class EventsData:
         else:
             return res
 
+    @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def next_consecutive(self, all_=True, when_one=True):
         """
         Whether all or any ranges are consecutive with the next range in the 
@@ -733,10 +734,12 @@ class EventsData:
             raise ValueError("No ranges in collection.")
         
         # Check for consecutive ranges
-        res = (
-            (self.begs[1:] == self.ends[:-1]) & 
-            (self.groups[1:] == self.groups[:-1]) if self.groups is not None else True
-        )
+        if self.is_grouped:
+            res = \
+                (self.begs[1:] == self.ends[:-1]) & \
+                (self.groups[1:] == self.groups[:-1])
+        else:
+            res = self.begs[1:] == self.ends[:-1]
         if all_:
             return res.all()
         else:
