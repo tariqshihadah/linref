@@ -1,7 +1,9 @@
+from __future__ import annotations
 import numpy as np
 import pandas as pd
 import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
+from scipy import sparse as sp
 from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import EventsData
@@ -11,7 +13,7 @@ from linref.events import relate
 
 class LRS(object):
 
-    def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, closed=None):
+    def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, closed=None) -> None:
         # Validate LRS column labels
         self.key_col = label_list_or_none(key_col)
         self.loc_col = label_or_none(loc_col)
@@ -25,33 +27,33 @@ class LRS(object):
         else:
             self.closed = closed
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"LRS(key_col={self.key_col}, loc_col={self.loc_col}, beg_col={self.beg_col}, end_col={self.end_col}, geom_col={self.geom_col}, closed={self.closed})"
     
     @property
-    def is_linear(self):
+    def is_linear(self) -> bool:
         return (self.beg_col is not None) and (self.end_col is not None)
     
     @property
-    def is_point(self):
+    def is_point(self) -> bool:
         return (self.loc_col is not None) and (self.beg_col is None) and (self.end_col is None)
     
     @property
-    def is_located(self):
+    def is_located(self) -> bool:
         return self.loc_col is not None
     
     @property
-    def is_grouped(self):
+    def is_grouped(self) -> bool:
         return self.key_col is not None
     
     @property
-    def is_spatial(self):
+    def is_spatial(self) -> bool:
         return self.geom_col is not None
 
-    def study(self, df):
+    def study(self, df) -> dict:
         """
         Validate the dataframe for LRS compatibility.
 
@@ -85,24 +87,24 @@ class LRS_Accessor(object):
     # Initialize default LRS list
     _default_lrs = []
 
-    def __init__(self, df):
+    def __init__(self, df) -> None:
         # Log dataframe
         self._df = df
         # Initialize LRS
         self._lrs = []
         self._active_index = 0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.is_lrs_set:
             lrs_lines = '\n'.join(['- ' + str(o) for o in self.lrs])
         else:
             lrs_lines = "- No LRS set"
         return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> LRS_Accessor:
         """
         Activate an LRS by index.
         """
@@ -110,69 +112,69 @@ class LRS_Accessor(object):
         return self
     
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         return self._df
     
     @df.setter
-    def df(self, df):
+    def df(self, df) -> None:
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input DataFrame must be of type `pandas.DataFrame`.")
         self._df = df
     
     @property
-    def lrs(self):
+    def lrs(self) -> list[LRS]:
         if len(self._lrs) > 0:
             return self._lrs
         return self._default_lrs
         
     @property
-    def is_lrs_set(self):
+    def is_lrs_set(self) -> bool:
         return len(self.lrs) > 0
 
     @property
-    def active_index(self):
+    def active_index(self) -> int:
         return self._active_index
     
     @property
-    def active_lrs(self):
+    def active_lrs(self) -> LRS:
         if not self.is_lrs_set:
             raise ValueError("No LRS set for the DataFrame.")
         return self.lrs[self.active_index]
     
     @property
-    def key_col(self):
+    def key_col(self) -> list[str]:
         return self.active_lrs.key_col
     
     @property
-    def loc_col(self):
+    def loc_col(self) -> str:
         return self.active_lrs.loc_col
     
     @property
-    def beg_col(self):
+    def beg_col(self) -> str:
         return self.active_lrs.beg_col
     
     @property
-    def end_col(self):
+    def end_col(self) -> str:
         return self.active_lrs.end_col
     
     @property
-    def geom_col(self):
+    def geom_col(self) -> str:
         return self.active_lrs.geom_col
     
     @property
-    def closed(self):
+    def closed(self) -> str:
         return self.active_lrs.closed
     
     @property
-    def index(self):
+    def index(self) -> np.ndarray:
         return self._df.index.values
     
     @property
-    def keys(self):
+    def keys(self) -> np.ndarray:
         return self.get_keys(require=False)
         
     @property
-    def locs(self):
+    def locs(self) -> np.ndarray:
         # Select data from the dataframe if locations are present
         col = self.loc_col
         try:
@@ -181,7 +183,7 @@ class LRS_Accessor(object):
             return None
         
     @locs.setter
-    def locs(self, values):
+    def locs(self, values) -> None:
         if self.loc_col is None:
             raise ValueError("No locations column in the LRS.")
         # Set location values in the DataFrame
@@ -189,7 +191,7 @@ class LRS_Accessor(object):
         self._df[col] = values
                 
     @property
-    def begs(self):
+    def begs(self) -> np.ndarray:
         # Select data from the dataframe if begin locations are present
         col = self.beg_col
         try:
@@ -198,7 +200,7 @@ class LRS_Accessor(object):
             return None
         
     @begs.setter
-    def begs(self, values):
+    def begs(self, values) -> None:
         if self.beg_col is None:
             raise ValueError("No begins column in the LRS.")
         # Set begin location values in the DataFrame
@@ -206,7 +208,7 @@ class LRS_Accessor(object):
         self._df[col] = values
         
     @property
-    def ends(self):
+    def ends(self) -> np.ndarray:
         # Select data from the dataframe if end locations are present
         col = self.end_col
         try:
@@ -215,7 +217,7 @@ class LRS_Accessor(object):
             return None
         
     @ends.setter
-    def ends(self, values):
+    def ends(self, values) -> None:
         if self.end_col is None:
             raise ValueError("No ends column in the LRS.")
         # Set end location values in the DataFrame
@@ -223,7 +225,7 @@ class LRS_Accessor(object):
         self._df[col] = values
     
     @property
-    def is_grouped(self):
+    def is_grouped(self) -> bool:
         """
         Return whether the active LRS is grouped and the key columns are 
         present in the dataframe.
@@ -235,7 +237,7 @@ class LRS_Accessor(object):
             return all([key in self._df.columns for key in self.key_col])
     
     @property
-    def is_linear(self):
+    def is_linear(self) -> bool:
         """
         Return whether the active LRS is linear and the begin and end columns
         are present in the dataframe.
@@ -247,7 +249,7 @@ class LRS_Accessor(object):
             return all([col in self._df.columns for col in [self.beg_col, self.end_col]])
     
     @property
-    def is_point(self):
+    def is_point(self) -> bool:
         """
         Return whether the active LRS is point-based and the location column is
         present in the dataframe.
@@ -261,7 +263,7 @@ class LRS_Accessor(object):
             return self.loc_col in self._df.columns
     
     @property
-    def is_located(self):
+    def is_located(self) -> bool:
         """
         Return whether the active LRS is located and the location column is 
         present in the dataframe.
@@ -273,7 +275,7 @@ class LRS_Accessor(object):
             return self.loc_col in self._df.columns
     
     @property
-    def is_spatial(self):
+    def is_spatial(self) -> bool:
         """
         Return whether the active LRS is spatial and the geometry column is 
         present in the dataframe.
@@ -285,14 +287,14 @@ class LRS_Accessor(object):
             return self.geom_col in self._df.columns
 
     @property
-    def events(self):
+    def events(self) -> EventsData:
         """
         Return the events object for the active LRS.
         """
         # Create the events object
         return self.get_events()
     
-    def get_keys(self, col=None, require=True):
+    def get_keys(self, col=None, require=True) -> np.ndarray:
         # Select data from the dataframe if keys are present
         if col is None:
             col = self.key_col
@@ -306,7 +308,7 @@ class LRS_Accessor(object):
                 raise e
             return None
         
-    def get_events(self, key_col=None, require=True):
+    def get_events(self, key_col=None, require=True) -> EventsData:
         """
         Return the events object for the active LRS.
         """
@@ -326,7 +328,7 @@ class LRS_Accessor(object):
             force_monotonic=False
         )
     
-    def copy(self, deep=False):
+    def copy(self, deep=False) -> LRS_Accessor:
         """
         Create an exact copy of the object instance.
         
@@ -337,7 +339,7 @@ class LRS_Accessor(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
-    def activate_lrs(self, index):
+    def activate_lrs(self, index) -> None:
         """
         Activate a specific LRS for the DataFrame by selecting the index from 
         the list of LRS objects.
@@ -353,7 +355,18 @@ class LRS_Accessor(object):
                 f"Invalid LRS index: {index}. Must be less than {len(self.lrs)}.")
         self._active_index = index
 
-    def set_lrs(self, lrs=None, append=False, **kwargs):
+    def set_lrs(self, lrs=None, append=False, **kwargs) -> None:
+        """
+        Set the LRS object for the DataFrame.
+
+        Parameters
+        ----------
+        lrs : LRS or list[LRS], default None
+            The LRS object or list of LRS objects to set for the DataFrame.
+        append : bool, default False
+            Whether to append the input LRS objects to the existing LRS objects
+            or replace them.
+        """
         # Validate LRS object type
         if lrs is None:
             lrs = [LRS(**kwargs)]
@@ -368,14 +381,39 @@ class LRS_Accessor(object):
         else:
             self._lrs = lrs
         
-    def add_lrs(self, lrs=None, **kwargs):
+    def add_lrs(self, lrs=None, **kwargs) -> None:
+        """
+        Add LRS objects to the DataFrame. Equivalent to 
+        `set_lrs(..., append=True)`.
+
+        Parameters
+        ----------
+        lrs : LRS or list[LRS], default None
+            The LRS object or list of LRS objects to add to the DataFrame.
+        """
         self.set_lrs(lrs=lrs, append=True, **kwargs)
 
-    def clear_lrs(self):
+    def clear_lrs(self) -> None:
+        """
+        Clear the LRS objects from the DataFrame.
+        """
         self._lrs = []
 
     @classmethod
-    def set_default_lrs(cls, lrs=None, append=False, **kwargs):
+    def set_default_lrs(cls, lrs=None, append=False, **kwargs) -> None:
+        """
+        Set the default LRS objects for the LRS_Accessor class. Default LRS
+        objects are used when no LRS objects are set for a specific DataFrame.
+
+        Parameters
+        ----------
+        lrs : LRS or list[LRS], default None
+            The LRS object or list of LRS objects to set as the default for the
+            LRS_Accessor class.
+        append : bool, default False
+            Whether to append the input LRS objects to the existing default LRS
+            objects or replace them.
+        """
         # Validate LRS object type
         if lrs is None:
             lrs = [LRS(**kwargs)]
@@ -391,14 +429,27 @@ class LRS_Accessor(object):
             cls._default_lrs = lrs
 
     @classmethod
-    def add_default_lrs(cls, lrs=None, **kwargs):
+    def add_default_lrs(cls, lrs=None, **kwargs) -> None:
+        """
+        Add default LRS objects to the LRS_Accessor class. Equivalent to
+        `set_default_lrs(..., append=True)`.
+
+        Parameters
+        ----------
+        lrs : LRS or list[LRS], default None
+            The LRS object or list of LRS objects to add as default for the
+            LRS_Accessor class.
+        """
         cls.set_default_lrs(lrs=lrs, append=True, **kwargs)
 
     @classmethod
-    def clear_default_lrs(cls):
+    def clear_default_lrs(cls) -> None:
+        """
+        Clear the default LRS objects from the LRS_Accessor class.
+        """
         cls._default_lrs = []
 
-    def sort_standard(self, return_inverse=False, inplace=False):
+    def sort_standard(self, return_inverse=False, inplace=False) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray] | None:
         """
         Sort the DataFrame in standard order based on the active LRS columns.
         """
@@ -414,7 +465,7 @@ class LRS_Accessor(object):
             return (df, sorter) if return_inverse else df
 
     @_method_require(is_linear=True)
-    def extend(self, extend_begs=0, extend_ends=0, inplace=False):
+    def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
         """
         Extend the begin and end locations of the active LRS by the specified 
         amounts.
@@ -427,7 +478,7 @@ class LRS_Accessor(object):
         obj.ends = events.ends
         return None if inplace else obj.df
     
-    def shift(self, shift, inplace=False):
+    def shift(self, shift, inplace=False) -> pd.DataFrame | None:
         """
         Shift the events of the active LRS by the specified amount.
         """
@@ -443,7 +494,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def dissolve(self, retain=[], sort=False, inverse_index=True, inverse_label='dissolved_index', return_relation=False):
+    def dissolve(self, retain=[], sort=False, inverse_index=True, inverse_label='dissolved_index', return_relation=False) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
         Merge consecutive ranges. For best results, input events should be sorted.
 
@@ -488,7 +539,7 @@ class LRS_Accessor(object):
             df[inverse_label] = output[1]
         return df, output[-1] if return_relation else df
     
-    def relate(self, other, cache=True):
+    def relate(self, other, cache=True) -> relate.EventsRelation:
         """
         Create an events data relationship between two linearly referenced
         datasets.
@@ -509,7 +560,7 @@ class LRS_Accessor(object):
             cache=cache
         )
     
-    def overlay(self, other, normalize=True, norm_by='right', chunksize=1000, grouped=True):
+    def overlay(self, other, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_array:
         """
         Overlay two sets of linearly referenced datasets, computing the 
         length or proportion of overlap between each pair of events.
@@ -545,7 +596,7 @@ class LRS_Accessor(object):
             grouped=grouped
         )
 
-    def intersect(self, other, enforce_edges=True, chunksize=1000, grouped=True):
+    def intersect(self, other, enforce_edges=True, chunksize=1000, grouped=True) -> sp.csr_array:
         """
         Identify intersections between two sets of linearly referenced datasets.
 
