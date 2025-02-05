@@ -4,6 +4,19 @@ from linref.events import base
 from scipy import sparse as sp
 
 
+def _require_agg_data(func):
+    """
+    Decorator for requiring aggregation data input.
+    """
+    def wrapper(*args, **kwargs):
+        data = kwargs.pop('data', None)
+        if data is None:
+            raise ValueError(
+                "Input aggregation data must be provided for the given "
+                "aggregator.")
+        return func(*args, data=data, **kwargs)
+    return wrapper
+
 def _validate_agg_axis_wrapper(func):
     """
     Decorator for validating aggregation axis input.
@@ -297,9 +310,9 @@ class EventsRelation(object):
             }
         return arr
     
-    #
+    # ----------------------------------------------------------------------- #
     # Aggregation methods
-    #
+    # ----------------------------------------------------------------------- #
 
     @_validate_agg_axis_wrapper
     def count(self, axis=1, **kwargs):
@@ -329,9 +342,41 @@ class EventsRelation(object):
         # Perform aggregation
         return arr.sum(axis=axis)
     
+    @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
     def list(self, data=None, axis=1, squeeze=True, **kwargs):
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning a list of all values for
+        intersecting events.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            or (m, x), where m is the number of events in the right dataframe
+            if axis=0 or the number of events in the left dataframe if axis=1,
+            and x is the number of columns in the input data array. If the 
+            squeeze parameter is True, the output array will be squeezed to a
+            1D array if possible.
+        """
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
         arr = arr if axis == 1 else arr.T
@@ -350,13 +395,71 @@ class EventsRelation(object):
         return output_array
     
     def set(self, data=None, axis=1, squeeze=True, **kwargs):
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning a set of all values for
+        intersecting events.
+        
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) where n is the number of events in the left 
+            dataframe if axis=0 or the number of events in the right dataframe if 
+            axis=1. This will result in an output shape of (m,), where m is the 
+            number of events in the opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            or (m, x), where m is the number of events in the right dataframe
+            if axis=0 or the number of events in the left dataframe if axis=1,
+            and x is the number of columns in the input data array. If the 
+            squeeze parameter is True, the output array will be squeezed to a
+            1D array if possible.
+        """
         # Pull list outputs and apply set operation
         output_array = self.list(data=data, axis=axis, squeeze=False, **kwargs)
         output_array = np.vectorize(set)(output_array)
         return output_array
     
+    @_require_agg_data
     @_validate_agg_1d_data_wrapper
     def value_counts(self, data=None, axis=1, **kwargs):
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning pandas DataFrame with
+        a column for each unique value in the provided data array containing 
+        counts of each value for intersecting events. The index of the DataFrame
+        will be the index of the events in the opposite dataframe.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) where n is the number of events in the left 
+            dataframe if axis=0 or the number of events in the right dataframe if 
+            axis=1. This will result in an output shape of (m,), where m is the 
+            number of events in the opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+
+        Returns
+        -------
+        df : pandas.DataFrame
+            A DataFrame containing the value counts of the input data for 
+            intersecting events. The index of the DataFrame will be the index 
+            of the events in the opposite dataframe.
+        """
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
         arr = arr if axis == 1 else arr.T
@@ -384,7 +487,7 @@ class EventsRelation(object):
         Parameters
         ----------
         data : array-like or None, default None
-            The data to sum along the axis of the events relationship. Data 
+            The data to aggregate along the axis of the events relationship. Data 
             must have a shape of (n,) or (n, x) where n is the number of events
             in the left dataframe if axis=0 or the number of events in the right
             dataframe if axis=1. This will result in an output shape of (m,) or 
