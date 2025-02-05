@@ -1,10 +1,11 @@
+from __future__ import annotations
 import numpy as np
 import pandas as pd
 from linref.events import base
 from scipy import sparse as sp
 
 
-def _require_agg_data(func):
+def _require_agg_data(func) -> callable:
     """
     Decorator for requiring aggregation data input.
     """
@@ -17,7 +18,7 @@ def _require_agg_data(func):
         return func(*args, data=data, **kwargs)
     return wrapper
 
-def _validate_agg_axis_wrapper(func):
+def _validate_agg_axis_wrapper(func) -> callable:
     """
     Decorator for validating aggregation axis input.
     """
@@ -28,7 +29,7 @@ def _validate_agg_axis_wrapper(func):
         return func(*args, **kwargs)
     return wrapper
 
-def _validate_agg_2d_data_wrapper(func):
+def _validate_agg_2d_data_wrapper(func) -> callable:
     """
     Decorator for validating aggregation data input.
     """
@@ -65,7 +66,7 @@ def _validate_agg_2d_data_wrapper(func):
         return func(*args, data=data, **kwargs)
     return wrapper
 
-def _validate_agg_1d_data_wrapper(func):
+def _validate_agg_1d_data_wrapper(func) -> callable:
     """
     Decorator for validating aggregation data input.
     """
@@ -98,7 +99,7 @@ def _validate_agg_1d_data_wrapper(func):
         return func(*args, data=data, **kwargs)
     return wrapper
 
-def _squeeze_output_wrapper(func):
+def _squeeze_output_wrapper(func) -> callable:
     """
     Decorator for squeezing output arrays.
     """
@@ -115,7 +116,7 @@ class EventsRelation(object):
 
     _valid_relate_agg_methods = {'overlay', 'intersect'}
 
-    def __init__(self, left, right, cache=True):
+    def __init__(self, left, right, cache=True) -> None:
         self.cache = cache
         self._left = left
         self._right = right
@@ -123,31 +124,37 @@ class EventsRelation(object):
         self.reset_cache()
 
     @property
-    def left(self):
+    def left(self) -> base.EventsData:
+        """
+        The left events data object.
+        """
         return self._left
     
     @left.setter
-    def left(self, value):
+    def left(self, value) -> None:
         self._left = value
         self._validate_events()
         self.reset_cache()
 
     @property
-    def right(self):
+    def right(self) -> base.EventsData:
+        """
+        The right events data object.
+        """
         return self._right
     
     @right.setter
-    def right(self, value):
+    def right(self, value) -> None:
         self._right = value
         self._validate_events()
         self.reset_cache()
 
     @property
-    def cache(self):
+    def cache(self) -> bool:
         return self._cache
     
     @cache.setter
-    def cache(self, value):
+    def cache(self, value) -> None:
         if not isinstance(value, bool):
             raise TypeError("The 'cache' parameter must be a boolean.")
         self._cache = value
@@ -155,18 +162,18 @@ class EventsRelation(object):
             self.reset_cache()
 
     @property
-    def shape(self):
+    def shape(self) -> tuple:
         return self.left.num_events, self.right.num_events
     
     @property
-    def overlay_data(self):
+    def overlay_data(self) -> sp.csr_matrix | None:
         return self._overlay_data
         
     @property
-    def intersect_data(self):
+    def intersect_data(self) -> sp.csr_matrix | None:
         return self._intersect_data
     
-    def _validate_events(self):
+    def _validate_events(self) -> None:
         """
         Validate the input events.
         """
@@ -175,7 +182,7 @@ class EventsRelation(object):
         if self.left.is_grouped != self.right.is_grouped:
             raise ValueError("Input objects must have the same grouping status.")
         
-    def _get_method_data(self, method):
+    def _get_method_data(self, method) -> sp.csr_matrix | None:
         if method == 'overlay':
             return self._get_overlay_data()
         elif method == 'intersect':
@@ -185,23 +192,23 @@ class EventsRelation(object):
                 f"Invalid method provided ({method}). Must be one of "
                 f"{self._valid_relate_agg_methods}.")
         
-    def _get_intersect_data(self, **kwargs):
+    def _get_intersect_data(self, **kwargs) -> sp.csr_matrix | None:
         if self.intersect_data is None:
             return self.intersect(**kwargs)
         return self.intersect_data
     
-    def _get_overlay_data(self, **kwargs):
+    def _get_overlay_data(self, **kwargs) -> sp.csr_matrix | None:
         if self.overlay_data is None:
             return self.overlay(**kwargs)
         return self.overlay_data
 
-    def reset_cache(self):
+    def reset_cache(self) -> None:
         self._overlay_data = None
         self._overlay_kwargs = None
         self._intersect_data = None
         self._intersect_kwargs = None
         
-    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True):
+    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
         
@@ -224,6 +231,13 @@ class EventsRelation(object):
             Whether to process the overlay operation for each group separately.
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
+
+        Returns
+        -------
+        arr : scipy.sparse.csr_matrix
+            The sparse matrix of overlay results. The shape of the matrix will
+            be (m, n), where m is the number of events in the left dataframe
+            and n is the number of events in the right dataframe.
         """
 
         # Perform overlay
@@ -246,7 +260,7 @@ class EventsRelation(object):
             }
         return arr
     
-    def intersect(self, enforce_edges=True, chunksize=1000, grouped=True):
+    def intersect(self, enforce_edges=True, chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
         Compute the intersection of the left and right events.
 
@@ -265,6 +279,13 @@ class EventsRelation(object):
             Whether to process the overlay operation for each group separately.
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
+
+        Returns
+        -------
+        arr : scipy.sparse.csr_matrix
+            The sparse matrix of intersection results. The shape of the matrix 
+            will be (m, n), where m is the number of events in the left dataframe
+            and n is the number of events in the right dataframe.
         """
         # Perform intersect
         if self.left.is_point and self.right.is_point:
@@ -315,7 +336,7 @@ class EventsRelation(object):
     # ----------------------------------------------------------------------- #
 
     @_validate_agg_axis_wrapper
-    def count(self, axis=1, **kwargs):
+    def count(self, axis=1, **kwargs) -> np.ndarray:
         """
         Count the number of intersections or overlays along the specified axis.
 
@@ -345,7 +366,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def list(self, data=None, axis=1, squeeze=True, **kwargs):
+    def list(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning a list of all values for
@@ -394,7 +415,7 @@ class EventsRelation(object):
         output_array[:] = output
         return output_array
     
-    def set(self, data=None, axis=1, squeeze=True, **kwargs):
+    def set(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning a set of all values for
@@ -432,7 +453,7 @@ class EventsRelation(object):
     
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def value_counts(self, data=None, axis=1, **kwargs):
+    def value_counts(self, data=None, axis=1, **kwargs) -> pd.DataFrame:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning pandas DataFrame with
@@ -479,7 +500,7 @@ class EventsRelation(object):
     
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs):
+    def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Sum the input data along the specified axis of the events relationship,
         multiplying by the overlay or intersection data and summing the result.
@@ -531,7 +552,7 @@ class EventsRelation(object):
         return np.vstack(aggregated).T
 
 
-def _grouped_operation_wrapper(func):
+def _grouped_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on grouped data.
     """
@@ -575,7 +596,7 @@ def _grouped_operation_wrapper(func):
             return res
     return wrapper
 
-def _chunked_operation_wrapper(func):
+def _chunked_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on chunks of data.
     """
@@ -614,7 +635,7 @@ def _chunked_operation_wrapper(func):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
+def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.csr_matrix:
     """
     Compute the overlay of two collections of events.
 
@@ -685,7 +706,7 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersect_point_point(left, right, chunksize=None):
+def intersect_point_point(left, right, chunksize=None) -> sp.csr_matrix:
     """
     Identify intersections between two collections of point events.
     """
@@ -712,7 +733,7 @@ def intersect_point_point(left, right, chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersect_point_linear(left, right, enforce_edges=True, chunksize=None):
+def intersect_point_linear(left, right, enforce_edges=True, chunksize=None) -> sp.csr_matrix:
     """
     Identify intersections between a collection of point events and a collection 
     of linear events.
@@ -763,7 +784,7 @@ def intersect_point_linear(left, right, enforce_edges=True, chunksize=None):
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None):
+def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None) -> sp.csr_matrix:
     """
     Identify intersections between two collections of linear events.
     """
