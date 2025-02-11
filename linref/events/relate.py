@@ -44,9 +44,14 @@ def _validate_agg_2d_data_wrapper(func) -> callable:
             data = np.ones((args[0].shape[axis], 1))
             kwargs['squeeze'] = True
         else:
-            if not isinstance(data, np.ndarray):
+            if isinstance(data, pd.DataFrame):
+                data = data.values
+            elif isinstance(data, pd.Series):
+                data = data.values.reshape(-1, 1)
+            elif not isinstance(data, np.ndarray):
                 raise TypeError(
-                    "Input aggregation data must be a numpy array.")
+                    "Input aggregation data must be a numpy array or pandas "
+                    "Series or DataFrame.")
             if data.ndim not in {1, 2}:
                 raise ValueError(
                     "Input aggregation data must be a 1D or 2D numpy array.")
@@ -80,9 +85,12 @@ def _validate_agg_1d_data_wrapper(func) -> callable:
         if data is None:
             data = np.ones((args[0].shape[axis],))
         else:
-            if not isinstance(data, np.ndarray):
+            if isinstance(data, pd.Series):
+                data = data.values
+            elif not isinstance(data, np.ndarray):
                 raise TypeError(
-                    "Input aggregation data must be a numpy array.")
+                    "Input aggregation data must be a numpy array or pandas "
+                    "Series.")
             if data.ndim != 1:
                 raise ValueError(
                     "Input aggregation data must be a 1D numpy array.")
@@ -104,7 +112,7 @@ def _squeeze_output_wrapper(func) -> callable:
     Decorator for squeezing output arrays.
     """
     def wrapper(*args, **kwargs):
-        squeeze = kwargs.get('squeeze', None)
+        squeeze = kwargs.get('squeeze', True)
         arr = func(*args, **kwargs)
         if squeeze:
             return np.squeeze(arr)
@@ -208,13 +216,13 @@ class EventsRelation(object):
         self._intersect_data = None
         self._intersect_kwargs = None
         
-    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
+    def overlay(self, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
         
         Parameters
         ----------
-        normalize : bool, default True
+        normalize : bool, default False
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
         norm_by : str, default 'right'
@@ -550,7 +558,135 @@ class EventsRelation(object):
         
         # Concatenate results
         return np.vstack(aggregated).T
+    
+    @_require_agg_data
+    @_validate_agg_2d_data_wrapper
+    @_squeeze_output_wrapper
+    def mean(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
+        """
+        Compute the mean of the input data along the specified axis of the events 
+        relationship, multiplying by the overlay or intersection data and summing 
+        the result.
 
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataset.
+        method : {'intersect', 'overlay'}, default 'overlay'
+            The method to use for the events relationship data being 
+            aggregated. If 'overlay', the overlay data will be used, producing
+            a length-weighted mean. If 'intersect', the intersection data will
+            be used, producing a count-weighted mean.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+        **kwargs
+            Additional keyword arguments to pass to the intersection or overlay
+            methods if they have not been previously computed and cached.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            or (m, x), where m is the number of events in the right dataframe
+            if axis=0 or the number of events in the left dataframe if axis=1,
+            and x is the number of columns in the input data array. If the 
+            squeeze parameter is True, the output array will be squeezed to a
+            1D array if possible.
+        """
+        # Check for cached data
+        arr = self._get_method_data(method)
+        
+        # Perform aggregation
+        aggregated = []
+        for column in data.T:
+            # Reshape column for broadcasting
+            column = column.reshape(-1, 1) if axis == 0 else column.reshape(1, -1)
+            numerator = arr.multiply(column).sum(axis=axis)
+            denominator = arr.sum(axis=axis)
+            aggregated.append(np.divide(
+                numerator,
+                denominator,
+                out=np.zeros_like(numerator),
+                where=denominator!=0
+            ))
+        
+        # Concatenate results
+        return np.vstack(aggregated).T
+
+    @_require_agg_data
+    @_validate_agg_2d_data_wrapper
+    @_squeeze_output_wrapper
+    def mode(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
+        """
+        Compute the mode of the input data along the specified axis of the events 
+        relationship, multiplying by the overlay or intersection data and summing 
+        the result.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataset.
+        method : {'intersect', 'overlay'}, default 'overlay'
+            The method to use for the events relationship data being 
+            aggregated. If 'overlay', the overlay data will be used, producing
+            a length-weighted mode. If 'intersect', the intersection data will
+            be used, producing a count-weighted mode.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+        **kwargs
+            Additional keyword arguments to pass to the intersection or overlay
+            methods if they have not been previously computed and cached.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            or (m, x), where m is the number of events in the right dataframe
+            if axis=0 or the number of events in the left dataframe if axis=1,
+            and x is the number of columns in the input data array. If the 
+            squeeze parameter is True, the output array will be squeezed to a
+            1D array if possible.
+        """
+        # Check for cached data
+        arr = self._get_method_data(method)
+        
+        # Perform aggregation
+        aggregated = []
+        for column in data.T:
+            # Sort unique values and identify splits in the weights data
+            sorter = np.argsort(column)
+            unique, splitter = np.unique(column[sorter], return_index=True)
+            splitter = np.append(splitter, len(column))
+            # Sort weights data before splitting
+            arr_sorted = arr.T[sorter] if axis == 1 else arr[sorter]
+            # Compute weighted scores for each unique value
+            scores = []
+            for i, j in zip(splitter[:-1], splitter[1:]):
+                scores.append(arr_sorted[i:j].sum(axis=0))
+            # Find mode using the highest score for each record
+            mode = unique[np.argmax(np.vstack(scores), axis=0)]
+            aggregated.append(mode)
+
+        # Concatenate results
+        return np.vstack(aggregated).T
 
 def _grouped_operation_wrapper(func) -> callable:
     """
