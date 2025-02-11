@@ -1,7 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from linref.events import base
+from linref.events import base, geometry
 from scipy import sparse as sp
 
 
@@ -687,6 +687,64 @@ class EventsRelation(object):
 
         # Concatenate results
         return np.vstack(aggregated).T
+    
+    @_require_agg_data
+    @_validate_agg_1d_data_wrapper
+    def linemerge_m(self, data=None, axis=1, **kwargs) -> pd.Series:
+        """
+        Aggregate all input data values along the specified axis of the events
+        relationship against the other axis, returning a pandas Series with
+        the linemerged values for intersecting events.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) where n is the number of events in the left 
+            dataframe if axis=0 or the number of events in the right dataframe if 
+            axis=1. This will result in an output shape of (m,), where m is the 
+            number of events in the opposite dataframe.
+
+            Data must contain LineString or LineStringM objects.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+
+        Returns
+        -------
+        ser : pandas.Series
+            A Series containing the merged linear geometries for all
+            intersecting events. The index of the Series will be the index 
+            of the events in the opposite dataframe.
+        """
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+        arr = arr if axis == 1 else arr.T
+
+        # Iterate over sparse rows
+        output = []
+        for row in arr:
+            # Get data values
+            geoms = data[row.indices]
+            merged = geometry.linemerge_m(
+                geoms,
+                allow_multiple=False,
+                allow_mismatch=False,
+                squeeze=False,
+                cast_geom=True,
+            )
+            # Log values
+            output.append(merged)
+        
+        # Convert to pandas Series
+        index = self.left.index if axis == 1 else self.right.index
+        return pd.Series(output, index=index)
+
+
+# -----------------------------------------------------------------------------
+# Events relation core methods
+# -----------------------------------------------------------------------------
 
 def _grouped_operation_wrapper(func) -> callable:
     """

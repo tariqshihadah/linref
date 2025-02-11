@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"name": "linear-events-3",
+"features": [
+{ "type": "Feature", "properties": { "index": 7, "county": "A", "route": "Main St", "beg": 0.0, "end": 0.4, "volume": 100, "class": "B" }, "geometry": { "type": "LineString", "coordinates": [ [ 0.0, 0.0 ], [ 0.8, 0.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 6, "county": "A", "route": "Main St", "beg": 0.5, "end": 1.1, "volume": 200, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 1.0, 0.0 ], [ 1.0, 1.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 9, "county": "A", "route": "Main St", "beg": 1.1, "end": 3.0, "volume": 200, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 1.0, 1.0 ], [ 2.0, 1.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 4, "county": "A", "route": "1st Ave", "beg": 10.0, "end": 12.0, "volume": 400, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 10.0, 0.0 ], [ 12.0, 0.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 3, "county": "A", "route": "1st Ave", "beg": 12.0, "end": 13.0, "volume": 500, "class": "B" }, "geometry": { "type": "LineString", "coordinates": [ [ 12.0, 0.0 ], [ 13.0, 0.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 2, "county": "B", "route": "2nd Ave", "beg": 13.0, "end": 13.1, "volume": 150, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 13.0, 0.0 ], [ 13.0, 1.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 0, "county": "B", "route": "2nd Ave", "beg": 13.1, "end": 14.0, "volume": 200, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 13.0, 1.0 ], [ 14.0, 1.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 1, "county": "B", "route": "2nd Ave", "beg": 14.0, "end": 17.0, "volume": 300, "class": "B" }, "geometry": { "type": "LineString", "coordinates": [ [ 14.0, 1.0 ], [ 17.0, 1.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 10, "county": "B", "route": "2nd Ave", "beg": 17.0, "end": 17.8, "volume": 200, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 17.0, 1.0 ], [ 17.0, 2.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 13, "county": "B", "route": "2nd Ave", "beg": 17.8, "end": 18.1, "volume": 150, "class": "C" }, "geometry": { "type": "LineString", "coordinates": [ [ 17.0, 2.0 ], [ 17.0, 3.0 ] ] } },
+{ "type": "Feature", "properties": { "index": 8, "county": "C", "route": "Sycamore School Rd", "beg": 1.8, "end": 3.0, "volume": 800, "class": "A" }, "geometry": { "type": "LineString", "coordinates": [ [ 1.0, 3.0 ], [ 1.0, 4.0 ] ] } }
+]
+}

@@ -143,7 +143,28 @@ class LineStringM:
                 return (0, 1) if distance < 0 else (self.geom.length, 2)
             return (distance, 0)
         
-    def set_m(self, m, inplace=True):
+    def set_m(self, array=None, beg=None, end=None, inplace=True):
+        """
+        Set the M values of the LineStringM object to the specified values
+        using an array containing values for each vertex or using begin and 
+        end values, imputing the M values for each vertex based on the 
+        proportional length along the LineString.
+        
+        Parameters
+        ----------
+        m : array-like
+            The M values to set for each vertex.
+        inplace : bool, default True
+            Whether to modify the object in place or return a new object.
+        """
+        # Check input type
+        if array is not None:
+            return self.set_m_from_array(array, inplace=inplace)
+        elif (beg is not None) or (end is not None):
+            beg = 0 if beg is None else beg
+            return self.set_m_from_bounds(beg=beg, end=end, inplace=inplace)
+    
+    def set_m_from_array(self, m, inplace=True):
         """
         Set the M values of the LineStringM object to the specified values.
         
@@ -156,7 +177,7 @@ class LineStringM:
         """
         obj = self if inplace else self.copy()
         obj.m = m
-        return obj if not inplace else None
+        return obj if not inplace else None    
         
     def set_m_from_bounds(self, beg=0, end=None, inplace=True):
         """
@@ -181,7 +202,7 @@ class LineStringM:
         m_span = end - beg
         m = np.append(beg, self.chord_proportions.cumsum() * m_span + beg)
         # Update the M values
-        return self.set_m(m, inplace=inplace)
+        return self.set_m_from_array(m, inplace=inplace)
     
     def m_to_distance(self, m, snap=False):
         """
@@ -458,7 +479,7 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_
     # Merge LineStringM objects
     return geom_iter, orders, chains
 
-def linemerge_m(objs, allow_multiple=False, allow_mismatch=False, squeeze=False, return_index=False):
+def linemerge_m(objs, allow_multiple=False, allow_mismatch=False, squeeze=False, return_index=False, cast_geom=False):
     """
     Merge multiple LineStringM objects into a single LineStringM object 
     or list of non-contiguous LineStringM objects.
@@ -478,12 +499,15 @@ def linemerge_m(objs, allow_multiple=False, allow_mismatch=False, squeeze=False,
     return_index : bool, default False
         Whether to return the indices of where the original geometries fall
         within the merged geometry.
+    cast_geom : bool, default False
+        Whether to cast input LineString objects to LineStringM objects.
     """
     # Get merged geometries and orders
     geom_iter, orders = _linemerge_m_mapping(
         objs,
         allow_multiple=allow_multiple,
         allow_mismatch=allow_mismatch,
+        cast_geom=cast_geom,
     )[:2]
 
     # Merge LineStringM objects

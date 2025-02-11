@@ -239,7 +239,7 @@ class LRS_Accessor(object):
         self._df[col] = values
 
     @property
-    def geometry(self) -> np.ndarray:
+    def geoms(self) -> np.ndarray:
         # Select data from the dataframe if geometry is present
         col = self.geom_col
         try:
@@ -458,6 +458,38 @@ class LRS_Accessor(object):
         """
         self._lrs = []
 
+    def add_geom_m(self, name='geometry_m', inplace=False) -> pd.DataFrame | None:
+        """
+        Add a geometry column to the DataFrame based on the begin and end 
+        locations of the active LRS.
+
+        Parameters
+        ----------
+        name : str, default 'geometry_m'
+            The name of the geometry column to return.
+        inplace : bool, default False
+            Whether to apply changes to the dataframe in place.
+        """
+        def _upgrade_geom(geom, beg, end):
+            geom_m = geometry.LineStringM(geom)
+            geom_m.set_m_from_bounds(beg=beg, end=end, inplace=True)
+            return geom_m
+        # Cast linear geometries to LineStringM
+        geoms = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        df[name] = geoms
+        # Update LRS if needed
+        if not self.is_spatial:
+            new_lrs = self.active_lrs.copy(deep=True)
+            new_lrs.geom_col = name
+            df.lr.add_lrs(new_lrs, activate=True)
+        elif self.active_lrs.geom_col != name:
+            new_lrs = self.active_lrs.copy(deep=True)
+            new_lrs.geom_col = name
+            df.lr.add_lrs(new_lrs, activate=True)
+        return None if inplace else df
+
     @_method_require(is_grouped=True)
     def iter_groups(self):
         """
@@ -576,6 +608,11 @@ class LRS_Accessor(object):
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
         """
+        # Validate chain column name
+        if name in self.active_lrs.key_col:
+            raise ValueError(
+                f"Column name '{name}' is already in use as a key column in "
+                "the active LRS.")
         # Get chain indices
         chains = self.get_chains(name=name)
         # Apply changes to the DataFrame
