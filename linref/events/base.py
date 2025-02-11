@@ -773,14 +773,11 @@ class EventsData:
         res[1:] = np.cumsum(~self.next_consecutive(all_=False))
         return res
 
+    @utility._method_require(is_grouped=True)
     def iter_groups(self, ungroup=True):
         """
         Iterate over the groups in the collection.
         """
-        # Validate input
-        if not self.is_grouped:
-            raise ValueError("No groups in collection.")
-
         # Get group indices with groupby routine
         sorted_events = self.sort_standard(inplace=False)
         unique_groups, splitter_i = np.unique(sorted_events.groups, return_index=True)
@@ -793,6 +790,21 @@ class EventsData:
             if ungroup:
                 events = events.ungroup()
             yield group, events
+
+    @utility._method_require(is_grouped=True)
+    def iter_group_indices(self):
+        """
+        Iterate over the group indices in the collection.
+        """
+        # Get group indices with groupby routine
+        sorted_events = self.sort_standard(inplace=False)
+        unique_groups, splitter_i = np.unique(sorted_events.groups, return_index=True)
+        splitter_j = np.append(splitter_i[1:], len(sorted_events.groups))
+        
+        # Iterate over group indices
+        for group, i, j in zip(unique_groups, splitter_i, splitter_j):
+            indices = sorted_events.index[i:j]
+            yield group, indices
         
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def separate(self):
@@ -827,7 +839,7 @@ class EventsData:
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def resegment(self):
-        pass
+        raise NotImplementedError
 
     @utility._method_require(is_empty=False)
     def relate(self, other: EventsData, cache=True):
@@ -851,7 +863,7 @@ class EventsData:
         return relate.EventsRelation(self, other, cache=cache)
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def overlay(self, other: EventsData, normalize=True, norm_by='right', chunksize=1000, grouped=True):
+    def overlay(self, other: EventsData, normalize=False, norm_by='right', chunksize=1000, grouped=True):
         """
         Compute the overlay of two collections of events.
 
@@ -859,7 +871,7 @@ class EventsData:
         ----------
         left, right : EventsData
             Input EventsData instances to overlay.
-        normalize : bool, default True
+        normalize : bool, default False
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
         norm_by : str, default 'right'

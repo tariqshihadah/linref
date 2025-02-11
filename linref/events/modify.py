@@ -86,7 +86,6 @@ def dissolve(events, sort=False, return_index=False, return_relation=False):
             np.array(list(map(len, indices_generic)))
         )
         col_index = np.concatenate(indices_generic)
-        display(row_index, col_index, indices_inverse, indices_generic)
         arr = sp.csr_array(
             (np.ones(len(row_index)), (row_index, col_index)), 
             shape=(len(indices_generic), events.num_events)

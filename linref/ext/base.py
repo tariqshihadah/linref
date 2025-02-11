@@ -8,7 +8,7 @@ from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
-from linref.events import relate
+from linref.events import relate, geometry
 
 
 class LRS(object):
@@ -52,6 +52,20 @@ class LRS(object):
     @property
     def is_spatial(self) -> bool:
         return self.geom_col is not None
+    
+    def copy(self, deep=False) -> LRS:
+        """
+        Create an exact copy of the object instance.
+        
+        Parameters
+        ----------
+        deep : bool, default False
+            Whether the created copy should be a deep copy.
+        """
+        return copy.deepcopy(self) if deep else copy.copy(self)
+    
+    def add_key(self, key_col) -> None:
+        self.key_col.extend(label_list_or_none(key_col))
 
     def study(self, df) -> dict:
         """
@@ -223,6 +237,15 @@ class LRS_Accessor(object):
         # Set end location values in the DataFrame
         col = self.end_col
         self._df[col] = values
+
+    @property
+    def geometry(self) -> np.ndarray:
+        # Select data from the dataframe if geometry is present
+        col = self.geom_col
+        try:
+            return self._df[col].values
+        except KeyError:
+            return None
     
     @property
     def is_grouped(self) -> bool:
@@ -339,6 +362,32 @@ class LRS_Accessor(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
+    def lrs_like(self, other, inplace=False) -> pd.DataFrame:
+        """
+        Assign the LRS settings of another DataFrame to the current DataFrame.
+
+        Parameters
+        ----------
+        other : DataFrame or LRS_Accessor
+            The DataFrame or LRS_Accessor to copy LRS settings from.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with LRS settings copied from the
+            input DataFrame.
+        """
+        # Copy DataFrame
+        df = self.df if inplace else self.df.copy()
+        # Copy LRS settings
+        if isinstance(other, pd.DataFrame):
+            other = other.lr
+        df.lr.set_lrs(other.lrs, append=False)
+        df.lr.activate_lrs(other.active_index)
+        return df
+    
     def activate_lrs(self, index) -> None:
         """
         Activate a specific LRS for the DataFrame by selecting the index from 
@@ -355,7 +404,7 @@ class LRS_Accessor(object):
                 f"Invalid LRS index: {index}. Must be less than {len(self.lrs)}.")
         self._active_index = index
 
-    def set_lrs(self, lrs=None, append=False, **kwargs) -> None:
+    def set_lrs(self, lrs=None, append=False, activate=False, **kwargs) -> None:
         """
         Set the LRS object for the DataFrame.
 
@@ -366,6 +415,9 @@ class LRS_Accessor(object):
         append : bool, default False
             Whether to append the input LRS objects to the existing LRS objects
             or replace them.
+        activate : bool, default False
+            Whether to activate the added LRS object. If multiple LRS objects
+            are added, the last object will be activated.
         """
         # Validate LRS object type
         if lrs is None:
@@ -380,8 +432,12 @@ class LRS_Accessor(object):
             self._lrs.extend(lrs)
         else:
             self._lrs = lrs
+
+        # Activate LRS object if requested
+        if activate:
+            self.activate_lrs(len(self.lrs) - 1)
         
-    def add_lrs(self, lrs=None, **kwargs) -> None:
+    def add_lrs(self, lrs=None, activate=False, **kwargs) -> None:
         """
         Add LRS objects to the DataFrame. Equivalent to 
         `set_lrs(..., append=True)`.
@@ -390,14 +446,26 @@ class LRS_Accessor(object):
         ----------
         lrs : LRS or list[LRS], default None
             The LRS object or list of LRS objects to add to the DataFrame.
+        activate : bool, default False
+            Whether to activate the added LRS object. If multiple LRS objects
+            are added, the last object will be activated.
         """
-        self.set_lrs(lrs=lrs, append=True, **kwargs)
+        self.set_lrs(lrs=lrs, append=True, activate=activate, **kwargs)
 
     def clear_lrs(self) -> None:
         """
         Clear the LRS objects from the DataFrame.
         """
         self._lrs = []
+
+    @_method_require(is_grouped=True)
+    def iter_groups(self):
+        """
+        Iterate over unique event groups in the dataframe based on the 
+        active LRS key columns.
+        """
+        for group, index in self.events.iter_group_indices():
+            yield group, self.df.loc[index]
 
     @classmethod
     def set_default_lrs(cls, lrs=None, append=False, **kwargs) -> None:
@@ -456,13 +524,68 @@ class LRS_Accessor(object):
         # Get sorter
         sorter = self.events.sort_standard(return_inverse=True)[1]
         # Apply changes to the DataFrame
-        df = self.df
+        df = self.df.iloc[sorter]
         if inplace:
-            df = df.iloc[sorter]
+            self._df = df
             return
         else:
-            df = df.iloc[sorter]
             return (df, sorter) if return_inverse else df
+        
+    @_method_require(is_linear=True, is_spatial=True)
+    def get_chains(self, name='chain') -> pd.Series:
+        """
+        Identify the chain indices for each event in the dataframe based on 
+        contiguous linear geometries within each group.
+
+        Parameters
+        ----------
+        name : str, default 'chain'
+            The name of the chain index column to return.
+
+        Returns
+        -------
+        chains : pd.Series
+            A series of chain indices for each event in the dataframe.
+        """
+        # Iterate over groups
+        index = []
+        chains = []
+        for group, df in self.iter_groups():
+            # Get chain indices
+            chains.append(geometry.get_linestring_chains(df[self.geom_col]))
+            index.append(df.index.values)
+        # Return series
+        chains = pd.Series(
+            np.concatenate(chains),
+            index=np.concatenate(index),
+            name=name
+        )
+        return chains.reindex_like(self.df)
+    
+    @_method_require(is_linear=True, is_spatial=True)
+    def add_chaining(self, name='chain', inplace=False) -> pd.DataFrame | None:
+        """
+        Add chain indices to the dataframe based on contiguous linear 
+        geometries within each group, adding a new column to the dataframe
+        and adding the chain column to the active LRS.
+
+        Parameters
+        ----------
+        name : str, default 'chain'
+            The name of the chain index column to return.
+        inplace : bool, default False
+            Whether to apply changes to the dataframe in place.
+        """
+        # Get chain indices
+        chains = self.get_chains(name=name)
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        df[name] = chains
+        # Update LRS
+        new_lrs = self.active_lrs.copy(deep=True)
+        new_lrs.add_key(name)
+        df.lr.add_lrs(new_lrs, activate=True)
+        return None if inplace else df
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
@@ -533,11 +656,11 @@ class LRS_Accessor(object):
             loc_name=self.loc_col,
             beg_name=self.beg_col,
             end_name=self.end_col,
-        )
+        ).lr.lrs_like(self)
         # Append inverse index
         if inverse_index:
             df[inverse_label] = output[1]
-        return df, output[-1] if return_relation else df
+        return (df, output[-1]) if return_relation else df
     
     def relate(self, other, cache=True) -> relate.EventsRelation:
         """
@@ -560,7 +683,7 @@ class LRS_Accessor(object):
             cache=cache
         )
     
-    def overlay(self, other, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_array:
+    def overlay(self, other, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_array:
         """
         Overlay two sets of linearly referenced datasets, computing the 
         length or proportion of overlap between each pair of events.
@@ -569,7 +692,7 @@ class LRS_Accessor(object):
         ----------
         other : DataFrame
             The other DataFrame to overlay with. Must be linearly referenced.
-        normalize : bool, default True
+        normalize : bool, default False
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
         norm_by : str, default 'right'

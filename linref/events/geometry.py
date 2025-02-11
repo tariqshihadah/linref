@@ -366,7 +366,7 @@ def _linemerge_m_geometry(objs):
     # Merge geometries
     return shapely.ops.linemerge([obj.geom for obj in objs], directed=True)
 
-def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False):
+def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_geom=False):
     """
     Merge multiple LineStringM objects into a single LineStringM object 
     or list of non-contiguous LineStringM objects, returning the merged 
@@ -385,13 +385,27 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False):
     allow_mismatch : bool, default False
         Whether to allow the M values of the merged geometries to be 
         mismatched.
+    cast_geom : bool, default False
+        Whether to cast input LineString objects to LineStringM objects.
     """
     # Validate input objects
-    if not all(isinstance(obj, LineStringM) for obj in objs):
-        raise ValueError('All objects must be LineStringM instances')
+    objs_prepared = []
+    for obj in objs:
+        if not isinstance(obj, LineStringM):
+            if cast_geom:
+                try:
+                    obj = LineStringM(obj)
+                except:
+                    raise ValueError(
+                        'All objects must be LineStringM or shapely.LineString '
+                        'instances')
+            else:
+                raise ValueError(
+                    'All objects must be LineStringM instances')
+        objs_prepared.append(obj)
 
     # Merge geometries
-    merged_geom = _linemerge_m_geometry(objs)
+    merged_geom = _linemerge_m_geometry(objs_prepared)
 
     # Check if the merged geometry is a single or multiple geometries
     try:
@@ -405,8 +419,8 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False):
 
     # Determine the order of merged geometries
     orders = []
-    chains = np.zeros(len(objs), dtype=int)
-    indices = list(range(len(objs)))
+    chains = np.zeros(len(objs_prepared), dtype=int)
+    indices = list(range(len(objs_prepared)))
     # Iterate over multipart geometries
     for i, merged_geom_i in enumerate(geom_iter):
         order = []
@@ -418,7 +432,7 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False):
         while recurse:
             for j in indices:
                 # Check if the node is present in the indexed geometry
-                obj = objs[j]
+                obj = objs_prepared[j]
                 if node in obj.geom.coords:
                     # Check if the M values are consistent
                     if node_m is not None:
@@ -435,7 +449,7 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False):
                     indices.remove(j)
                     # Progress to the next node
                     node = obj.geom.coords[-1]
-                    node_m = obj.m[-1]
+                    node_m = obj.m[-1] if obj.m is not None else None
                     if node == merged_geom_i.coords[-1]:
                         recurse = False
                     break
@@ -496,7 +510,7 @@ def get_linestring_chains(objs):
         The LineStringM objects to get the chain indices for.
     """
     # Get merged geometries and orders
-    chains = _linemerge_m_mapping(objs)[2]
+    chains = _linemerge_m_mapping(objs, allow_multiple=True, allow_mismatch=False, cast_geom=True)[2]
     return chains
 
 def prepare_chained_linestring_m(objs):
