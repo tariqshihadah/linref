@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from linref.events import base, geometry
+from linref.ext import utility
 from scipy import sparse as sp
 
 
@@ -15,6 +16,21 @@ def _require_agg_data(func) -> callable:
             raise ValueError(
                 "Input aggregation data must be provided for the given "
                 "aggregator.")
+        return func(*args, data=data, **kwargs)
+    return wrapper
+
+def _get_selector_data_wrapper(func) -> callable:
+    """
+    Decorator for getting selector data.
+    """
+    def wrapper(*args, **kwargs):
+        axis = kwargs.get('axis', 1)
+        data = kwargs.pop('data', None)
+        self = args[0]
+        # Attempt to get data if selector is set
+        if data is None:
+            if self._selector is not None:
+                data = self._get_selected_data(axis)
         return func(*args, data=data, **kwargs)
     return wrapper
 
@@ -124,12 +140,25 @@ class EventsRelation(object):
 
     _valid_relate_agg_methods = {'overlay', 'intersect'}
 
-    def __init__(self, left, right, cache=True) -> None:
+    def __init__(self, left, right, left_df=None, right_df=None, cache=True) -> None:
+        # Log input data
         self.cache = cache
-        self._left = left
-        self._right = right
+        self._left = left # Set directly for order of operations validation
+        self._right = right # Set directly for order of operations validation
+        self._left_df = left_df
+        self._right_df = right_df
+        # Initialize and validate
         self._validate_events()
         self.reset_cache()
+        self.set_selector(None)
+
+    def __getitem__(self, key) -> EventsRelation:
+        """
+        Return a new EventsRelation object with the specified selector.
+        """
+        relate = self.copy()
+        relate.set_selector(key, inplace=True)
+        return relate
 
     @property
     def left(self) -> base.EventsData:
@@ -139,8 +168,8 @@ class EventsRelation(object):
         return self._left
     
     @left.setter
-    def left(self, value) -> None:
-        self._left = value
+    def left(self, obj) -> None:
+        self._left = obj
         self._validate_events()
         self.reset_cache()
 
@@ -152,10 +181,34 @@ class EventsRelation(object):
         return self._right
     
     @right.setter
-    def right(self, value) -> None:
-        self._right = value
+    def right(self, obj) -> None:
+        self._right = obj
         self._validate_events()
         self.reset_cache()
+
+    @property
+    def left_df(self) -> pd.DataFrame | None:
+        """
+        The dataframe associated with the left events data.
+        """
+        return self._left_df
+    
+    @left_df.setter
+    def left_df(self, obj) -> None:
+        self._left_df = obj
+        self._validate_events()
+
+    @property
+    def right_df(self) -> pd.DataFrame | None:
+        """
+        The dataframe associated with the right events data.
+        """
+        return self._right_df
+    
+    @right_df.setter
+    def right_df(self, obj) -> None:
+        self._right_df = obj
+        self._validate_events()
 
     @property
     def cache(self) -> bool:
@@ -183,12 +236,28 @@ class EventsRelation(object):
     
     def _validate_events(self) -> None:
         """
-        Validate the input events.
+        Validate the input events data.
         """
+        # Validate events
         if not isinstance(self.left, base.EventsData) or not isinstance(self.right, base.EventsData):
             raise TypeError("Input objects must be EventsData class instances.")
         if self.left.is_grouped != self.right.is_grouped:
             raise ValueError("Input objects must have the same grouping status.")
+        # Validate dataframes
+        if self._left_df is not None:
+            if not isinstance(self._left_df, pd.DataFrame):
+                raise TypeError("The 'left_df' parameter must be a pandas DataFrame.")
+            if self.left.num_events != self._left_df.shape[0]:
+                raise ValueError(
+                    "The number of events in the left dataframe must match the "
+                    "number of events in the left events data object.")
+        if self._right_df is not None:
+            if not isinstance(self._right_df, pd.DataFrame):
+                raise TypeError("The 'right_df' parameter must be a pandas DataFrame.")
+            if self.right.num_events != self._right_df.shape[0]:
+                raise ValueError(
+                    "The number of events in the right dataframe must match the "
+                    "number of events in the right events data object.")
         
     def _get_method_data(self, method) -> sp.csr_matrix | None:
         if method == 'overlay':
@@ -210,11 +279,88 @@ class EventsRelation(object):
             return self.overlay(**kwargs)
         return self.overlay_data
 
+    def copy(self, deep=False):
+        """
+        Create an exact copy of the object instance.
+        
+        Parameters
+        ----------
+        deep : bool, default False
+            Whether the created copy should be a deep copy.
+        """
+        return copy.deepcopy(self) if deep else copy.copy(self)
+    
     def reset_cache(self) -> None:
         self._overlay_data = None
         self._overlay_kwargs = None
         self._intersect_data = None
         self._intersect_kwargs = None
+
+    def set_selector(self, selector, inplace=False) -> None:
+        """
+        Set the column label or slice to use to select data from either the 
+        left or right dataframe when performing aggregation operations.  
+        Whichdataframe the selector applies to will depend on the axis of 
+        theaggregation operation. During aggregation, if axis=0, the selector 
+        will be applied to the left dataframe, and if axis=1, the selector 
+        will be applied to the right dataframe.
+
+        Parameters
+        ----------
+        selector : str, list, slice, or None
+            The column label, list of column labels, or slice to use to select
+            data from the left or right dataframe during aggregation operations.
+        inplace : bool, default False
+            Whether to perform the operation inplace or return a copy of the 
+            object with the selector set.
+        """
+        if isinstance(selector, (str, list, slice, type(None))):
+            obj = self if inplace else self.copy()
+            obj._selector = selector
+            return obj if not inplace else None
+        else:
+            raise TypeError(
+                "The 'selector' parameter must be a string, list, slice, or "
+                "None.")
+        
+    def _get_selected_data(self, axis) -> np.ndarray:
+        """
+        Get the selected data from the left or right dataframe based on the
+        current selector and axis.
+        """
+        if axis == 0:
+            df = self.left_df
+        elif axis == 1:
+            df = self.right_df
+        else:
+            raise ValueError("Invalid axis provided. Must be 0 or 1.")
+        # Select data
+        if self._selector is None:
+            raise ValueError("No selector set. Set a selector with indexing.")
+        if isinstance(self._selector, str):
+            try:
+                return df[self._selector].values
+            except KeyError:
+                raise KeyError(
+                    f"Invalid selector provided. Column label '{self._selector}' "
+                    f"not found in the {'left' if axis==0 else 'right'} dataframe.")
+        elif isinstance(self._selector, list):
+            try:
+                return df[self._selector].values
+            except KeyError:
+                raise KeyError(
+                    f"Invalid selector provided. Column labels '{self._selector}' "
+                    f"not found in the {'left' if axis==0 else 'right'} dataframe.")
+        elif isinstance(self._selector, slice):
+            try:
+                return df.loc[:, self._selector].values
+            except KeyError:
+                raise KeyError(
+                    f"Invalid selector provided. Column slice '{self._selector}' "
+                    f"not found in the {'left' if axis==0 else 'right'} dataframe.")
+        else:
+            raise ValueError(
+                "Invalid selector provided. Must be a string, list, or slice.")
         
     def overlay(self, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
@@ -371,6 +517,7 @@ class EventsRelation(object):
         # Perform aggregation
         return arr.sum(axis=axis)
     
+    @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
@@ -459,6 +606,7 @@ class EventsRelation(object):
         output_array = np.vectorize(set)(output_array)
         return output_array
     
+    @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
     def value_counts(self, data=None, axis=1, **kwargs) -> pd.DataFrame:
@@ -506,6 +654,7 @@ class EventsRelation(object):
         output = pd.DataFrame(output, index=index).fillna(0)
         return output
     
+    @_get_selector_data_wrapper
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
     def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
@@ -559,6 +708,7 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
     
+    @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
@@ -622,6 +772,7 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
 
+    @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
@@ -688,6 +839,7 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
     
+    @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
     def linemerge_m(self, data=None, axis=1, **kwargs) -> pd.Series:
@@ -731,7 +883,7 @@ class EventsRelation(object):
                 geoms,
                 allow_multiple=False,
                 allow_mismatch=False,
-                squeeze=False,
+                squeeze=True,
                 cast_geom=True,
             )
             # Log values
