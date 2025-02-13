@@ -654,7 +654,14 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def dissolve(self, retain=[], sort=False, inverse_index=True, inverse_label='dissolved_index', return_relation=False) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
+    def dissolve(
+        self, 
+        retain=[], 
+        sort=False, 
+        inverse_index=True, 
+        inverse_label='dissolved_index', 
+        return_relation=False,
+        ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
         Merge consecutive ranges. For best results, input events should be sorted.
 
