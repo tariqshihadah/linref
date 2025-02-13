@@ -4,6 +4,7 @@ import pandas as pd
 from linref.events import base, geometry
 from linref.ext import utility
 from scipy import sparse as sp
+import copy
 
 
 def _require_agg_data(func) -> callable:
@@ -150,14 +151,14 @@ class EventsRelation(object):
         # Initialize and validate
         self._validate_events()
         self.reset_cache()
-        self.set_selector(None)
+        self._set_selector(None)
 
     def __getitem__(self, key) -> EventsRelation:
         """
         Return a new EventsRelation object with the specified selector.
         """
         relate = self.copy()
-        relate.set_selector(key, inplace=True)
+        relate._set_selector(key, inplace=True)
         return relate
 
     @property
@@ -296,7 +297,7 @@ class EventsRelation(object):
         self._intersect_data = None
         self._intersect_kwargs = None
 
-    def set_selector(self, selector, inplace=False) -> None:
+    def _set_selector(self, selector, inplace=False) -> None:
         """
         Set the column label or slice to use to select data from either the 
         left or right dataframe when performing aggregation operations.  
@@ -330,8 +331,10 @@ class EventsRelation(object):
         """
         if axis == 0:
             df = self.left_df
+            index = self.left.index
         elif axis == 1:
             df = self.right_df
+            index = self.right.index
         else:
             raise ValueError("Invalid axis provided. Must be 0 or 1.")
         # Select data
@@ -339,21 +342,21 @@ class EventsRelation(object):
             raise ValueError("No selector set. Set a selector with indexing.")
         if isinstance(self._selector, str):
             try:
-                return df[self._selector].values
+                return df.loc[index, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column label '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, list):
             try:
-                return df[self._selector].values
+                return df.loc[index, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column labels '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, slice):
             try:
-                return df.loc[:, self._selector].values
+                return df.loc[index, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column slice '{self._selector}' "

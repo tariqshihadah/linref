@@ -697,7 +697,12 @@ class LRS_Accessor(object):
         # Append inverse index
         if inverse_index:
             df[inverse_label] = output[1]
-        return (df, output[-1]) if return_relation else df
+        if return_relation:
+            output[-1].left_df = df
+            output[-1].right_df = self.df
+            return (df, output[-1])
+        else:
+            return df
     
     def relate(self, other, cache=True) -> relate.EventsRelation:
         """
