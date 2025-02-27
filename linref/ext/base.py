@@ -13,13 +13,14 @@ from linref.events import relate, geometry
 
 class LRS(object):
 
-    def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, closed=None) -> None:
+    def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, geom_m_col=None, closed=None) -> None:
         # Validate LRS column labels
         self.key_col = label_list_or_none(key_col)
         self.loc_col = label_or_none(loc_col)
         self.beg_col = label_or_none(beg_col)
         self.end_col = label_or_none(end_col)
         self.geom_col = label_or_none(geom_col)
+        self.geom_m_col = label_or_none(geom_m_col)
         # Validate LRS closure
         if closed not in closed_all:
             raise ValueError(
@@ -31,7 +32,16 @@ class LRS(object):
         return self.__str__()
 
     def __str__(self) -> str:
-        return f"LRS(key_col={self.key_col}, loc_col={self.loc_col}, beg_col={self.beg_col}, end_col={self.end_col}, geom_col={self.geom_col}, closed={self.closed})"
+        return (
+            "LRS("
+            f"key_col={self.key_col}, "
+            f"loc_col={self.loc_col}, "
+            f"beg_col={self.beg_col}, "
+            f"end_col={self.end_col}, "
+            f"geom_col={self.geom_col}, "
+            f"geom_m_col={self.geom_m_col}, "
+            f"closed={self.closed})"
+        )
     
     @property
     def is_linear(self) -> bool:
@@ -52,6 +62,10 @@ class LRS(object):
     @property
     def is_spatial(self) -> bool:
         return self.geom_col is not None
+    
+    @property
+    def is_spatial_m(self) -> bool:
+        return self.geom_m_col is not None
     
     def copy(self, deep=False) -> LRS:
         """
@@ -92,6 +106,9 @@ class LRS(object):
         if self.is_spatial:
             valid = self.geom_col in df.columns
             result['geometry'] = {'valid': valid, 'missing': self.geom_col if not valid else None}
+        if self.is_spatial_m:
+            valid = self.geom_m_col in df.columns
+            result['geometry_m'] = {'valid': valid, 'missing': self.geom_m_col if not valid else None}
         return result
 
 
@@ -176,6 +193,10 @@ class LRS_Accessor(object):
         return self.active_lrs.geom_col
     
     @property
+    def geom_m_col(self) -> str:
+        return self.active_lrs.geom_m_col
+    
+    @property
     def closed(self) -> str:
         return self.active_lrs.closed
     
@@ -246,6 +267,15 @@ class LRS_Accessor(object):
             return self._df[col].values
         except KeyError:
             return None
+        
+    @property
+    def geoms_m(self) -> np.ndarray:
+        # Select data from the dataframe if geometry is present
+        col = self.geom_m_col
+        try:
+            return self._df[col].values
+        except KeyError:
+            return None
     
     @property
     def is_grouped(self) -> bool:
@@ -308,6 +338,18 @@ class LRS_Accessor(object):
         else:
             # Check for presence of geometry column in the dataframe
             return self.geom_col in self._df.columns
+        
+    @property
+    def is_spatial_m(self) -> bool:
+        """
+        Return whether the active LRS is spatial and the geometry column is 
+        present in the dataframe.
+        """
+        if self.geom_m_col is None:
+            return False
+        else:
+            # Check for presence of geometry column in the dataframe
+            return self.geom_m_col in self._df.columns
 
     @property
     def events(self) -> EventsData:
@@ -475,18 +517,18 @@ class LRS_Accessor(object):
             geom_m.set_m_from_bounds(beg=beg, end=end, inplace=True)
             return geom_m
         # Cast linear geometries to LineStringM
-        geoms = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
+        geoms_m = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
         # Apply changes to the DataFrame
         df = self.df if inplace else self.df.copy()
-        df[name] = geoms
+        df[name] = geoms_m
         # Update LRS if needed
         if not self.is_spatial:
             new_lrs = self.active_lrs.copy(deep=True)
-            new_lrs.geom_col = name
+            new_lrs.geom_m_col = name
             df.lr.add_lrs(new_lrs, activate=True)
-        elif self.active_lrs.geom_col != name:
+        elif self.active_lrs.geom_m_col != name:
             new_lrs = self.active_lrs.copy(deep=True)
-            new_lrs.geom_col = name
+            new_lrs.geom_m_col = name
             df.lr.add_lrs(new_lrs, activate=True)
         return None if inplace else df
 
