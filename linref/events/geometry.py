@@ -16,7 +16,7 @@ class LineStringM:
         return self.wkt + r' # linref compatibility approximation'
     
     def __repr__(self):
-        return self.__str__()
+        return self.wkt
 
     @property
     def geom(self):
