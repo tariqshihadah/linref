@@ -702,6 +702,7 @@ class LRS_Accessor(object):
         sort=False, 
         inverse_index=True, 
         inverse_label='dissolved_index', 
+        merge_geom=True,
         return_relation=False,
         ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
@@ -719,6 +720,9 @@ class LRS_Accessor(object):
             Whether to append an inverse index to the dissolved events dataframe.
         inverse_label : str, default 'dissolved_index'
             The label for the inverse index column.
+        merge_geom : bool, default True
+            Whether to merge the geometries of the dissolved events if present
+            in the dataframe.
         return_relation : bool, default False
             Whether to return an EventsRelation object which describes the
             relationship between the dissolved (left) and original (right) 
@@ -743,15 +747,26 @@ class LRS_Accessor(object):
             beg_name=self.beg_col,
             end_name=self.end_col,
         ).lr.lrs_like(self)
+        output[-1].left_df = df
+        output[-1].right_df = self.df
+
         # Append inverse index
         if inverse_index:
             df[inverse_label] = output[1]
-        if return_relation:
-            output[-1].left_df = df
-            output[-1].right_df = self.df
-            return (df, output[-1])
-        else:
-            return df
+        # Merge geometries
+        if merge_geom and self.is_spatial_m:
+            merged_m = output[-1][self.geom_m_col].linemerge_m()
+            merged = np.array([i.geom for i in merged_m])
+            df[self.geom_col] = merged
+            df[self.geom_m_col] = merged_m
+        elif merge_geom and self.is_spatial:
+            merged_m = output[-1][self.geom_col].linemerge_m()
+            merged = np.array([i.geom for i in merged_m])
+            df[self.geom_col] = merged
+            df[self.geom_m_col] = merged_m
+
+        # Return results
+        return (df, output[-1]) if return_relation else df
     
     def relate(self, other, cache=True) -> relate.EventsRelation:
         """

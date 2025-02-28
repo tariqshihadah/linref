@@ -329,6 +329,7 @@ class EventsRelation(object):
         Get the selected data from the left or right dataframe based on the
         current selector and axis.
         """
+        # Determine index and dataframe to pull from
         if axis == 0:
             df = self.left_df
             index = self.left.index
@@ -337,6 +338,10 @@ class EventsRelation(object):
             index = self.right.index
         else:
             raise ValueError("Invalid axis provided. Must be 0 or 1.")
+        # Confirm that dataframes are set
+        if df is None:
+            raise ValueError(
+                "No dataframe set on the events relationship.")
         # Select data
         if self._selector is None:
             raise ValueError("No selector set. Set a selector with indexing.")
