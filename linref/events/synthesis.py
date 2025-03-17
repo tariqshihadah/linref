@@ -186,10 +186,12 @@ def generate_linear_events(
         
         # Intersect boundary geometries
         intersection = gpd.sjoin(ends, begs)
-        intersection['index_left'] = intersection.index
         # Get all unique matches between the line end points and other line 
         # begin points
-        pairs = intersection[['index_left','index_right']].values
+        index_left = f'{df.index.name}_left' if df.index.name else 'index' # Current behavior only applies suffix if index name is not present
+        index_right = f'{df.index.name}_right' if df.index.name else 'index_right'
+        pairs = intersection.reset_index(drop=False) \
+            [[index_left, index_right]].values
         
         # Remove instances of multiple matches on left or right; only the 
         # first unique value on the left and right are kept based on original 
