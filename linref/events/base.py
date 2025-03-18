@@ -25,9 +25,10 @@ class EventsData:
             dtype=float, 
             copy=None,
             force_monotonic=True,
+            **kwargs
         ):
         # Validate inputs
-        self._validate_data(index, groups, locs, begs, ends, dtype=dtype, copy=copy)
+        self._validate_data(index, groups, locs, begs, ends, dtype=dtype, copy=copy, **kwargs)
         self.set_closed(closed, inplace=True)
         self._dtype = dtype
         # Prepare data
@@ -56,6 +57,16 @@ class EventsData:
         Generic 0-based integer index.
         """
         return np.arange(self.num_events, dtype=int)
+    
+    @property
+    def index_data(self):
+        """
+        Event index data.
+        """
+        if self.index is not None:
+            return self.index
+        else:
+            return self.generic_index
 
     @property
     def groups(self):
@@ -73,6 +84,16 @@ class EventsData:
             return np.array([hashlib.sha256(x.encode()).hexdigest() for x in self.groups])
         else:
             return None
+        
+    @property
+    def groups_data(self):
+        """
+        Event reference groups data.
+        """
+        if self.is_grouped:
+            return self.groups
+        else:
+            return np.zeros(self.num_events, dtype=object)
 
     @property
     def locs(self):
@@ -260,7 +281,7 @@ class EventsData:
         else:
             return None
 
-    def _validate_index(self, index):
+    def _validate_index(self, index, allow_duplicate_index=False):
         """
         Validate input index as a 1D scalar np.array.
         """
@@ -270,7 +291,7 @@ class EventsData:
         else:
             index = utility._prepare_data_array(index, 'index')
             # Check that all indices are unique
-            if len(np.unique(index)) < len(index):
+            if (len(np.unique(index)) < len(index)) and not allow_duplicate_index:
                 warnings.warn(
                     "Input indices are not unique. This may cause unexpected "
                     "behavior when selecting and modifying events.")
@@ -286,7 +307,7 @@ class EventsData:
             groups = utility._prepare_data_array(groups, 'groups')
         return groups
     
-    def _validate_data(self, index, groups, locs, begs, ends, dtype=None, copy=None):
+    def _validate_data(self, index, groups, locs, begs, ends, dtype=None, copy=None, allow_duplicate_index=False):
         """
         Validate input data based on the requirements of the class.
         """
@@ -336,7 +357,7 @@ class EventsData:
 
         # Validate index and groups
         if not index is None:
-            index = self._validate_index(index)
+            index = self._validate_index(index, allow_duplicate_index=allow_duplicate_index)
             data_arrays['index'] = index
         if not groups is None:
             groups = self._validate_groups(groups)
@@ -838,8 +859,63 @@ class EventsData:
         )
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def resegment(self):
-        raise NotImplementedError
+    def resegment(self, length=1, fill='cut'):
+        """
+        Resegment events into smaller segments of equal length, addressing 
+        edge cases in a variety of ways using the fill parameter.
+
+        Parameters
+        ----------
+        length : float, optional
+            Length of each segment. Default is 1.
+        fill : {'none','cut','left','right','extend','balance'}, default 'cut'
+            How to fill a gap at the end of the input range.
+
+            Options
+            -------
+            none : no range will be generated to fill the gap at the end of the 
+                input range.
+            cut : a truncated range will be created to fill the gap with a 
+                length less than the full range length.
+            left : the final range will be anchored on the end value and will 
+                extend the full range length to the left. 
+            right : the final range will be anchored on the grid defined by the 
+                step value, extending the full range length to the right, 
+                beyond the defined end value.
+            extend : the final range will be anchored on the grid defined by 
+                the step value, extending beyond the step length to the right
+                bound of the range.
+            balance : if the final range is greater than or equal to half the 
+                target range length, perform the cut method; if it is less, 
+                perform the extend method.
+
+            Schematics
+            ----------
+            bounds :    [------------------------]
+            none :   
+                        [---------|              ]
+                        [         |---------|    ]
+            cut : 
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]
+            left :   
+                        [---------|              ]
+                        [         |---------|    ]
+                        [              |---------]
+            right :  
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]----|
+            extend :
+                        [---------|              ]
+                        [         |--------------]
+        
+        Returns
+        -------
+        linref.events.EventsData
+        """
+        return modify.resegment(self, length=length, fill=fill)
 
     @utility._method_require(is_empty=False)
     def relate(self, other: EventsData, cache=True):

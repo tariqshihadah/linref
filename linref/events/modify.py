@@ -1,5 +1,5 @@
 import numpy as np
-from linref.events import base, utility, relate
+from linref.events import base, utility, relate, common
 from scipy import sparse as sp
 
 def dissolve(events, sort=False, return_index=False, return_relation=False):
@@ -296,6 +296,123 @@ def round(events, decimals=None, factor=None, inplace=False):
     # Return results
     return None if inplace else events
 
+def resegment(events, length=1, fill='cut'):
+    """
+    Resegment events into smaller segments of equal length.
+
+    Parameters
+    ----------
+    events : EventsData
+        Input range of events.
+    length : float, optional
+        Length of each segment. Default is 1.
+    fill : {'none','cut','left','right','extend','balance'}, default 'cut'
+        How to fill a gap at the end of the input range.
+
+        Options
+        -------
+        none : no range will be generated to fill the gap at the end of the 
+            input range.
+        cut : a truncated range will be created to fill the gap with a 
+            length less than the full range length.
+        left : the final range will be anchored on the end value and will 
+            extend the full range length to the left. 
+        right : the final range will be anchored on the grid defined by the 
+            step value, extending the full range length to the right, 
+            beyond the defined end value.
+        extend : the final range will be anchored on the grid defined by 
+            the step value, extending beyond the step length to the right
+            bound of the range.
+        balance : if the final range is greater than or equal to half the 
+            target range length, perform the cut method; if it is less, 
+            perform the extend method.
+
+        Schematics
+        ----------
+        bounds :    [------------------------]
+        none :   
+                    [---------|              ]
+                    [         |---------|    ]
+        cut : 
+                    [---------|              ]
+                    [         |---------|    ]
+                    [                   |----]
+        left :   
+                    [---------|              ]
+                    [         |---------|    ]
+                    [              |---------]
+        right :  
+                    [---------|              ]
+                    [         |---------|    ]
+                    [                   |----]----|
+        extend :
+                    [---------|              ]
+                    [         |--------------]
+    
+    Returns
+    -------
+    linref.events.EventsData
+    """
+    # Validate input
+    if not isinstance(events, base.EventsData):
+        raise TypeError("Input object must be a EventsData class instance.")
+    if not events.is_linear:
+        raise ValueError("Input object must be a linear EventsData instance.")
+    if events.is_empty:
+        raise ValueError("No events to resegment.")
+    if not isinstance(length, (int, float)):
+        raise TypeError("'length' must be a numeric value.")
+    if not fill in common.segment_fill_all:
+        raise ValueError(f"'fill' must be one of {common.segment_fill_all}.")
+    
+    # Determine number of segments to create from existing events
+    orig_lengths = events.lengths
+    if fill in ['none', 'extend']:
+        num_segments = np.floor(orig_lengths / length).astype(int)
+    else:
+        num_segments = np.ceil(orig_lengths / length).astype(int)
+    
+    # Compute new segment bounds
+    reverse_index = np.repeat(np.arange(events.num_events), num_segments)
+    begs, ends, index, groups = [], [], [], []
+    for orig_beg, orig_end, orig_index, orig_group, num_segment in \
+        zip(events.begs, events.ends, events.index_data, events.groups_data, num_segments):
+        # Compute new default segment bounds
+        new_begs = np.arange(0, max(num_segment, 1)) * length + orig_beg
+        new_ends = new_begs + length
+        # Adjust bounds based on fill method
+        if fill == 'balance':
+            if ((orig_end - new_begs[-1]) < (length / 2)) and (num_segment > 1):
+                new_begs = new_begs[:-1]
+                new_ends = new_ends[:-1]
+                num_segment -= 1
+                fill_i = 'extend'
+            else:
+                fill_i = 'cut'
+        else:
+            fill_i = fill
+        if (fill_i in ['cut', 'left', 'extend']) or \
+            (num_segment == 0 and not fill_i == 'right'):
+            new_ends[-1] = orig_end
+        if fill_i == 'left':
+            new_begs[-1] = orig_end - length
+        # Append to lists
+        begs.extend(new_begs)
+        ends.extend(new_ends)
+        index.extend(np.repeat(orig_index, max(num_segment, 1)))
+        groups.extend(np.repeat(orig_group, max(num_segment, 1)))
+
+    # Create new events object
+    new_events = events.from_similar(
+        index=index,
+        groups=groups,
+        locs=None,
+        begs=begs,
+        ends=ends,
+        allow_duplicate_index=True,
+    )
+    return new_events
+
 def separate(events, by='centers', inplace=False):
     """
     Address overlapping ranges by distributing overlaps between adjacent
@@ -313,6 +430,7 @@ def separate(events, by='centers', inplace=False):
     inplace : bool, optional
         If True, modify the input object in place. Default is False.
     """
+    raise NotImplementedError("This function is not yet implemented.")
     # Validate input
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")

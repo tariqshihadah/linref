@@ -153,6 +153,26 @@ class LRS_Accessor(object):
         self._df = df
     
     @property
+    def target_cols(self) -> list[str]:
+        cols = []
+        if self.is_grouped:
+            cols.extend(self.key_col)
+        if self.is_located:
+            cols.append(self.loc_col)
+        if self.is_linear:
+            cols.extend([self.beg_col, self.end_col])
+        return cols
+    
+    @property
+    def other_cols(self) -> list[str]:
+        # Get all restricted columns
+        remove = self.target_cols + [self.geom_col, self.geom_m_col]
+        cols = self._df.columns.to_list()
+        for col in remove:
+            cols.remove(col)
+        return cols
+
+    @property
     def lrs(self) -> list[LRS]:
         if len(self._lrs) > 0:
             return self._lrs
@@ -694,6 +714,70 @@ class LRS_Accessor(object):
             obj.begs = events.begs
             obj.ends = events.ends
         return None if inplace else obj.df
+    
+    @_method_require(is_linear=True)
+    def resegment(self, length=1, fill='cut', inplace=False) -> pd.DataFrame | None:
+        """
+        Resegment the events of the active LRS to the specified length.
+
+        Parameters
+        ----------
+        length : float, default 1
+            The length to resegment the events to.
+        fill : {'none','cut','left','right','extend','balance'}, default 'cut'
+            How to fill a gap at the end of the input range.
+
+            Options
+            -------
+            none : no range will be generated to fill the gap at the end of the 
+                input range.
+            cut : a truncated range will be created to fill the gap with a 
+                length less than the full range length.
+            left : the final range will be anchored on the end value and will 
+                extend the full range length to the left. 
+            right : the final range will be anchored on the grid defined by the 
+                step value, extending the full range length to the right, 
+                beyond the defined end value.
+            extend : the final range will be anchored on the grid defined by 
+                the step value, extending beyond the step length to the right
+                bound of the range.
+            balance : if the final range is greater than or equal to half the 
+                target range length, perform the cut method; if it is less, 
+                perform the extend method.
+
+            Schematics
+            ----------
+            bounds :    [------------------------]
+            none :   
+                        [---------|              ]
+                        [         |---------|    ]
+            cut : 
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]
+            left :   
+                        [---------|              ]
+                        [         |---------|    ]
+                        [              |---------]
+            right :  
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]----|
+            extend :
+                        [---------|              ]
+                        [         |--------------]
+        
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with the events resegmented.
+        """
+        # Resegment events
+        events = self.events.resegment(length=length, fill=fill)
+        # Apply changes to the DataFrame
+        df_left = events.to_frame()
+        df_right = self.df[self.other_cols]
+        return pd.merge(df_left, df_right, left_index=True, right_index=True)
     
     @_method_require(is_linear=True)
     def dissolve(

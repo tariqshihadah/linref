@@ -8,3 +8,4 @@ anchors_all = {'locs', 'begs', 'ends', 'centers'}
 anchors_locs = {'begs', 'ends', 'centers'}
 closed_all = {'left', 'left_mod', 'right', 'right_mod', 'both', 'neither'}
 closed_base = {'left', 'right', 'both', 'neither'}
+segment_fill_all = {'none','cut','left','right','extend','balance'}
