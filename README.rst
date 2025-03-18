@@ -53,8 +53,14 @@ performing an aggregation function over these values::
 
 Version Notes
 =============
+0.1.2 (2025-03-18)
+------------------
+* Allow for named index on dataframes being analyzed by `lr.generate_linear_events` by using dynamic indices during spatial join.
+* Performance improvements
+* Various bug fixes, minor features
+
 0.1.1 (2024-08-20)
--------------------
+------------------
 * Addition of array-like, dataframe label-based, and callable ``length`` parameter options to the ``EventsCollection.to_windows()`` method and ``distance`` parameter to the ``EventsCollection.shift()`` method. This allows for the creation of segments based on a variable length. This will be made available to other methods in future versions as well.
 * Address ``numpy>=2.x`` compatibility issue in ``EventsCollection.dissolve()`` method which was causing errors in some cases. More fixes related to ``numpy`` updates are expected to come in future versions.
 * Address datatype loss issues for LRS columns during ``EventsCollection.to_windows()`` and ``EventsUnion.union()`` methods. This was causing some instances of key columns to be converted to incorrect dtypes.
@@ -65,7 +71,7 @@ Version Notes
 * Various bug fixes, minor features
 
 0.1.0 (2024-01-16)
--------------------
+------------------
 My heart is in Gaza.
 
 * Initial deployment of synthesis module featuring some tools for generating linear referencing information for chains of linear asset data with geometry but no LRS. These features are currently experimental and outputs should be reviewed for quality and expected outcomes. They will get refined in future versions based on performance in various applications and input from users.
