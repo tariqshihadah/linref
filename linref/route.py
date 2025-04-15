@@ -19,6 +19,7 @@ Modified:
 ################
 
 
+from __future__ import annotations
 from xml.dom.minidom import Attr
 import numpy as np
 from shapely.geometry import LineString, MultiLineString, Point
@@ -231,7 +232,7 @@ class MLSRoute(object):
         cls, 
         paths: PathType,
         **kwargs
-    ) -> 'MLSRoute':
+    ) -> MLSRoute:
         """
         Create MLSRoute instance from a list of paths, made up of a list of 
         three-element tuples with X, Y, and range location (i.e., M-value).
@@ -253,7 +254,7 @@ class MLSRoute(object):
         begs: Union[float, list[float]],
         ends: Union[float, list[float]],
         **kwargs
-    ) -> 'MLSRoute':
+    ) -> MLSRoute:
         """
         Create an MLSRoute instance from a list of LineStrings or a single 
         MultiLineString and lists of begin and end mile post values with 
@@ -355,7 +356,7 @@ class MLSRoute(object):
         return cls(full_lines, rte_ranges=ranges, **kwargs)
 
     @classmethod
-    def from_wkt(cls, wkt: str, **kwargs) -> 'MLSRoute':
+    def from_wkt(cls, wkt: str, **kwargs) -> MLSRoute:
         """
         Create an MLSRoute instance from a WKT string for a MULTILINESTRING or 
         LINESTRING with three to four dimensions, with the last dimension 
@@ -405,7 +406,7 @@ class MLSRoute(object):
         return MLSRoute(MultiLineString(data), rte_breaks=breaks, **kwargs)
 
     @classmethod
-    def concatenate(cls, routes: list['MLSRoute'], **kwargs) -> 'MLSRoute':
+    def concatenate(cls, routes: list[MLSRoute], **kwargs) -> MLSRoute:
         """
         Combine a list of MLSRoute objects into a single MLSRoute.
 
@@ -517,7 +518,7 @@ class MLSRoute(object):
         # Return combined WKT string
         return prefix + '(' + ', '.join(data) + ')'
 
-    def copy(self, deep: bool = False) -> 'MLSRoute':
+    def copy(self, deep: bool = False) -> MLSRoute:
         """
         Create an exact copy of the MLS route object instance.
         """
@@ -812,7 +813,7 @@ class MLSRoute(object):
         end: float, 
         by_mls: bool = False, 
         normalized: bool = False,
-    ) -> 'MLSRoute':
+    ) -> MLSRoute:
         """
         Cut the MLS route at the given begin and end points. This can be done 
         in terms of the route measure information (by_mls=False), in terms of
@@ -962,7 +963,7 @@ class MLSRoute(object):
         by_mls: bool = False, 
         normalized: bool = False, 
         **kwargs,
-    ) -> list['MLSRoute']:
+    ) -> list[MLSRoute]:
         """
         Cut the MLS Route into segments based on the given cut points.
         

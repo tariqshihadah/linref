@@ -101,6 +101,7 @@ Modified:
 # DEPENDENCIES #
 ################
 
+from __future__ import annotations
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -118,7 +119,7 @@ from typing import Union, Optional, Literal, Iterator, Callable, Any
 ClosedType = Literal["left", "right", "both", "neither"]
 ClosedModType = Literal["left_mod", "right_mod"]
 ArrayLike = Union[list, tuple, np.ndarray, pd.Series]
-MissingDataHandelType = Literal["ignore", "drop", "warn", "raise"]
+MissingDataHandleType = Literal["ignore", "drop", "warn", "raise"]
 
 ##################
 # EVENTS CLASSES #
@@ -248,7 +249,7 @@ class EventsFrame(object):
         self, 
         obj: Union[pd.DataFrame, gpd.GeoDataFrame], 
         inplace: bool = False,
-    ) -> Optional["EventsFrame"]:
+    ) -> Optional[EventsFrame]:
         """
         Set a new events dataframe.
         """
@@ -260,7 +261,7 @@ class EventsFrame(object):
         if not inplace:
             return ef
 
-    def sort(self, inplace: bool = False) -> Optional["EventsFrame"]:
+    def sort(self, inplace: bool = False) -> Optional[EventsFrame]:
         """
         Sort the events dataframe based on target columns.
         """
@@ -272,7 +273,7 @@ class EventsFrame(object):
         if not inplace:
             return ef
 
-    def cast_gdf(self, inplace: bool = False, **kwargs) -> Optional["EventsFrame"]:
+    def cast_gdf(self, inplace: bool = False, **kwargs) -> Optional[EventsFrame]:
         """
         Convert the events dataframe to a geodataframe, passing the input 
         keyword arguments, such as crs and geometry, to the gpd.GeoDataFrame 
@@ -529,7 +530,7 @@ class EventsFrame(object):
         col: Optional[str] = None, 
         inplace: bool = False, 
         errors='raise'
-    ) -> Optional["EventsFrame"]:
+    ) -> Optional[EventsFrame]:
         """
         Parse MLSRoutes data in the provided column, which contains either 
         MLSRoute objects, WKT data for MULTILINESTRINGs or LINESTRINGs with 
@@ -634,7 +635,7 @@ class EventsFrame(object):
         # Return validated columns
         return cols
 
-    def iter_groups(self) -> Iterator[tuple[str, "EventsGroup"]]:
+    def iter_groups(self) -> Iterator[tuple[str, EventsGroup]]:
         """
         Return an iterator which will iterate through all groups in the 
         collection, yielding each group's key as well as the associated 
@@ -678,7 +679,7 @@ class EventsFrame(object):
         self.df[label] = routes
         self._route = label
 
-    def copy(self, deep: bool = False) -> "EventsFrame":
+    def copy(self, deep: bool = False) -> EventsFrame:
         """
         Create an exact copy of the events class instance.
         
@@ -696,7 +697,7 @@ class EventsFrame(object):
         self, 
         closed: Optional[Union[ClosedType, ClosedModType]] = None, 
         inplace: bool = False,
-    ) -> Optional["EventsFrame"]:
+    ) -> Optional[EventsFrame]:
         """
         Change whether ranges are closed on left, right, both, or neither side. 
         
@@ -736,7 +737,7 @@ class EventsFrame(object):
         col_name: str = 'geometry', 
         crs: Optional[str] = None, 
         inplace: bool = False,
-    ) -> Optional["EventsFrame"]:
+    ) -> Optional[EventsFrame]:
         """
         Use X and Y coordinates in the events dataframe to generate point 
         geometry.
@@ -767,7 +768,7 @@ class EventsFrame(object):
         fillna: Optional[str] = None,
         reorder: bool = True,
         merge_lines: bool = True,
-    ) -> "EventsFrame":
+    ) -> EventsFrame:
         """
         Dissolve the events dataframe on a selection of event attributes.
 
@@ -996,7 +997,7 @@ class EventsFrame(object):
         dist_label: str = 'DISTANCE', 
         build_routes: bool = True, 
         **kwargs
-    ) -> "EventsFrame":
+    ) -> EventsFrame:
         """
         Project an input geodataframe onto the events dataframe, producing 
         linearly referenced point locations relative to events for all input 
@@ -1105,7 +1106,7 @@ class EventsFrame(object):
         target, # self
         other: gpd.GeoDataFrame, 
         **kwargs,
-    ) -> "EventsFrame":
+    ) -> EventsFrame:
         """
         Project an input polygon dataframe onto the events dataframe, 
         producing linearly referenced point locations everywhere the events 
@@ -1135,7 +1136,7 @@ class EventsFrame(object):
         kwargs['nearest'] = False
         return target.project(gdf, **kwargs)
 
-    def to_grid(self, dissolve: bool = False, **kwargs) -> "EventsFrame":
+    def to_grid(self, dissolve: bool = False, **kwargs) -> EventsFrame:
         """
         Use the events dataframe to create a grid of zero-length, equidistant 
         point events which span the bounds of each event.
@@ -1225,7 +1226,7 @@ class EventsFrame(object):
         retain: bool = True, 
         endpoint: bool = False, 
         **kwargs,
-    ) -> "EventsFrame":
+    ) -> EventsFrame:
         """
         Use the events dataframe to create sliding window events of a fixed 
         length and a fixed number of steps, and which fill the bounds of each 
@@ -1352,17 +1353,17 @@ class EventsLog(object):
         super(EventsLog, self).__init__(**kwargs)
         self.reset()
 
-    def __getitem__(self, key: str) -> "EventsGroup":
+    def __getitem__(self, key: str) -> EventsGroup:
         try:
             return self._data[key]
         except KeyError as e:
             raise e
 
-    def __setitem__(self, key: str, obj: "EventsGroup") -> None:
+    def __setitem__(self, key: str, obj: EventsGroup) -> None:
         self.log(key, obj, overwrite=True)
 
     @property
-    def data(self) -> dict[str, "EventsGroup"]:
+    def data(self) -> dict[str, EventsGroup]:
         return self._data
 
     @property
@@ -1372,7 +1373,7 @@ class EventsLog(object):
     def reset(self) -> None:
         self._data = {}
 
-    def log(self, key: str, obj: "EventsGroup", overwrite: bool = True) -> None:
+    def log(self, key: str, obj: EventsGroup, overwrite: bool = True) -> None:
         """
         Store the input events class instance within the log's data under the 
         provided key.
@@ -1541,7 +1542,7 @@ class EventsGroup(EventsFrame):
         self,
         beg: Optional[Union[float, ArrayLike]] = None,
         end: Optional[Union[float, ArrayLike]] = None,
-        other: Optional["EventsGroup"] = None,
+        other: Optional[EventsGroup] = None,
         closed: ClosedType = "both",
         get_mask: bool = False,
         **kwargs,
@@ -1604,7 +1605,7 @@ class EventsGroup(EventsFrame):
         self,
         beg: Optional[Union[float, ArrayLike]] = None,
         end: Optional[Union[float, ArrayLike]] = None,
-        other: Optional["EventsGroup"] = None,
+        other: Optional[EventsGroup] = None,
         **kwargs,
     ):
         """
@@ -1957,7 +1958,7 @@ class EventsCollection(EventsFrame):
         geom: Optional[str] = None,
         closed: Optional[Union[ClosedType, ClosedModType]] = None,
         sort: bool = False,
-        missing_data: MissingDataHandelType = "warn",
+        missing_data: MissingDataHandleType = "warn",
         **kwargs,
     ):
         # Validate keys option
@@ -1980,7 +1981,7 @@ class EventsCollection(EventsFrame):
     def __getitem__(
         self, 
         keys: Union[str, tuple[str], slice], 
-    ) -> Union["EventsGroup", "EventsCollection"]:
+    ) -> Union[EventsGroup, EventsCollection]:
         # Determine type of retrieval - single group or filter slice
         if isinstance(keys, tuple):
             if any(isinstance(key, slice) for key in keys):
@@ -2006,7 +2007,7 @@ class EventsCollection(EventsFrame):
 
     def _check_missing_data(
         self, 
-        missing_data: MissingDataHandelType = "warn",
+        missing_data: MissingDataHandleType = "warn",
     ) -> None:
         """
         Check for missing data in keys, beg, end, and geometry fields. Warn 
@@ -2042,7 +2043,7 @@ class EventsCollection(EventsFrame):
                 "Invalid input missing_data parameter. Must be one of "
                 "('ignore','drop','warn','raise').")
 
-    def drop_missing(self, inplace: bool = False) -> Optional["EventsCollection"]:
+    def drop_missing(self, inplace: bool = False) -> Optional[EventsCollection]:
         """
         Drop records from the events dataframe which do not contain valid 
         linear referencing information (e.g., empty key values or begin or 
@@ -2063,7 +2064,7 @@ class EventsCollection(EventsFrame):
             ec._check_missing_data(missing_data='drop')
             return ec
 
-    def from_similar(self, df: pd.DataFrame, **kwargs) -> "EventsCollection":
+    def from_similar(self, df: pd.DataFrame, **kwargs) -> EventsCollection:
         """
         Create an EventsCollection from the input dataframe, assuming the same 
         column labels and closed parameter as the calling collection. 
@@ -2096,7 +2097,7 @@ class EventsCollection(EventsFrame):
     @classmethod
     def from_standard(
         cls, df: pd.DataFrame, require_end: bool = False, **kwargs
-    ) -> "EventsCollection":
+    ) -> EventsCollection:
         """
         Create an EventsCollection from the input dataframe assuming standard 
         column labels. These standard labels can be modified on the class 
@@ -2287,7 +2288,7 @@ class EventsCollection(EventsFrame):
         decimals: int = 0,
         factor: float = 1,
         inplace: bool = False,
-    ) -> Optional["EventsCollection"]:
+    ) -> Optional[EventsCollection]:
         """
         Round the bounds of all events to the specified number of decimals 
         or to a specified rounding factor.
@@ -2362,7 +2363,7 @@ class EventsCollection(EventsFrame):
         which: Literal["begs", "ends", "both"] = "both",
         labels: Optional[tuple[str]] = None,
         inplace: bool = False,
-    ) -> Optional["EventsCollection"]:
+    ) -> Optional[EventsCollection]:
         """
         Shift the bounds of all events by the specified value.
 
@@ -2461,7 +2462,7 @@ class EventsCollection(EventsFrame):
         eliminate_inside: bool = False,
         inplace: bool = False,
         **kwargs,
-    ) -> Optional["EventsCollection"]:
+    ) -> Optional[EventsCollection]:
         """
         Separate the bounds of all events so that none directly overlap. 
         This is done using the rangel.RangeCollection.separate() method 
@@ -2503,7 +2504,7 @@ class EventsCollection(EventsFrame):
 
     def overlay_average(
         self,
-        other: "EventsCollection",
+        other: EventsCollection,
         cols: Optional[list[str]] = None,
         **kwargs,
     ) -> pd.DataFrame:
@@ -2549,7 +2550,7 @@ class EventsCollection(EventsFrame):
         # Return retrieved column data
         return res
 
-    def merge(self, other: "EventsCollection") -> "EventsMerge":
+    def merge(self, other: EventsCollection) -> EventsMerge:
         """
         Create an EventsMerge instance with this collection as the left and the 
         other collection as the right. This can then be used to retrieve 
@@ -2578,7 +2579,7 @@ class EventsCollection(EventsFrame):
         sort_locs: bool = True,
         build_routes: bool = True,
         **kwargs,
-    ) -> "EventsCollection":
+    ) -> EventsCollection:
         """
         Project an input geodataframe of linear geometries onto parallel events 
         in the events dataframe, producing linearly referenced locations for all 
@@ -2699,7 +2700,7 @@ class EventsCollection(EventsFrame):
         keys: Union[list[slice], list[list], list[Union[str, int]]],
         reduce: bool = True,
         **kwargs,
-    ) -> "EventsCollection":
+    ) -> EventsCollection:
         """
         Retrieve a subset of the events collection based on the provided key 
         values or slices. Returned events must satisfy all keys.
@@ -2755,8 +2756,8 @@ class EventsCollection(EventsFrame):
         return ec
 
     def get_matching(
-        self, other: "EventsCollection", **kwargs,
-    ) -> "EventsCollection":
+        self, other: EventsCollection, **kwargs,
+    ) -> EventsCollection:
         """
         Retrieve a subset of the events collection based on the unique group 
         values present in another provided events collection.

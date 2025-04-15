@@ -35,6 +35,7 @@ Modified:
 # DEPENDENCIES #
 ################
 
+from __future__ import annotations
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -61,7 +62,7 @@ def generate_linear_events(
     decimals: int = None,
     breaks: str = "continue",
     **kwargs,
-) -> "EventsCollection":
+) -> EventsCollection:
     """
     Function for generating events information for existing chains of linear 
     geospatial data based on the geographic lengths of chain members. This 

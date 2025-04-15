@@ -36,6 +36,7 @@ Modified:
 # DEPENDENCIES #
 ################
 
+from __future__ import annotations
 import pandas as pd
 import numpy as np
 import copy, warnings
@@ -51,7 +52,7 @@ ArrayLike = Union[list, tuple, np.ndarray, pd.Series]
 
 class EventsMergeAttribute(object):
 
-    def __init__(self, parent: "EventsMerge", column: ColumnLabelType):
+    def __init__(self, parent: EventsMerge, column: ColumnLabelType):
         self.parent = parent
         self.column = column
 
@@ -60,7 +61,7 @@ class EventsMergeAttribute(object):
         return self._parent
 
     @parent.setter
-    def parent(self, obj: "EventsMerge"):
+    def parent(self, obj: EventsMerge):
         if not isinstance(obj, EventsMerge):
             raise TypeError("Input parent must be EventsMerge type.")
         self._parent = obj
@@ -93,7 +94,7 @@ class EventsMergeAttribute(object):
             self._column = label
 
     @property
-    def traces(self) -> list["EventsMergeTrace"]:
+    def traces(self) -> list[EventsMergeTrace]:
         try:
             return self.parent.traces
         except AttributeError:
@@ -759,7 +760,7 @@ class EventsMerge(object):
     collection-level merging methods such as EventsCollection.merge.
     """
 
-    def __init__(self, left: "EventsCollection", right: "EventsCollection"):
+    def __init__(self, left: EventsCollection, right: EventsCollection):
         # Log parameters
         self.left = left
         self.right = right
@@ -776,20 +777,20 @@ class EventsMerge(object):
         return text
 
     @property
-    def left(self) -> "EventsCollection":
+    def left(self) -> EventsCollection:
         return self._left
 
     @left.setter
-    def left(self, obj: "EventsCollection") -> None:
+    def left(self, obj: EventsCollection) -> None:
         self._validate_target(obj)
         self._left = obj
 
     @property
-    def right(self) -> "EventsCollection":
+    def right(self) -> EventsCollection:
         return self._right
 
     @right.setter
-    def right(self, obj: "EventsCollection") -> None:
+    def right(self, obj: EventsCollection) -> None:
         # Validate and set
         self._validate_target(obj, left=False)
         self._right = obj
@@ -821,7 +822,7 @@ class EventsMerge(object):
     def columns(self) -> list[str]:
         return self.right.columns
 
-    def _validate_target(self, obj: "EventsCollection", left: bool = True) -> None:
+    def _validate_target(self, obj: EventsCollection, left: bool = True) -> None:
         # Ensure left is set first if the target is the right
         if not (left) and not (hasattr(self, '_left')):
             raise AttributeError("The left target must be set before the right "
@@ -839,7 +840,7 @@ class EventsMerge(object):
                 "Input EventsMerge target must have the same number of keys "
                 f"as the existing left target ({self.num_keys}).")
 
-    def copy(self, deep: bool = False) -> "EventsMerge":
+    def copy(self, deep: bool = False) -> EventsMerge:
         """
         Create an exact copy of the events class instance.
         
@@ -853,7 +854,7 @@ class EventsMerge(object):
         else:
             return copy.copy(self)
 
-    def build(self, inplace: bool = True) -> Optional["EventsMerge"]:
+    def build(self, inplace: bool = True) -> Optional[EventsMerge]:
         """
         Perform intersects and overlays to produce EventsMergeTrace objects 
         for aggregation.
