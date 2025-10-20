@@ -859,7 +859,7 @@ class EventsData:
         )
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def resegment(self, length=1, fill='cut'):
+    def resegment(self, length=1, fill='cut', return_relation=False):
         """
         Resegment events into smaller segments of equal length, addressing 
         edge cases in a variety of ways using the fill parameter.
@@ -911,11 +911,15 @@ class EventsData:
                         [---------|              ]
                         [         |--------------]
         
+        return_relation : bool, default False
+            Whether to return a list of arrays indicating the indices of the 
+            original events which were resegmented into each new event.
+
         Returns
         -------
         linref.events.EventsData
         """
-        return modify.resegment(self, length=length, fill=fill)
+        return modify.resegment(self, length=length, fill=fill, return_relation=return_relation)
 
     @utility._method_require(is_empty=False)
     def relate(self, other: EventsData, cache=True):

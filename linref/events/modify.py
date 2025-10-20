@@ -296,7 +296,7 @@ def round(events, decimals=None, factor=None, inplace=False):
     # Return results
     return None if inplace else events
 
-def resegment(events, length=1, fill='cut'):
+def resegment(events, length=1, fill='cut', return_relation=False):
     """
     Resegment events into smaller segments of equal length.
 
@@ -349,6 +349,10 @@ def resegment(events, length=1, fill='cut'):
                     [---------|              ]
                     [         |--------------]
     
+    return_relation : bool, default False
+        Whether to return an EventsRelation object between the resegmented
+        events and the input events to allow for easy aggregation of data.
+
     Returns
     -------
     linref.events.EventsData
@@ -411,7 +415,22 @@ def resegment(events, length=1, fill='cut'):
         ends=ends,
         allow_duplicate_index=True,
     )
-    return new_events
+
+    # Return results
+    outputs = [new_events]
+    if return_relation:
+        # Prepare relation array
+        row_index = np.arange(len(reverse_index))
+        col_index = reverse_index
+        arr = sp.csr_array(
+            (np.ones(len(reverse_index)), (row_index, col_index))
+        )
+        # Prepare relation object
+        relation = relate.EventsRelation(events, new_events, cache=True)
+        relation._intersect_data = arr
+        relation._intersect_kwargs = {}
+        outputs.append(relation)
+    return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
 def separate(events, by='centers', inplace=False):
     """

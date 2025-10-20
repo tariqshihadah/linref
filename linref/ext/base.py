@@ -130,7 +130,11 @@ class LRS_Accessor(object):
 
     def __str__(self) -> str:
         if self.is_lrs_set:
-            lrs_lines = '\n'.join(['- ' + str(o) for o in self.lrs])
+            # List LRS objects
+            lrs_lines = '\n'.join([
+                ('[ ] ' if i != self.active_index else '[*] ') + str(o)
+                for i, o in enumerate(self.lrs)
+            ])
         else:
             lrs_lines = "- No LRS set"
         return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
@@ -657,7 +661,7 @@ class LRS_Accessor(object):
         return chains.reindex_like(self.df)
     
     @_method_require(is_linear=True, is_spatial=True)
-    def add_chaining(self, name='chain', inplace=False) -> pd.DataFrame | None:
+    def add_chaining(self, name='chain', inplace=False, errors='raise') -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
@@ -669,9 +673,14 @@ class LRS_Accessor(object):
             The name of the chain index column to return.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
+        errors : {'raise', 'ignore'}, default 'raise'
+            How to handle errors when the specified column name already exists
+            in the dataframe.
         """
         # Validate chain column name
         if name in self.active_lrs.key_col:
+            if errors == 'ignore':
+                return None if inplace else self.df
             raise ValueError(
                 f"Column name '{name}' is already in use as a key column in "
                 "the active LRS.")
@@ -716,7 +725,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_linear=True)
-    def resegment(self, length=1, fill='cut', inplace=False) -> pd.DataFrame | None:
+    def resegment(self, length=1, fill='cut', inplace=False, return_relation=False) -> pd.DataFrame | None:
         """
         Resegment the events of the active LRS to the specified length.
 
@@ -766,18 +775,31 @@ class LRS_Accessor(object):
             extend :
                         [---------|              ]
                         [         |--------------]
-        
+
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        return_relation : bool, default False
+            Whether to return an EventsRelation object between the resegmented
+            events and the input events to allow for easy aggregation of data.
+
         Returns
         -------
         df : DataFrame
             A copy of the current DataFrame with the events resegmented.
         """
         # Resegment events
-        events = self.events.resegment(length=length, fill=fill)
+        output = self.events.resegment(length=length, fill=fill, return_relation=return_relation)
+        events = output[0] if isinstance(output, tuple) else output
         # Apply changes to the DataFrame
         df_left = events.to_frame()
         df_right = self.df[self.other_cols]
-        return pd.merge(df_left, df_right, left_index=True, right_index=True)
+        df = pd.merge(df_left, df_right, left_index=True, right_index=True)
+        # Return results
+        if inplace:
+            self._df = df
+            return
+        else:
+            return (df, output[-1]) if return_relation else df
     
     @_method_require(is_linear=True)
     def dissolve(
@@ -848,6 +870,8 @@ class LRS_Accessor(object):
             merged = np.array([i.geom for i in merged_m])
             df[self.geom_col] = merged
             df[self.geom_m_col] = merged_m
+        elif merge_geom:
+            raise ValueError("Cannot merge geometries: no geometry column in the dataframe.")
 
         # Return results
         return (df, output[-1]) if return_relation else df
