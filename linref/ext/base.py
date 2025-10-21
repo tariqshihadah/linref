@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+import shapely
 import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
 from scipy import sparse as sp
@@ -35,12 +36,12 @@ class LRS(object):
         return (
             "LRS("
             f"key_col={self.key_col}, "
-            f"loc_col={self.loc_col}, "
-            f"beg_col={self.beg_col}, "
-            f"end_col={self.end_col}, "
-            f"geom_col={self.geom_col}, "
-            f"geom_m_col={self.geom_m_col}, "
-            f"closed={self.closed})"
+            f"loc_col={"'" + self.loc_col + "'" if isinstance(self.loc_col, str) else self.loc_col}, "
+            f"beg_col={"'" + self.beg_col + "'" if isinstance(self.beg_col, str) else self.beg_col}, "
+            f"end_col={"'" + self.end_col + "'" if isinstance(self.end_col, str) else self.end_col}, "
+            f"geom_col={"'" + self.geom_col + "'" if isinstance(self.geom_col, str) else self.geom_col}, "
+            f"geom_m_col={"'" + self.geom_m_col + "'" if isinstance(self.geom_m_col, str) else self.geom_m_col}, "
+            f"closed={"'" + self.closed + "'" if isinstance(self.closed, str) else self.closed})"
         )
     
     @property
@@ -383,6 +384,23 @@ class LRS_Accessor(object):
         # Create the events object
         return self.get_events()
     
+    def check_exact_geoms(self, if_missing: bool=True) -> np.ndarray:
+        """
+        Check if geometries in both the geometry and geometry_m columns are
+        exactly the same, returning an array of boolean values.
+
+        Parameters
+        ----------
+        if_missing : bool, default True
+            The value to return for rows where either geometry column is missing.
+        """
+        # Check for presence of geometry columns
+        if not self.is_spatial or not self.is_spatial_m:
+            return np.array([if_missing] * len(self._df))
+        # Compare geometries
+        return np.array([shapely.equals_exact(geom, geom_m.geom, tolerance=0)
+                         for geom, geom_m in zip(self.geoms, self.geoms_m)])
+    
     def get_keys(self, col=None, require=True) -> np.ndarray:
         # Select data from the dataframe if keys are present
         if col is None:
@@ -524,6 +542,29 @@ class LRS_Accessor(object):
         """
         self._lrs = []
 
+    def build_geom_m(self) -> np.ndarray:
+        """
+        Build a list of geometry_m objects based on the begin and end 
+        locations of the active LRS.
+
+        Returns
+        -------
+        geoms_m : np.ndarray
+            An array of geometry_m objects.
+        """
+        # Check for presence of geometries
+        if not self.active_lrs.is_spatial:
+            raise ValueError("No geometry column in the active LRS.")
+        if not self.is_spatial:
+            raise ValueError("LRS geometry column not present in the DataFrame.")
+        def _upgrade_geom(geom, beg, end):
+            geom_m = geometry.LineStringM(geom)
+            geom_m.set_m_from_bounds(beg=beg, end=end, inplace=True)
+            return geom_m
+        # Cast linear geometries to LineStringM
+        geoms_m = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
+        return np.array(geoms_m)
+
     def add_geom_m(self, name='geometry_m', inplace=False) -> pd.DataFrame | None:
         """
         Add a geometry column to the DataFrame based on the begin and end 
@@ -536,21 +577,13 @@ class LRS_Accessor(object):
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
         """
-        def _upgrade_geom(geom, beg, end):
-            geom_m = geometry.LineStringM(geom)
-            geom_m.set_m_from_bounds(beg=beg, end=end, inplace=True)
-            return geom_m
         # Cast linear geometries to LineStringM
-        geoms_m = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
+        geoms_m = self.build_geom_m()
         # Apply changes to the DataFrame
         df = self.df if inplace else self.df.copy()
         df[name] = geoms_m
         # Update LRS if needed
-        if not self.is_spatial:
-            new_lrs = self.active_lrs.copy(deep=True)
-            new_lrs.geom_m_col = name
-            df.lr.add_lrs(new_lrs, activate=True)
-        elif self.active_lrs.geom_m_col != name:
+        if self.active_lrs.geom_m_col != name:
             new_lrs = self.active_lrs.copy(deep=True)
             new_lrs.geom_m_col = name
             df.lr.add_lrs(new_lrs, activate=True)
@@ -844,37 +877,42 @@ class LRS_Accessor(object):
             key_col = retain
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
-        output = events.dissolve(sort=sort, return_index=True, return_relation=return_relation)
+        data, index, relation = events.dissolve(sort=sort, return_index=True, return_relation=True)
         # Convert events to dataframe
-        df = output[0].to_frame(
+        df = data.to_frame(
             index_name=self._df.index.name,
             group_name=key_col,
             loc_name=self.loc_col,
             beg_name=self.beg_col,
             end_name=self.end_col,
         ).lr.lrs_like(self)
-        output[-1].left_df = df
-        output[-1].right_df = self.df
+        relation.left_df = df
+        relation.right_df = self.df
 
         # Append inverse index
         if inverse_index:
-            df[inverse_label] = output[1]
+            df[inverse_label] = index
         # Merge geometries
         if merge_geom and self.is_spatial_m:
-            merged_m = output[-1][self.geom_m_col].linemerge_m()
+            # Merge from existing geometry_m column
+            merged_m = relation[self.geom_m_col].linemerge_m()
             merged = np.array([i.geom for i in merged_m])
-            df[self.geom_col] = merged
+            # Assign merged geometries to the dataframe
+            if self.is_spatial:
+                df[self.geom_col] = merged
             df[self.geom_m_col] = merged_m
         elif merge_geom and self.is_spatial:
-            merged_m = output[-1][self.geom_col].linemerge_m()
+            # Merge from ad-hoc geometry_m data
+            merged_m = relation.linemerge_m(data=self.build_geom_m())
             merged = np.array([i.geom for i in merged_m])
+            # Assign merged geometries to the dataframe
             df[self.geom_col] = merged
             df[self.geom_m_col] = merged_m
         elif merge_geom:
             raise ValueError("Cannot merge geometries: no geometry column in the dataframe.")
 
         # Return results
-        return (df, output[-1]) if return_relation else df
+        return (df, relation) if return_relation else df
     
     def relate(self, other, cache=True) -> relate.EventsRelation:
         """

@@ -458,7 +458,7 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_
                     # Check if the M values are consistent
                     if node_m is not None:
                         if node_m != obj.m[0]:
-                            msg = 'Inconsistent m values detected in merged geometry'
+                            msg = f"Inconsistent m values detected at the termini of adjacent chained geometries: m values {node_m} and {obj.m[0]}."
                             if not allow_mismatch:
                                 raise ValueError(msg)
                             else:

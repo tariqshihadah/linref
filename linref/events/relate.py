@@ -104,23 +104,29 @@ def _validate_agg_1d_data_wrapper(func) -> callable:
         else:
             if isinstance(data, pd.Series):
                 data = data.values
-            elif not isinstance(data, np.ndarray):
+            else:
+                try:
+                    data = np.asarray(data)
+                except AttributeError:
+                    pass
+            if not isinstance(data, np.ndarray):
                 raise TypeError(
                     "Input aggregation data must be a numpy array or pandas "
-                    "Series.")
+                    f"Series. Given type: {type(data)}.")
             if data.ndim != 1:
                 raise ValueError(
-                    "Input aggregation data must be a 1D numpy array.")
+                    "Input aggregation data must be a 1D numpy array. Given "
+                    f"array with {data.ndim} dimensions.")
             if axis == 0 and data.shape[0] != args[0].left.num_events:
                 raise ValueError(
                     "When axis=0, the input aggregation data's first dimension "
                     "must be equal to the number of events in the left "
-                    "collection.")
+                    "collection. Given shape: {data.shape}.")
             if axis == 1 and data.shape[0] != args[0].right.num_events:
                 raise ValueError(
                     "When axis=1, the input aggregation data's first dimension "
                     "must be equal to the number of events in the right "
-                    "collection.")
+                    "collection. Given shape: {data.shape}.")
         return func(*args, data=data, **kwargs)
     return wrapper
 
