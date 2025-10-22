@@ -4,6 +4,7 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 import copy, hashlib
+from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from scipy import sparse as sp
 from linref.ext.utility import label_list_or_none, label_or_none
@@ -16,19 +17,16 @@ from linref.events import relate, geometry
 class LRS(object):
 
     def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, geom_m_col=None, closed=None) -> None:
-        # Validate LRS column labels
-        self.key_col = label_list_or_none(key_col)
-        self.loc_col = label_or_none(loc_col)
-        self.beg_col = label_or_none(beg_col)
-        self.end_col = label_or_none(end_col)
-        self.geom_col = label_or_none(geom_col)
-        self.geom_m_col = label_or_none(geom_m_col)
-        # Validate LRS closure
-        if closed not in closed_all:
-            raise ValueError(
-                f"Invalid LRS closure: {closed}. Must be one of: {closed_all}.")
-        else:
-            self.closed = closed
+        # Set LRS parameters
+        self.set_params(
+            key_col=key_col,
+            loc_col=loc_col,
+            beg_col=beg_col,
+            end_col=end_col,
+            geom_col=geom_col,
+            geom_m_col=geom_m_col,
+            closed=closed
+        )
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -69,6 +67,18 @@ class LRS(object):
     def is_spatial_m(self) -> bool:
         return self.geom_m_col is not None
     
+    @property
+    def params(self) -> dict:
+        return {
+            'key_col': self.key_col,
+            'loc_col': self.loc_col,
+            'beg_col': self.beg_col,
+            'end_col': self.end_col,
+            'geom_col': self.geom_col,
+            'geom_m_col': self.geom_m_col,
+            'closed': self.closed
+        }
+    
     def copy(self, deep=False) -> LRS:
         """
         Create an exact copy of the object instance.
@@ -80,8 +90,68 @@ class LRS(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
+    def set_params(self, **kwargs) -> None:
+        """
+        Set LRS parameters.
+
+        Parameters
+        ----------
+        key_col : label or array-like, optional
+            The key column or array-like of key columns to set.
+        loc_col : label, optional
+            The location column to set.
+        beg_col : label, optional
+            The begin location column to set.
+        end_col : label, optional
+            The end location column to set.
+        geom_col : label, optional
+            The geometry column to set.
+        geom_m_col : label, optional
+            The geometry_m column to set.
+        closed : {'left', 'right', 'left_mod', 'right_mod', 'both', 'neither'}, optional
+            The closure type to set.
+        """
+        for key, value in kwargs.items():
+            if key == 'key_col':
+                self.key_col = label_list_or_none(value)
+            elif key == 'loc_col':
+                self.loc_col = label_or_none(value)
+            elif key == 'beg_col':
+                self.beg_col = label_or_none(value)
+            elif key == 'end_col':
+                self.end_col = label_or_none(value)
+            elif key == 'geom_col':
+                self.geom_col = label_or_none(value)
+            elif key == 'geom_m_col':
+                self.geom_m_col = label_or_none(value)
+            elif key == 'closed':
+                if value not in closed_all:
+                    raise ValueError(
+                        f"Invalid LRS closure: {value}. Must be one of: {closed_all}.")
+                self.closed = value
+    
     def add_key(self, key_col) -> None:
+        """
+        Add one or more key columns to the LRS.
+        
+        Parameters
+        ----------
+        key_col : label or array-like
+            The key column or array-like of key columns to add.
+        """
         self.key_col.extend(label_list_or_none(key_col))
+
+    def remove_key(self, key_col) -> None:
+        """
+        Remove one or more key columns from the LRS.
+
+        Parameters
+        ----------
+        key_col : label or array-like
+            The key column or array-like of key columns to remove.
+        """
+        for key in label_list_or_none(key_col):
+            self.key_col.remove(key)
 
     def study(self, df) -> dict:
         """
@@ -145,8 +215,7 @@ class LRS_Accessor(object):
         """
         Activate an LRS by index.
         """
-        self.activate_lrs(index)
-        return self
+        return self.copy().activate_lrs(index)
     
     @property
     def df(self) -> pd.DataFrame:
@@ -478,11 +547,11 @@ class LRS_Accessor(object):
         # Copy LRS settings
         if isinstance(other, pd.DataFrame):
             other = other.lr
-        df.lr.set_lrs(other.lrs, append=False)
-        df.lr.activate_lrs(other.active_index)
+        df.lr.set_lrs(other.lrs, append=False, inplace=True)
+        df.lr.activate_lrs(other.active_index, inplace=True)
         return df
     
-    def activate_lrs(self, index) -> None:
+    def activate_lrs(self, index, inplace=False) -> None:
         """
         Activate a specific LRS for the DataFrame by selecting the index from 
         the list of LRS objects.
@@ -492,13 +561,17 @@ class LRS_Accessor(object):
         index : int
             The index of the LRS object to activate. Used to index the list of
             LRS objects stored in the DataFrame.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
         """
         if index >= len(self.lrs):
             raise ValueError(
                 f"Invalid LRS index: {index}. Must be less than {len(self.lrs)}.")
-        self._active_index = index
+        obj = self if inplace else self.copy()
+        obj._active_index = index
+        return None if inplace else obj
 
-    def set_lrs(self, lrs=None, append=False, activate=False, **kwargs) -> None:
+    def set_lrs(self, lrs=None, append=False, activate=False, inplace=False, **kwargs) -> None:
         """
         Set the LRS object for the DataFrame.
 
@@ -512,6 +585,8 @@ class LRS_Accessor(object):
         activate : bool, default False
             Whether to activate the added LRS object. If multiple LRS objects
             are added, the last object will be activated.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
         """
         # Validate LRS object type
         if lrs is None:
@@ -522,16 +597,19 @@ class LRS_Accessor(object):
             raise ValueError("Input LRS objects must be of type `LRS`.")
         
         # Append or replace LRS objects
+        obj = self if inplace else self.copy()
         if append:
-            self._lrs.extend(lrs)
+            obj._lrs.extend(lrs)
         else:
-            self._lrs = lrs
+            obj._lrs = lrs
 
         # Activate LRS object if requested
         if activate:
-            self.activate_lrs(len(self.lrs) - 1)
-        
-    def add_lrs(self, lrs=None, activate=False, **kwargs) -> None:
+            obj.activate_lrs(len(obj.lrs) - 1)
+
+        return None if inplace else obj
+
+    def add_lrs(self, lrs=None, activate=False, inplace=False, **kwargs) -> None:
         """
         Add LRS objects to the DataFrame. Equivalent to 
         `set_lrs(..., append=True)`.
@@ -543,14 +621,55 @@ class LRS_Accessor(object):
         activate : bool, default False
             Whether to activate the added LRS object. If multiple LRS objects
             are added, the last object will be activated.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
         """
-        self.set_lrs(lrs=lrs, append=True, activate=activate, **kwargs)
+        self.set_lrs(lrs=lrs, append=True, activate=activate, inplace=inplace, **kwargs)
 
-    def clear_lrs(self) -> None:
+    def modify_lrs(self, index=None, activate=True, append=False, inplace=False, **kwargs) -> None:
+        """
+        Modify the parameters of an existing LRS object in the DataFrame.
+
+        Parameters
+        ----------
+        index : int, default None
+            The index of the LRS object to modify. If None, the active LRS
+            object will be modified.
+        activate : bool, default True
+            Whether to activate the modified LRS object.
+        append : bool, default False
+            Whether to append the modified LRS object to the existing LRS objects
+            or to replace the indexed LRS object.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Get index of LRS to modify
+        if index is None:
+            index = self.active_index
+        # Modify LRS parameters
+        lrs = self.lrs[index].copy().set_params(**kwargs)
+        # Append or replace LRS object
+        obj = self if inplace else self.copy()
+        if append:
+            obj._lrs.append(lrs)
+            index = -1
+        # Activate modified LRS if requested
+        if activate:
+            obj.activate_lrs(index)
+        return None if inplace else obj
+
+    def clear_lrs(self, inplace=False) -> None:
         """
         Clear the LRS objects from the DataFrame.
+
+        Parameters
+        ----------
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
         """
-        self._lrs = []
+        obj = self if inplace else self.copy()
+        obj._lrs = []
+        return None if inplace else obj
 
     def build_geom_m(self) -> np.ndarray:
         """
@@ -866,7 +985,7 @@ class LRS_Accessor(object):
         retain=[], 
         sort=False, 
         inverse_index=True, 
-        inverse_label='dissolved_index', 
+        inverse_col='dissolved_index', 
         merge_geom=True,
         return_relation=False,
         ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
@@ -883,7 +1002,7 @@ class LRS_Accessor(object):
             may produce unexpected results.
         inverse_index : bool, default True
             Whether to append an inverse index to the dissolved events dataframe.
-        inverse_label : str, default 'dissolved_index'
+        inverse_col : str, default 'dissolved_index'
             The label for the inverse index column.
         merge_geom : bool, default True
             Whether to merge the geometries of the dissolved events if present
@@ -917,23 +1036,38 @@ class LRS_Accessor(object):
 
         # Append inverse index
         if inverse_index:
-            df[inverse_label] = index
+            df[inverse_col] = index
         # Merge geometries
+        # - Merge from existing geometry_m column
         if merge_geom and self.is_spatial_m:
-            # Merge from existing geometry_m column
-            merged_m = relation[self.geom_m_col].linemerge_m()
+            try:
+                merged_m = relation[self.geom_m_col].linemerge_m()
+            except GeometryTypeError:
+                raise GeometryTypeError(
+                    "Linear geometries of adjacent events are disjointed and "
+                    "cannot be merged into a single geometry."
+                )
             merged = np.array([i.geom for i in merged_m])
             # Assign merged geometries to the dataframe
             if self.is_spatial:
                 df[self.geom_col] = merged
             df[self.geom_m_col] = merged_m
+
+        # - Merge from ad-hoc geometry_m data
         elif merge_geom and self.is_spatial:
-            # Merge from ad-hoc geometry_m data
-            merged_m = relation.linemerge_m(data=self.build_geom_m())
+            try:
+                merged_m = relation.linemerge_m(data=self.build_geom_m())
+            except GeometryTypeError:
+                raise GeometryTypeError(
+                    "Linear geometries of adjacent events are disjointed and "
+                    "cannot be merged into a single geometry."
+                )
             merged = np.array([i.geom for i in merged_m])
             # Assign merged geometries to the dataframe
             df[self.geom_col] = merged
             df[self.geom_m_col] = merged_m
+
+        # - No valid geometry column
         elif merge_geom:
             raise ValueError("Cannot merge geometries: no geometry column in the dataframe.")
 

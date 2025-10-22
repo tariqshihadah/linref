@@ -4,6 +4,7 @@ import copy
 import warnings
 import shapely
 from shapely.geometry import LineString, Point
+from shapely.errors import GeometryTypeError
 
 
 class LineStringM:
@@ -455,7 +456,7 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_
     except AttributeError:
         geom_iter = [merged_geom]
     if len(geom_iter) > 1 and not allow_multiple:
-        raise ValueError(
+        raise GeometryTypeError(
             'Multiple merged geometries detected. Set allow_multiple=True '
             'to perform merge anyways.')
 
