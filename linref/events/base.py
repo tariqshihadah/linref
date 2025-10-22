@@ -548,7 +548,9 @@ class EventsData:
         """
         # Check for events type
         if self.is_point and not closed is None:
-            raise ValueError("Point events do not have closed parameters.")
+            raise ValueError(
+                f"Point events do not have closed parameters. Provided: {closed}"
+            )
         # Validate input closed parameter
         if closed is None:
             closed = common.default_closed

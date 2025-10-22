@@ -271,7 +271,7 @@ class LineStringM:
         """
         # Check if M values are defined
         if self.m is None:
-            raise ValueError('M values are not defined')
+            raise ValueError('Cannot convert distance to M value: M values are not defined')
         # Check input snapping
         distance, snapped = self._check_snapping(distance, normalized=normalized, m=False, snap=snap)
         if snapped != 0:
@@ -297,6 +297,26 @@ class LineStringM:
         prop = (distance - distance_to_vertice) / \
             LineString(self.geom.coords[index: index + 2]).length
         return self.m[index] + (self.m[index + 1] - self.m[index]) * prop
+    
+    def project(self, point, normalized=False, m=False):
+        """
+        Return the distance along the linear geometry to the nearest point
+        on the geometry from the specified point.
+
+        Parameters
+        ----------
+        point : shapely.Point
+            The point to project onto the geometry.
+        normalized : bool, default False
+            Whether to return the distance as normalized (0-1) or absolute.
+        m : bool, default False
+            Whether to return the distance as an M value.
+        """
+        # Compute the projected distance
+        distance = self.geom.project(point, normalized=normalized)
+        if m:
+            distance = self.distance_to_m(distance, normalized=normalized, snap=False)
+        return distance
 
     def interpolate(self, distance, normalized=False, m=False, snap=False):
         """

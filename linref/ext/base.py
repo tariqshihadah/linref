@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 import shapely
 import copy, hashlib
 from pandas.api.extensions import register_dataframe_accessor
@@ -334,11 +335,14 @@ class LRS_Accessor(object):
         """
         if self.loc_col is None:
             return False
-        elif self.beg_col is not None or self.end_col is not None:
-            return False
-        else:
-            # Check for presence of location column in the dataframe
-            return self.loc_col in self._df.columns
+        if self.beg_col is not None:
+            if self.beg_col in self._df.columns:
+                return False
+        if self.end_col is not None:
+            if self.end_col in self._df.columns:
+                return False
+        # Check for presence of location column in the dataframe
+        return self.loc_col in self._df.columns
     
     @property
     def is_located(self) -> bool:
@@ -375,6 +379,12 @@ class LRS_Accessor(object):
         else:
             # Check for presence of geometry column in the dataframe
             return self.geom_m_col in self._df.columns
+        
+    def study(self) -> dict:
+        """
+        Evaluate which LRS properties are satisfied by the dataframe.
+        """
+        return self.active_lrs.study(self._df)
 
     @property
     def events(self) -> EventsData:
@@ -431,7 +441,7 @@ class LRS_Accessor(object):
             locs=self.locs if self.loc_col else None,
             begs=self.begs if self.beg_col else None,
             ends=self.ends if self.end_col else None,
-            closed=self.closed,
+            closed=self.closed if not self.is_point else None,
             force_monotonic=False
         )
     
@@ -757,6 +767,22 @@ class LRS_Accessor(object):
             obj.ends = events.ends
         return None if inplace else obj.df
     
+    def round(self, decimals=0, inplace=False) -> pd.DataFrame | None:
+        """
+        Round the events of the active LRS to the specified number of 
+        decimals.
+        """
+        # Round events
+        events = self.events.round(decimals=decimals, inplace=False)
+        # Apply changes to the DataFrame
+        obj = self if inplace else self.copy()
+        if self.is_located:
+            obj.locs = events.locs
+        if self.is_linear:
+            obj.begs = events.begs
+            obj.ends = events.ends
+        return None if inplace else obj.df
+    
     @_method_require(is_linear=True)
     def resegment(self, length=1, fill='cut', inplace=False, return_relation=False) -> pd.DataFrame | None:
         """
@@ -1001,4 +1027,89 @@ class LRS_Accessor(object):
             chunksize=chunksize,
             grouped=grouped
         )
-    
+
+    @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
+    def project(self, other, buffer=100, nearest=True, distance_col='project_distance'):
+        """
+        Project the input DataFrame of point events onto the active DataFrame
+        of linear events.
+
+        Parameters
+        ----------
+        other : DataFrame
+            The other DataFrame to project. Must be point-based and spatially
+            referenced.
+        buffer : float, default 100
+            The buffer distance to use when searching for nearest linear events.
+            In units of the spatial reference system.
+        nearest : bool, default True
+            Whether to choose only the nearest match within the defined buffer. 
+            If False, all matches will be returned. If True, when multiple 
+            equidistant points exist, choose the first result that appears.
+        dist_label : str, default 'project_distance'
+            The label for the distance column in the returned DataFrame.
+        """
+        # Ensure that the active LRS has a location column
+        if self.loc_col is None:
+            raise ValueError(
+                "Active LRS must contain a location column to be applied to "
+                "the projected points."
+            )
+        # Validate input geodataframe
+        if not isinstance(other, gpd.GeoDataFrame):
+            raise TypeError("Other object must be gpd.GeoDataFrame instance.")
+        else:
+            try:
+                other_geometry_name = other.geometry.name
+            except AttributeError:
+                raise AttributeError(
+                    "No geometry data set in other geodataframe.")
+        # Check for presence of LRS columns already in the other dataframe
+        protected_cols = set(self.key_col + [self.loc_col, distance_col])
+        overlapping_cols = protected_cols.intersection(set(other.columns))
+        if len(overlapping_cols) > 0:
+            raise ValueError(
+                f"Other geodataframe contains protected column names: "
+                f"{', '.join(overlapping_cols)}"
+            )
+
+        # Log dataframe index name
+        index_right_name = (
+            self.df.index.name if self.df.index.name is not None else 'index_right'
+        )
+        # Spatial join points to lines
+        select_cols = self.key_col + [self.geom_col, self.geom_m_col]
+        if nearest:
+            joined = other.sjoin_nearest(
+                self.df[select_cols],
+                how='left',
+                max_distance=buffer,
+                distance_col=distance_col,
+            )
+            # Drop duplicates for cases of equidistant matches
+            joined = joined[~joined.index.duplicated(keep='first')]
+        else:
+            joined = other.sjoin(
+                self.df[select_cols],
+                how='left',
+                predicate='dwithin',
+                distance=buffer,
+            )
+            # Get distances for all matches
+            left_geoms = joined.geometry
+            right_geoms = gpd.GeoSeries(
+                joined[index_right_name].replace(self.df[self.geom_col]),
+                crs=self.df.crs,
+            )
+            joined[distance_col] = left_geoms.distance(right_geoms)
+        
+        # Project input points onto event geometries
+        def _project(r):
+            try:
+                return r[self.geom_m_col].project(r[other_geometry_name], m=True)
+            except AttributeError:
+                return
+        locs = joined.apply(_project, axis=1)
+        joined[self.loc_col] = locs
+        # Return projected dataframe
+        return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
