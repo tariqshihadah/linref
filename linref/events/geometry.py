@@ -201,6 +201,7 @@ class LineStringM:
         # Compute the M values for each vertex
         m_span = end - beg
         m = np.append(beg, self.chord_proportions.cumsum() * m_span + beg)
+        m[-1] = end  # Ensure exact match at the end
         # Update the M values
         return self.set_m_from_array(m, inplace=inplace)
     
@@ -458,7 +459,11 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_
                     # Check if the M values are consistent
                     if node_m is not None:
                         if node_m != obj.m[0]:
-                            msg = f"Inconsistent m values detected at the termini of adjacent chained geometries: m values {node_m} and {obj.m[0]}."
+                            msg = (
+                                "Inconsistent m values detected at the "
+                                "termini of adjacent chained geometries: "
+                                f"m values {node_m} and {obj.m[0]}."
+                            )
                             if not allow_mismatch:
                                 raise ValueError(msg)
                             else:
