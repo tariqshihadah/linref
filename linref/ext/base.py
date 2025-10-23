@@ -12,6 +12,7 @@ from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import relate, geometry
+from linref.errors import LRSConfigurationError, LRSCompatibilityError
 
 
 class LRS(object):
@@ -475,15 +476,15 @@ class LRS_Accessor(object):
         current object for relational operations.
         """
         if not isinstance(other, pd.DataFrame):
-            raise ValueError("Input object must be of type `pd.DataFrame`.")
+            raise TypeError("Input object must be of type `pd.DataFrame`.")
         if not other.lr.is_lrs_set:
-            raise ValueError("Input DataFrame has no LRS set.")
+            raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not self.is_lrs_set:
-            raise ValueError("Current DataFrame has no LRS set.")
+            raise LRSConfigurationError("Current DataFrame has no LRS set.")
         if len(self.active_lrs.key_col) != len(other.lr.active_lrs.key_col):
-            raise ValueError("LRS of other DataFrame has a different number of key columns.")
+            raise LRSCompatibilityError("LRS of other DataFrame has a different number of key columns.")
         if self.active_lrs.groups.dtype != other.lr.active_lrs.groups.dtype:
-            raise ValueError("LRS of other DataFrame has different key column data types.")
+            raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
     
     def check_exact_geoms(self, if_missing: bool=True) -> np.ndarray:
         """

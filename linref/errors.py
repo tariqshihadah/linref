@@ -3,3 +3,6 @@ class LinrefError(Exception):
 
 class LRSConfigurationError(LinrefError):
     """Exception raised for errors in the LRS configuration."""
+
+class LRSCompatibilityError(LinrefError):
+    """Exception raised for LRS compatibility issues between DataFrames."""
