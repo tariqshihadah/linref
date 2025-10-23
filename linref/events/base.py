@@ -7,6 +7,7 @@ import warnings
 
 # Import helper modules
 from linref.events import common, utility, relate, modify, selection, analyze
+from linref.errors import LRSConfigurationError
 
 
 class EventsData:
@@ -331,7 +332,7 @@ class EventsData:
             # If locs are passed as an anchor reference, validate
             if isinstance(locs, str):
                 if not locs in common.anchors_locs:
-                    raise ValueError(
+                    raise LRSConfigurationError(
                         f"Invalid anchor reference for `locs`. Must be one of: {common.anchors_locs}."
                     )
             # Convert data to numpy arrays
@@ -350,7 +351,7 @@ class EventsData:
         
         # - Invalid input data case
         else:
-            raise ValueError(
+            raise LRSConfigurationError(
                 "Invalid input data. Must provide either `locs`, `begs` and `ends`, or both. "
                 f"Received: locs={locs is not None}, begs={begs is not None}, ends={ends is not None}."
             )
@@ -548,14 +549,14 @@ class EventsData:
         """
         # Check for events type
         if self.is_point and not closed is None:
-            raise ValueError(
+            raise LRSConfigurationError(
                 f"Point events do not have closed parameters. Provided: {closed}"
             )
         # Validate input closed parameter
         if closed is None:
             closed = common.default_closed
         elif not closed in common.closed_all:
-            raise ValueError(
+            raise LRSConfigurationError(
                 "Collection's closed parameter must be one of "
                 f"{common.closed_all}.")
         # Apply changes
@@ -924,7 +925,7 @@ class EventsData:
         return modify.resegment(self, length=length, fill=fill, return_relation=return_relation)
 
     @utility._method_require(is_empty=False)
-    def relate(self, other: EventsData, cache=True):
+    def relate(self, other: EventsData, cache=True, **kwargs):
         """
         Create an events data relationship between two collections of events.
 
@@ -942,7 +943,7 @@ class EventsData:
         -------
         linref.events.relate.EventsRelation
         """
-        return relate.EventsRelation(self, other, cache=cache)
+        return relate.EventsRelation(self, other, cache=cache, **kwargs)
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def overlay(self, other: EventsData, normalize=False, norm_by='right', chunksize=1000, grouped=True):

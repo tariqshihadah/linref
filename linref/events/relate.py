@@ -831,7 +831,7 @@ class EventsRelation(object):
             1D array if possible.
         """
         # Check for cached data
-        arr = self._get_method_data(method)
+        arr = self._get_method_data(method).tocsr() # Indexing requires CSR
         
         # Perform aggregation
         aggregated = []

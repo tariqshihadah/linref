@@ -25,7 +25,8 @@ class LRS(object):
             end_col=end_col,
             geom_col=geom_col,
             geom_m_col=geom_m_col,
-            closed=closed
+            closed=closed,
+            inplace=True
         )
 
     def __repr__(self) -> str:
@@ -90,12 +91,14 @@ class LRS(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
-    def set_params(self, **kwargs) -> None:
+    def set_params(self, inplace=False, **kwargs) -> None:
         """
         Set LRS parameters.
 
         Parameters
         ----------
+        inplace : bool, default False
+            Whether to apply changes to the LRS in place.
         key_col : label or array-like, optional
             The key column or array-like of key columns to set.
         loc_col : label, optional
@@ -111,24 +114,27 @@ class LRS(object):
         closed : {'left', 'right', 'left_mod', 'right_mod', 'both', 'neither'}, optional
             The closure type to set.
         """
+        obj = self if inplace else self.copy(deep=True)
         for key, value in kwargs.items():
             if key == 'key_col':
-                self.key_col = label_list_or_none(value)
+                obj.key_col = label_list_or_none(value)
             elif key == 'loc_col':
-                self.loc_col = label_or_none(value)
+                obj.loc_col = label_or_none(value)
             elif key == 'beg_col':
-                self.beg_col = label_or_none(value)
+                obj.beg_col = label_or_none(value)
             elif key == 'end_col':
-                self.end_col = label_or_none(value)
+                obj.end_col = label_or_none(value)
             elif key == 'geom_col':
-                self.geom_col = label_or_none(value)
+                obj.geom_col = label_or_none(value)
             elif key == 'geom_m_col':
-                self.geom_m_col = label_or_none(value)
+                obj.geom_m_col = label_or_none(value)
             elif key == 'closed':
                 if value not in closed_all:
                     raise ValueError(
                         f"Invalid LRS closure: {value}. Must be one of: {closed_all}.")
-                self.closed = value
+                obj.closed = value
+
+        return None if inplace else obj
     
     def add_key(self, key_col) -> None:
         """
@@ -463,6 +469,22 @@ class LRS_Accessor(object):
         # Create the events object
         return self.get_events()
     
+    def _validate_other_dataframe_lrs(self, other) -> None:
+        """
+        Validate that another dataframe object is compatible with the 
+        current object for relational operations.
+        """
+        if not isinstance(other, pd.DataFrame):
+            raise ValueError("Input object must be of type `pd.DataFrame`.")
+        if not other.lr.is_lrs_set:
+            raise ValueError("Input DataFrame has no LRS set.")
+        if not self.is_lrs_set:
+            raise ValueError("Current DataFrame has no LRS set.")
+        if len(self.active_lrs.key_col) != len(other.lr.active_lrs.key_col):
+            raise ValueError("LRS of other DataFrame has a different number of key columns.")
+        if self.active_lrs.groups.dtype != other.lr.active_lrs.groups.dtype:
+            raise ValueError("LRS of other DataFrame has different key column data types.")
+    
     def check_exact_geoms(self, if_missing: bool=True) -> np.ndarray:
         """
         Check if geometries in both the geometry and geometry_m columns are
@@ -646,16 +668,87 @@ class LRS_Accessor(object):
         # Get index of LRS to modify
         if index is None:
             index = self.active_index
+        # Address deep copy of LRS list to avoid overwriting
+        if inplace:
+            obj = self
+        else:
+            obj = self.copy()
+            obj._lrs = copy.deepcopy(obj._lrs)
         # Modify LRS parameters
-        lrs = self.lrs[index].copy().set_params(**kwargs)
+        lrs = obj.lrs[index].copy(deep=True).set_params(inplace=False, **kwargs)
         # Append or replace LRS object
-        obj = self if inplace else self.copy()
         if append:
             obj._lrs.append(lrs)
             index = -1
+        else:
+            obj._lrs[index] = lrs
         # Activate modified LRS if requested
         if activate:
-            obj.activate_lrs(index)
+            obj.activate_lrs(index, inplace=True)
+        return None if inplace else obj
+    
+    def add_key(self, key_col, index=None, activate=True, inplace=False) -> None:
+        """
+        Add one or more key columns to an existing LRS object in the DataFrame.
+
+        Parameters
+        ----------
+        key_col : label or array-like
+            The key column or array-like of key columns to add.
+        index : int, default None
+            The index of the LRS object to modify. If None, the active LRS
+            object will be modified.
+        activate : bool, default True
+            Whether to activate the modified LRS object.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Get index of LRS to modify
+        if index is None:
+            index = self.active_index
+        # Address deep copy of LRS list to avoid overwriting
+        if inplace:
+            obj = self
+        else:
+            obj = self.copy()
+            obj._lrs = copy.deepcopy(obj._lrs)
+        # Add key columns
+        obj.lrs[index].add_key(key_col)
+        # Activate modified LRS if requested
+        if activate:
+            obj.activate_lrs(index, inplace=True)
+        return None if inplace else obj
+    
+    def remove_key(self, key_col, index=None, activate=True, inplace=False) -> None:
+        """
+        Remove one or more key columns from an existing LRS object in the DataFrame.
+
+        Parameters
+        ----------
+        key_col : label or array-like
+            The key column or array-like of key columns to remove.
+        index : int, default None
+            The index of the LRS object to modify. If None, the active LRS
+            object will be modified.
+        activate : bool, default True
+            Whether to activate the modified LRS object.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Get index of LRS to modify
+        if index is None:
+            index = self.active_index
+        # Address deep copy of LRS list to avoid overwriting
+        if inplace:
+            obj = self
+        else:
+            obj = self.copy()
+            obj._lrs = copy.deepcopy(obj._lrs)
+        # Remove key columns
+        obj.lrs[index].remove_key(key_col)
+        # Activate modified LRS if requested
+        if activate:
+            obj.activate_lrs(index, inplace=True)
         return None if inplace else obj
 
     def clear_lrs(self, inplace=False) -> None:
@@ -835,7 +928,7 @@ class LRS_Accessor(object):
             The name of the chain index column to return.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
-        errors : {'raise', 'ignore'}, default 'raise'
+        errors : {'raise', 'overwrite', 'ignore'}, default 'raise'
             How to handle errors when the specified column name already exists
             in the dataframe.
         """
@@ -843,18 +936,22 @@ class LRS_Accessor(object):
         if name in self.active_lrs.key_col:
             if errors == 'ignore':
                 return None if inplace else self.df
-            raise ValueError(
-                f"Column name '{name}' is already in use as a key column in "
-                "the active LRS.")
+            elif errors == 'overwrite':
+                self.df = self.df.drop(columns=[name], errors='ignore')
+            else:
+                raise ValueError(
+                    f"Column name '{name}' is already in use as a key column in "
+                    "the active LRS.")
         # Get chain indices
         chains = self.get_chains(name=name)
         # Apply changes to the DataFrame
         df = self.df if inplace else self.df.copy()
         df[name] = chains
         # Update LRS
-        new_lrs = self.active_lrs.copy(deep=True)
-        new_lrs.add_key(name)
-        df.lr.add_lrs(new_lrs, activate=True)
+        if not name in self.active_lrs.key_col:
+            new_lrs = self.active_lrs.copy(deep=True)
+            new_lrs.add_key(name)
+            df.lr.add_lrs(new_lrs, activate=True, inplace=True)
         return None if inplace else df
 
     @_method_require(is_linear=True)
@@ -1082,17 +1179,21 @@ class LRS_Accessor(object):
         Parameters
         ----------
         other : DataFrame
-            The other DataFrame to relate with. Must be linearly referenced.
+            The other DataFrame to relate with. Must have an equivalent 
+            linear referencing system.
         cache : bool, default True
             Whether to cache computed relationship operations, such as 
             intersections and overlays, for faster subsequent operations. For 
             one-time operations or to save on memory use for large datasets, 
             set cache=False.
         """
+        self._validate_other_dataframe_lrs(other)
         # Create relationship
         return self.events.relate(
             other=other.lr.events,
-            cache=cache
+            cache=cache,
+            left_df=self.df,
+            right_df=other,
         )
     
     def overlay(self, other, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_array:
@@ -1103,7 +1204,8 @@ class LRS_Accessor(object):
         Parameters
         ----------
         other : DataFrame
-            The other DataFrame to overlay with. Must be linearly referenced.
+            The other DataFrame to overlay with. Must have an equivalent 
+            linear referencing system.
         normalize : bool, default False
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
@@ -1122,6 +1224,7 @@ class LRS_Accessor(object):
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
         """
+        self._validate_other_dataframe_lrs(other)
         # Perform overlay
         return self.events.overlay(
             other=other.lr.events,
@@ -1138,7 +1241,8 @@ class LRS_Accessor(object):
         Parameters
         ----------
         other : DataFrame
-            The other DataFrame to intersect with. Must be linearly referenced.
+            The other DataFrame to intersect with. Must have an equivalent 
+            linear referencing system.
         enforce_edges : bool, default True
             Whether to consider cases of coincident begin and end points, 
             according to each collection's closed state. For instances where 
@@ -1154,6 +1258,7 @@ class LRS_Accessor(object):
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
         """
+        self._validate_other_dataframe_lrs(other)
         # Perform intersect
         return self.events.intersect(
             other=other.lr.events,
