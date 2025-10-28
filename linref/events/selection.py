@@ -99,9 +99,7 @@ def _validate_group_selector(events, group, ignore_missing=True):
     
     # Convert input to array
     try:
-        display(group, events.groups.dtype, group.dtype)
         arr = np.asarray(group, dtype=events.groups.dtype)
-        display(arr, arr.dtype, arr.shape, arr.ndim)
     except:
         raise ValueError(
             "Unable to convert input group to array-like object.")

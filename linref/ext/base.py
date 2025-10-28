@@ -148,7 +148,7 @@ class LRS(object):
         """
         self.key_col.extend(label_list_or_none(key_col))
 
-    def remove_key(self, key_col) -> None:
+    def remove_key(self, key_col, errors='raise', inplace=False) -> None:
         """
         Remove one or more key columns from the LRS.
 
@@ -156,9 +156,20 @@ class LRS(object):
         ----------
         key_col : label or array-like
             The key column or array-like of key columns to remove.
+        errors : {'ignore', 'raise'}, default 'raise'
+            Whether to raise an error or ignore missing keys.
+        inplace : bool, default False
+            Whether to apply changes to the LRS in place.
         """
+        obj = self if inplace else self.copy(deep=True)
         for key in label_list_or_none(key_col):
-            self.key_col.remove(key)
+            try:
+                obj.key_col.remove(key)
+            except ValueError:
+                if errors == 'raise':
+                    raise KeyError(f"Key column '{key}' not found.")
+                continue
+        return None if inplace else obj
 
     def study(self, df) -> dict:
         """
@@ -175,19 +186,29 @@ class LRS(object):
         result = {}
         if self.is_grouped:
             missing_keys = [key for key in self.key_col if key not in df.columns]
-            result['keys'] = {'valid': len(missing_keys) == 0, 'missing': missing_keys}
+            result['keys'] = {'defined': True, 'valid': len(missing_keys) == 0, 'missing': missing_keys}
+        else:
+            result['keys'] = {'defined': False, 'valid': False, 'missing': None}
         if self.is_linear:
             missing_linear = [col for col in [self.beg_col, self.end_col] if col not in df.columns]
-            result['linear'] = {'valid': len(missing_linear) == 0, 'missing': missing_linear}
+            result['linear'] = {'defined': True, 'valid': len(missing_linear) == 0, 'missing': missing_linear}
+        else:
+            result['linear'] = {'defined': False, 'valid': False, 'missing': None}
         if self.is_located:
             valid = self.loc_col in df.columns
-            result['location'] = {'valid': valid, 'missing': self.loc_col if not valid else None}
+            result['location'] = {'defined': True, 'valid': valid, 'missing': self.loc_col if not valid else None}
+        else:
+            result['location'] = {'defined': False, 'valid': False, 'missing': None}
         if self.is_spatial:
             valid = self.geom_col in df.columns
-            result['geometry'] = {'valid': valid, 'missing': self.geom_col if not valid else None}
+            result['geometry'] = {'defined': True, 'valid': valid, 'missing': self.geom_col if not valid else None}
+        else:
+            result['geometry'] = {'defined': False, 'valid': False, 'missing': None}
         if self.is_spatial_m:
             valid = self.geom_m_col in df.columns
-            result['geometry_m'] = {'valid': valid, 'missing': self.geom_m_col if not valid else None}
+            result['geometry_m'] = {'defined': True, 'valid': valid, 'missing': self.geom_m_col if not valid else None}
+        else:
+            result['geometry_m'] = {'defined': False, 'valid': False, 'missing': None}
         return result
 
 
@@ -201,7 +222,7 @@ class LRS_Accessor(object):
         # Log dataframe
         self._df = df
         # Initialize LRS
-        self._lrs = []
+        self._lrs = self._default_lrs.copy()
         self._active_index = 0
 
     def __repr__(self) -> str:
@@ -210,20 +231,38 @@ class LRS_Accessor(object):
     def __str__(self) -> str:
         if self.is_lrs_set:
             # List LRS objects
-            lrs_lines = '\n'.join([
-                ('[ ] ' if i != self.active_index else '[*] ') + str(o)
-                for i, o in enumerate(self.lrs)
-            ])
+            lrs_lines = []
+            for i, o in enumerate(self.lrs):
+                study = o.study(self._df)
+                tags = []
+                tags.append('GR' if study['keys']      ['valid'] else 'gr' if study['keys']      ['defined'] else '--')
+                tags.append('LC' if study['location']  ['valid'] else 'lc' if study['location']  ['defined'] else '--')
+                tags.append('LN' if study['linear']    ['valid'] else 'ln' if study['linear']    ['defined'] else '--')
+                tags.append('SP' if study['geometry']  ['valid'] else 'sp' if study['geometry']  ['defined'] else '--')
+                tags.append('SM' if study['geometry_m']['valid'] else 'sm' if study['geometry_m']['defined'] else '--')
+                tags = ' '.join(tags)
+                if i == self.active_index:
+                    lrs_lines.append(f"[* {tags}] {str(o)}")
+                else:
+                    lrs_lines.append(f"[  {tags}] {str(o)}")
+            lrs_lines = '\n'.join(lrs_lines)
         else:
             lrs_lines = "- No LRS set"
         return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
 
-    def __getitem__(self, index) -> LRS_Accessor:
+    def __getitem__(self, obj) -> LRS_Accessor:
         """
-        Activate an LRS by index.
+        Activate an LRS by index or by setting it directly.
         """
-        return self.copy().activate_lrs(index)
-    
+        if isinstance(obj, int):
+            obj = self.activate_lrs(obj, inplace=False)
+            return obj
+        elif isinstance(obj, LRS):
+            obj = self.set_lrs(obj, activate=True, append=False, inplace=False)
+            return obj
+        else:
+            raise TypeError("Invalid index type. Must be an integer.")
+
     @property
     def df(self) -> pd.DataFrame:
         return self._df
@@ -256,9 +295,7 @@ class LRS_Accessor(object):
 
     @property
     def lrs(self) -> list[LRS]:
-        if len(self._lrs) > 0:
-            return self._lrs
-        return self._default_lrs
+        return self._lrs
         
     @property
     def is_lrs_set(self) -> bool:
@@ -473,8 +510,11 @@ class LRS_Accessor(object):
     def _validate_other_dataframe_lrs(self, other) -> None:
         """
         Validate that another dataframe object is compatible with the 
-        current object for relational operations.
+        current object for relational operations. Can also take input of 
+        LRS Accessor objects, returning the underlying dataframe.
         """
+        if isinstance(other, LRS_Accessor):
+            other = other.df
         if not isinstance(other, pd.DataFrame):
             raise TypeError("Input object must be of type `pd.DataFrame`.")
         if not other.lr.is_lrs_set:
@@ -482,9 +522,14 @@ class LRS_Accessor(object):
         if not self.is_lrs_set:
             raise LRSConfigurationError("Current DataFrame has no LRS set.")
         if len(self.active_lrs.key_col) != len(other.lr.active_lrs.key_col):
-            raise LRSCompatibilityError("LRS of other DataFrame has a different number of key columns.")
-        if self.active_lrs.groups.dtype != other.lr.active_lrs.groups.dtype:
+            raise LRSCompatibilityError(
+                "LRS of other DataFrame has a different number of key "
+                f"columns. Received {len(other.lr.active_lrs.key_col)} "
+                f"columns, but expected {len(self.active_lrs.key_col)}."
+            )
+        if self.events.groups.dtype != other.lr.events.groups.dtype:
             raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
+        return other
     
     def check_exact_geoms(self, if_missing: bool=True) -> np.ndarray:
         """
@@ -628,7 +673,7 @@ class LRS_Accessor(object):
 
         # Activate LRS object if requested
         if activate:
-            obj.activate_lrs(len(obj.lrs) - 1)
+            obj.activate_lrs(len(obj.lrs) - 1, inplace=True)
 
         return None if inplace else obj
 
@@ -647,7 +692,7 @@ class LRS_Accessor(object):
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
-        self.set_lrs(lrs=lrs, append=True, activate=activate, inplace=inplace, **kwargs)
+        return self.set_lrs(lrs=lrs, append=True, activate=activate, inplace=inplace, **kwargs)
 
     def modify_lrs(self, index=None, activate=True, append=False, inplace=False, **kwargs) -> None:
         """
@@ -740,13 +785,11 @@ class LRS_Accessor(object):
         if index is None:
             index = self.active_index
         # Address deep copy of LRS list to avoid overwriting
-        if inplace:
-            obj = self
-        else:
-            obj = self.copy()
-            obj._lrs = copy.deepcopy(obj._lrs)
-        # Remove key columns
-        obj.lrs[index].remove_key(key_col)
+        obj = self if inplace else self.copy()
+        lrs = obj.lrs.pop(index).copy(deep=True)
+        # Remove key columns and reinsert modified LRS
+        lrs.remove_key(key_col, inplace=True)
+        obj._lrs.insert(index, lrs)
         # Activate modified LRS if requested
         if activate:
             obj.activate_lrs(index, inplace=True)
@@ -1188,7 +1231,7 @@ class LRS_Accessor(object):
             one-time operations or to save on memory use for large datasets, 
             set cache=False.
         """
-        self._validate_other_dataframe_lrs(other)
+        other = self._validate_other_dataframe_lrs(other)
         # Create relationship
         return self.events.relate(
             other=other.lr.events,
@@ -1225,7 +1268,7 @@ class LRS_Accessor(object):
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
         """
-        self._validate_other_dataframe_lrs(other)
+        other = self._validate_other_dataframe_lrs(other)
         # Perform overlay
         return self.events.overlay(
             other=other.lr.events,
@@ -1259,7 +1302,7 @@ class LRS_Accessor(object):
             This will affect the memory usage and performance of the function. 
             This does not affect actual results, only computation.
         """
-        self._validate_other_dataframe_lrs(other)
+        other = self._validate_other_dataframe_lrs(other)
         # Perform intersect
         return self.events.intersect(
             other=other.lr.events,

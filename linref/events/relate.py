@@ -242,6 +242,22 @@ class EventsRelation(object):
     def intersect_data(self) -> sp.csr_matrix | None:
         return self._intersect_data
     
+    @property
+    def T(self) -> EventsRelation:
+        """
+        Return a new EventsRelation object with the left and right events,
+        dataframes, and cached data transposed.
+        """
+        obj = self.copy()
+        # Swap left and right events
+        obj._left, obj._right = obj._right, obj._left
+        # Swap left and right dataframes
+        obj._left_df, obj._right_df = obj._right_df, obj._left_df
+        # Swap cached data
+        obj._overlay_data = obj._overlay_data.T if obj._overlay_data is not None else None
+        obj._intersect_data = obj._intersect_data.T if obj._intersect_data is not None else None
+        return obj
+    
     def _validate_events(self) -> None:
         """
         Validate the input events data.
@@ -268,7 +284,15 @@ class EventsRelation(object):
                     "number of events in the right events data object.")
         
     def _get_method_data(self, method) -> sp.csr_matrix | None:
+        # Set default method if none provided
+        if method is None:
+            method = 'overlay' if (self.left.is_linear and self.right.is_linear) else 'intersect'
+        # Validate method
         if method == 'overlay':
+            if self.left.is_point or self.right.is_point:
+                raise LRSConfigurationError(
+                    "Overlay method cannot be used with point events. "
+                    "Use 'intersect' method instead.")
             return self._get_overlay_data()
         elif method == 'intersect':
             return self._get_intersect_data()
@@ -791,7 +815,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def mode(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def mode(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Compute the mode of the input data along the specified axis of the events 
         relationship, multiplying by the overlay or intersection data and summing 
@@ -930,22 +954,32 @@ def _grouped_operation_wrapper(func) -> callable:
             # Return group-less operation
             return func(left, right, *args, **kwargs)
         else:
+            # Identify all unique groups between both datasets
+            unique_groups = np.unique(np.concatenate([left.groups, right.groups]))
             # Iterate over groups
             left_index = []
             right_index = []
             res = []
-            for group, left_group in left.reset_index().iter_groups(ungroup=True):
+            for group in unique_groups:
+                # Get left group
+                left_group  = left .reset_index().select_group(
+                    group, ungroup=True, ignore_missing=True, inplace=False)
                 # Get right group
                 right_group = right.reset_index().select_group(
                     group, ungroup=True, ignore_missing=True, inplace=False)
-                if right_group.num_events == 0:
-                    continue
-                # Compute operation on group
-                group_res = func(left_group, right_group, *args, **kwargs)
-                # Convert to sparse array and log
-                res.append(group_res)
+                # Log indices in all cases
                 left_index.append(left_group.index)
                 right_index.append(right_group.index)
+                # Don't compute if either group is empty, instead set empty array
+                if left_group.num_events == 0:
+                    group_res = np.array([]).reshape(0, right_group.num_events)
+                elif right_group.num_events == 0:
+                    group_res = np.array([]).reshape(left_group.num_events, 0)
+                # Compute operation on group
+                else:
+                    group_res = func(left_group, right_group, *args, **kwargs)
+                # Log resulting array and indices
+                res.append(group_res)
             # Concatenate results
             res = sp.block_diag(res, format='coo')
             left_index = np.concatenate(left_index, axis=0)
