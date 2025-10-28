@@ -221,52 +221,42 @@ class LRS(object):
 class LRS_Accessor(object):
 
     # Initialize default LRS list
-    _default_lrs = []
+    _default_lrs = None
 
     def __init__(self, df) -> None:
         # Log dataframe
         self._df = df
         # Initialize LRS
         self._lrs = self._default_lrs.copy()
-        self._active_index = 0
 
     def __repr__(self) -> str:
         return self.__str__()
 
     def __str__(self) -> str:
         if self.is_lrs_set:
-            # List LRS objects
-            lrs_lines = []
-            for i, o in enumerate(self.lrs):
-                study = o.study(self._df)
-                tags = []
-                tags.append('GR' if study['keys']      ['valid'] else 'gr' if study['keys']      ['defined'] else '--')
-                tags.append('LC' if study['location']  ['valid'] else 'lc' if study['location']  ['defined'] else '--')
-                tags.append('LN' if study['linear']    ['valid'] else 'ln' if study['linear']    ['defined'] else '--')
-                tags.append('SP' if study['geometry']  ['valid'] else 'sp' if study['geometry']  ['defined'] else '--')
-                tags.append('SM' if study['geometry_m']['valid'] else 'sm' if study['geometry_m']['defined'] else '--')
-                tags = ' '.join(tags)
-                if i == self.active_index:
-                    lrs_lines.append(f"[* {tags}] {str(o)}")
-                else:
-                    lrs_lines.append(f"[  {tags}] {str(o)}")
-            lrs_lines = '\n'.join(lrs_lines)
+            # Prepare LRS information
+            study = self.lrs.study(self._df)
+            tags = []
+            tags.append('GR' if study['keys']      ['valid'] else 'gr' if study['keys']      ['defined'] else '--')
+            tags.append('LC' if study['location']  ['valid'] else 'lc' if study['location']  ['defined'] else '--')
+            tags.append('LN' if study['linear']    ['valid'] else 'ln' if study['linear']    ['defined'] else '--')
+            tags.append('SP' if study['geometry']  ['valid'] else 'sp' if study['geometry']  ['defined'] else '--')
+            tags.append('SM' if study['geometry_m']['valid'] else 'sm' if study['geometry_m']['defined'] else '--')
+            tags = ' '.join(tags)
+            lrs_info = f"[{tags}] {str(self.lrs)}"
         else:
-            lrs_lines = "- No LRS set"
-        return "LRS_Accessor with linear referencing system (LRS) objects:\n" + lrs_lines
+            lrs_info = "- No LRS set"
+        return "LRS_Accessor with linear referencing system (LRS):\n" + lrs_info
 
     def __getitem__(self, obj) -> LRS_Accessor:
         """
         Activate an LRS by index or by setting it directly.
         """
-        if isinstance(obj, int):
-            obj = self.activate_lrs(obj, inplace=False)
-            return obj
-        elif isinstance(obj, LRS):
+        if isinstance(obj, LRS):
             obj = self.set_lrs(obj, activate=True, append=False, inplace=False)
             return obj
         else:
-            raise TypeError("Invalid index type. Must be an integer.")
+            raise TypeError("Invalid input type. Must provide an LRS object.")
 
     @property
     def df(self) -> pd.DataFrame:
@@ -299,51 +289,68 @@ class LRS_Accessor(object):
         return cols
 
     @property
-    def lrs(self) -> list[LRS]:
+    def lrs(self) -> LRS:
         return self._lrs
-        
-    @property
-    def is_lrs_set(self) -> bool:
-        return len(self.lrs) > 0
+    
+    @lrs.setter
+    def lrs(self, lrs) -> None:
+        if not isinstance(lrs, LRS):
+            raise ValueError("Input LRS object must be of type `LRS`.")
+        self._lrs = lrs
 
     @property
-    def active_index(self) -> int:
-        return self._active_index
-    
-    @property
-    def active_lrs(self) -> LRS:
-        if not self.is_lrs_set:
-            raise ValueError("No LRS set for the DataFrame.")
-        return self.lrs[self.active_index]
-    
+    def is_lrs_set(self) -> bool:
+        return self.lrs is not None
+
     @property
     def key_col(self) -> list[str]:
-        return self.active_lrs.key_col
-    
+        try:
+            return self.lrs.key_col
+        except AttributeError:
+            return None
+
     @property
     def loc_col(self) -> str:
-        return self.active_lrs.loc_col
-    
+        try:
+            return self.lrs.loc_col
+        except AttributeError:
+            return None
+
     @property
     def beg_col(self) -> str:
-        return self.active_lrs.beg_col
-    
+        try:
+            return self.lrs.beg_col
+        except AttributeError:
+            return None
+
     @property
     def end_col(self) -> str:
-        return self.active_lrs.end_col
+        try:
+            return self.lrs.end_col
+        except AttributeError:
+            return None
     
     @property
     def geom_col(self) -> str:
-        return self.active_lrs.geom_col
-    
+        try:
+            return self.lrs.geom_col
+        except AttributeError:
+            return None
+
     @property
     def geom_m_col(self) -> str:
-        return self.active_lrs.geom_m_col
-    
+        try:
+            return self.lrs.geom_m_col
+        except AttributeError:
+            return None
+
     @property
     def closed(self) -> str:
-        return self.active_lrs.closed
-    
+        try:
+            return self.lrs.closed
+        except AttributeError:
+            return None
+
     @property
     def index(self) -> np.ndarray:
         return self._df.index.values
@@ -502,7 +509,7 @@ class LRS_Accessor(object):
         """
         Evaluate which LRS properties are satisfied by the dataframe.
         """
-        return self.active_lrs.study(self._df)
+        return self.lrs.study(self._df)
 
     @property
     def events(self) -> EventsData:
@@ -526,11 +533,11 @@ class LRS_Accessor(object):
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not self.is_lrs_set:
             raise LRSConfigurationError("Current DataFrame has no LRS set.")
-        if len(self.active_lrs.key_col) != len(other.lr.active_lrs.key_col):
+        if len(self.lrs.key_col) != len(other.lr.lrs.key_col):
             raise LRSCompatibilityError(
                 "LRS of other DataFrame has a different number of key "
-                f"columns. Received {len(other.lr.active_lrs.key_col)} "
-                f"columns, but expected {len(self.active_lrs.key_col)}."
+                f"columns. Received {len(other.lr.lrs.key_col)} "
+                f"columns, but expected {len(self.lrs.key_col)}."
             )
         if self.events.groups.dtype != other.lr.events.groups.dtype:
             raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
@@ -598,7 +605,7 @@ class LRS_Accessor(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
-    def lrs_like(self, other, inplace=False) -> pd.DataFrame:
+    def lrs_like(self, other, inplace=False) -> pd.DataFrame | None:
         """
         Assign the LRS settings of another DataFrame to the current DataFrame.
 
@@ -620,125 +627,53 @@ class LRS_Accessor(object):
         # Copy LRS settings
         if isinstance(other, pd.DataFrame):
             other = other.lr
-        df.lr.set_lrs(other.lrs, append=False, inplace=True)
-        df.lr.activate_lrs(other.active_index, inplace=True)
-        return df
-    
-    def activate_lrs(self, index, inplace=False) -> None:
-        """
-        Activate a specific LRS for the DataFrame by selecting the index from 
-        the list of LRS objects.
+        df.lr.set_lrs(other.lrs, inplace=True)
+        return None if inplace else df
 
-        Parameters
-        ----------
-        index : int
-            The index of the LRS object to activate. Used to index the list of
-            LRS objects stored in the DataFrame.
-        inplace : bool, default False
-            Whether to apply changes to the DataFrame in place.
-        """
-        if index >= len(self.lrs):
-            raise ValueError(
-                f"Invalid LRS index: {index}. Must be less than {len(self.lrs)}.")
-        obj = self if inplace else self.copy()
-        obj._active_index = index
-        return None if inplace else obj
-
-    def set_lrs(self, lrs=None, append=False, activate=False, inplace=False, **kwargs) -> None:
+    def set_lrs(self, lrs=None, append=False, activate=False, inplace=False, **kwargs) -> pd.DataFrame | None:
         """
         Set the LRS object for the DataFrame.
 
         Parameters
         ----------
-        lrs : LRS or list[LRS], default None
-            The LRS object or list of LRS objects to set for the DataFrame.
-        append : bool, default False
-            Whether to append the input LRS objects to the existing LRS objects
-            or replace them.
-        activate : bool, default False
-            Whether to activate the added LRS object. If multiple LRS objects
-            are added, the last object will be activated.
+        lrs : LRS , default None
+            The LRS object to set for the DataFrame.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
+        **kwargs
+            Additional parameters to set for the LRS object if `lrs` is None.
         """
         # Validate LRS object type
         if lrs is None:
-            lrs = [LRS(**kwargs)]
-        elif isinstance(lrs, LRS):
-            lrs = [lrs]
-        elif not all([isinstance(lrs, LRS) for lrs in lrs]):
-            raise ValueError("Input LRS objects must be of type `LRS`.")
-        
+            lrs = LRS(**kwargs)
+        elif not isinstance(lrs, LRS):
+            raise ValueError("Input LRS object must be of type `LRS`.")
+
         # Append or replace LRS objects
-        obj = self if inplace else self.copy()
-        if append:
-            obj._lrs.extend(lrs)
-        else:
-            obj._lrs = lrs
+        df = self.df if inplace else self.df.copy()
+        df.lr._lrs = lrs
+        return None if inplace else df
 
-        # Activate LRS object if requested
-        if activate:
-            obj.activate_lrs(len(obj.lrs) - 1, inplace=True)
-
-        return None if inplace else obj
-
-    def add_lrs(self, lrs=None, activate=False, inplace=False, **kwargs) -> None:
+    def modify_lrs(self, inplace=False, **kwargs) -> pd.DataFrame | None:
         """
-        Add LRS objects to the DataFrame. Equivalent to 
-        `set_lrs(..., append=True)`.
+        Modify the parameters of the existing LRS object in the DataFrame.
 
         Parameters
         ----------
-        lrs : LRS or list[LRS], default None
-            The LRS object or list of LRS objects to add to the DataFrame.
-        activate : bool, default False
-            Whether to activate the added LRS object. If multiple LRS objects
-            are added, the last object will be activated.
+        **kwargs
+            The LRS parameters from an LRS object to modify.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
-        return self.set_lrs(lrs=lrs, append=True, activate=activate, inplace=inplace, **kwargs)
+        # Retrieve and modify LRS
+        df = self.df if inplace else self.df.copy()
+        lrs = df.lr.lrs.copy(deep=True)
+        lrs.set_params(inplace=True, **kwargs)
+        # Set the modified LRS
+        df.lr._lrs = lrs
+        return None if inplace else df
 
-    def modify_lrs(self, index=None, activate=True, append=False, inplace=False, **kwargs) -> None:
-        """
-        Modify the parameters of an existing LRS object in the DataFrame.
-
-        Parameters
-        ----------
-        index : int, default None
-            The index of the LRS object to modify. If None, the active LRS
-            object will be modified.
-        activate : bool, default True
-            Whether to activate the modified LRS object.
-        append : bool, default False
-            Whether to append the modified LRS object to the existing LRS objects
-            or to replace the indexed LRS object.
-        inplace : bool, default False
-            Whether to apply changes to the DataFrame in place.
-        """
-        # Get index of LRS to modify
-        if index is None:
-            index = self.active_index
-        # Address deep copy of LRS list to avoid overwriting
-        if inplace:
-            obj = self
-        else:
-            obj = self.copy()
-            obj._lrs = copy.deepcopy(obj._lrs)
-        # Modify LRS parameters
-        lrs = obj.lrs[index].copy(deep=True).set_params(inplace=False, **kwargs)
-        # Append or replace LRS object
-        if append:
-            obj._lrs.append(lrs)
-            index = -1
-        else:
-            obj._lrs[index] = lrs
-        # Activate modified LRS if requested
-        if activate:
-            obj.activate_lrs(index, inplace=True)
-        return None if inplace else obj
-    
-    def add_key(self, key_col, index=None, activate=True, inplace=False) -> None:
+    def add_key(self, key_col, inplace=False) -> pd.DataFrame | None:
         """
         Add one or more key columns to an existing LRS object in the DataFrame.
 
@@ -746,31 +681,18 @@ class LRS_Accessor(object):
         ----------
         key_col : label or array-like
             The key column or array-like of key columns to add.
-        index : int, default None
-            The index of the LRS object to modify. If None, the active LRS
-            object will be modified.
-        activate : bool, default True
-            Whether to activate the modified LRS object.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
-        # Get index of LRS to modify
-        if index is None:
-            index = self.active_index
-        # Address deep copy of LRS list to avoid overwriting
-        if inplace:
-            obj = self
-        else:
-            obj = self.copy()
-            obj._lrs = copy.deepcopy(obj._lrs)
         # Add key columns
-        obj.lrs[index].add_key(key_col)
-        # Activate modified LRS if requested
-        if activate:
-            obj.activate_lrs(index, inplace=True)
-        return None if inplace else obj
-    
-    def remove_key(self, key_col, index=None, activate=True, inplace=False) -> None:
+        df = self.df if inplace else self.df.copy()
+        lrs = df.lr.lrs.copy(deep=True)
+        lrs.add_key(key_col, inplace=True)
+        # Set the modified LRS
+        df.lr._lrs = lrs
+        return None if inplace else df
+
+    def remove_key(self, key_col, inplace=False) -> None:
         """
         Remove one or more key columns from an existing LRS object in the DataFrame.
 
@@ -778,45 +700,35 @@ class LRS_Accessor(object):
         ----------
         key_col : label or array-like
             The key column or array-like of key columns to remove.
-        index : int, default None
-            The index of the LRS object to modify. If None, the active LRS
-            object will be modified.
-        activate : bool, default True
-            Whether to activate the modified LRS object.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
-        # Get index of LRS to modify
-        if index is None:
-            index = self.active_index
-        # Address deep copy of LRS list to avoid overwriting
-        obj = self if inplace else self.copy()
-        lrs = obj.lrs.pop(index).copy(deep=True)
-        # Remove key columns and reinsert modified LRS
+        # Add key columns
+        df = self.df if inplace else self.df.copy()
+        lrs = df.lr.lrs.copy(deep=True)
         lrs.remove_key(key_col, inplace=True)
-        obj._lrs.insert(index, lrs)
-        # Activate modified LRS if requested
-        if activate:
-            obj.activate_lrs(index, inplace=True)
-        return None if inplace else obj
+        # Set the modified LRS
+        df.lr._lrs = lrs
+        return None if inplace else df
 
     def clear_lrs(self, inplace=False) -> None:
         """
-        Clear the LRS objects from the DataFrame.
+        Clear the LRS object from the DataFrame.
 
         Parameters
         ----------
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
-        obj = self if inplace else self.copy()
-        obj._lrs = []
-        return None if inplace else obj
+        # Clear LRS object
+        df = self.df if inplace else self.df.copy()
+        df.lr._lrs = None
+        return None if inplace else df
 
     def build_geom_m(self) -> np.ndarray:
         """
         Build a list of geometry_m objects based on the begin and end 
-        locations of the active LRS.
+        locations of the LRS.
 
         Returns
         -------
@@ -824,8 +736,8 @@ class LRS_Accessor(object):
             An array of geometry_m objects.
         """
         # Check for presence of geometries
-        if not self.active_lrs.is_spatial:
-            raise ValueError("No geometry column in the active LRS.")
+        if not self.lrs.is_spatial:
+            raise ValueError("No geometry column in the LRS.")
         if not self.is_spatial:
             raise ValueError("LRS geometry column not present in the DataFrame.")
         def _upgrade_geom(geom, beg, end):
@@ -839,7 +751,7 @@ class LRS_Accessor(object):
     def add_geom_m(self, name='geometry_m', inplace=False) -> pd.DataFrame | None:
         """
         Add a geometry column to the DataFrame based on the begin and end 
-        locations of the active LRS.
+        locations of the LRS.
 
         Parameters
         ----------
@@ -854,8 +766,8 @@ class LRS_Accessor(object):
         df = self.df if inplace else self.df.copy()
         df[name] = geoms_m
         # Update LRS if needed
-        if self.active_lrs.geom_m_col != name:
-            new_lrs = self.active_lrs.copy(deep=True)
+        if self.lrs.geom_m_col != name:
+            new_lrs = self.lrs.copy(deep=True)
             new_lrs.geom_m_col = name
             df.lr.add_lrs(new_lrs, activate=True)
         return None if inplace else df
@@ -864,64 +776,42 @@ class LRS_Accessor(object):
     def iter_groups(self):
         """
         Iterate over unique event groups in the dataframe based on the 
-        active LRS key columns.
+        LRS key columns.
         """
         for group, index in self.events.iter_group_indices():
             yield group, self.df.loc[index]
 
     @classmethod
-    def set_default_lrs(cls, lrs=None, append=False, **kwargs) -> None:
+    def set_default_lrs(cls, lrs=None, **kwargs) -> None:
         """
-        Set the default LRS objects for the LRS_Accessor class. Default LRS
+        Set the default LRS object for the LRS_Accessor class. Default LRS
         objects are used when no LRS objects are set for a specific DataFrame.
 
         Parameters
         ----------
-        lrs : LRS or list[LRS], default None
+        lrs : LRS, default None
             The LRS object or list of LRS objects to set as the default for the
             LRS_Accessor class.
-        append : bool, default False
-            Whether to append the input LRS objects to the existing default LRS
-            objects or replace them.
         """
         # Validate LRS object type
         if lrs is None:
-            lrs = [LRS(**kwargs)]
-        elif isinstance(lrs, LRS):
-            lrs = [lrs]
-        elif not all([isinstance(lrs, LRS) for lrs in lrs]):
-            raise ValueError("Input LRS objects must be of type `LRS`.")
+            lrs = LRS(**kwargs)
+        elif not isinstance(lrs, LRS):
+            raise ValueError("Input LRS object must be of type `LRS`.")
         
-        # Append or replace LRS objects
-        if append:
-            cls._default_lrs.extend(lrs)
-        else:
-            cls._default_lrs = lrs
-
-    @classmethod
-    def add_default_lrs(cls, lrs=None, **kwargs) -> None:
-        """
-        Add default LRS objects to the LRS_Accessor class. Equivalent to
-        `set_default_lrs(..., append=True)`.
-
-        Parameters
-        ----------
-        lrs : LRS or list[LRS], default None
-            The LRS object or list of LRS objects to add as default for the
-            LRS_Accessor class.
-        """
-        cls.set_default_lrs(lrs=lrs, append=True, **kwargs)
+        # Set default LRS object
+        cls._default_lrs = lrs
 
     @classmethod
     def clear_default_lrs(cls) -> None:
         """
         Clear the default LRS objects from the LRS_Accessor class.
         """
-        cls._default_lrs = []
+        cls._default_lrs = None
 
     def sort_standard(self, return_inverse=False, inplace=False) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray] | None:
         """
-        Sort the DataFrame in standard order based on the active LRS columns.
+        Sort the DataFrame in standard order based on the LRS columns.
         """
         # Get sorter
         sorter = self.events.sort_standard(return_inverse=True)[1]
@@ -964,17 +854,18 @@ class LRS_Accessor(object):
         )
         return chains.reindex_like(self.df)
     
-    @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
+    @_method_require(is_linear=True, is_spatial=True)
     def add_chaining(self, name='chain', inplace=False, replace=False) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
-        and adding the chain column to the active LRS.
+        and adding the chain column to the LRS.
 
         Parameters
         ----------
         name : str, default 'chain'
-            The name of the chain index column to return.
+            The name of the chain index column to return. If this column
+            already exists, it will be replaced if `replace` is True.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
         replace : bool, default False
@@ -982,53 +873,47 @@ class LRS_Accessor(object):
             dataframe. If False, an error will be raised if the column already
             exists.
         """
-        # Prepare chain data
-        obj = self if inplace else self.copy(deep=True)
-        display(1, obj)
-        if name in obj.active_lrs.key_col:
-            chains = obj.remove_key(name, inplace=False).get_chains(name=name)
-        else:
-            chains = obj.get_chains(name=name)
-        
-        # Apply changes to the DataFrame
-        display(2, obj)
-        if name in obj.df and not replace:
+        # Validate column name
+        if name in self.df and not replace:
             raise ValueError(
                 f"Column name '{name}' is already in use in the DataFrame."
             )
-        obj.df[name] = chains
-        # Update LRS
-        display(3, obj)
-        if not name in obj.active_lrs.key_col:
-            new_lrs = obj.active_lrs.copy(deep=True)
-            new_lrs.add_key(name)
-            obj.add_lrs(new_lrs, activate=True, inplace=True)
-        display(4, obj)
-        display(5, lrs_like(obj).lr)
-        return None if inplace else lrs_like(obj)
+        # Prepare chain data
+        df = self.df if inplace else self.df.copy()
+        if name in df.lr.key_col:
+            new_lrs = df.lr.lrs
+            chains = df.lr.remove_key(name, inplace=False).lr.get_chains(name=name)
+        else:
+            new_lrs = df.lr.lrs.add_key(name)
+            chains = df.lr.get_chains(name=name)
+        
+        # Apply changes to the DataFrame
+        df[name] = chains
+        df.lr.set_lrs(new_lrs, inplace=True)
+        return None if inplace else df
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
         """
-        Extend the begin and end locations of the active LRS by the specified 
+        Extend the begin and end locations of the LRS by the specified 
         amounts.
         """
         # Extend events
         events = self.events.extend(extend_begs=extend_begs, extend_ends=extend_ends, inplace=False)
         # Apply changes to the DataFrame
-        obj = self if inplace else self.copy()
+        obj = self if inplace else self.copy(deep=True)
         obj.begs = events.begs
         obj.ends = events.ends
         return None if inplace else obj.df
     
     def shift(self, shift, inplace=False) -> pd.DataFrame | None:
         """
-        Shift the events of the active LRS by the specified amount.
+        Shift the events of the LRS by the specified amount.
         """
         # Shift events
         events = self.events.shift(shift, inplace=False)
         # Apply changes to the DataFrame
-        obj = self if inplace else self.copy()
+        obj = self if inplace else self.copy(deep=True)
         if self.is_located:
             obj.locs = events.locs
         if self.is_linear:
@@ -1038,13 +923,13 @@ class LRS_Accessor(object):
     
     def round(self, decimals=0, inplace=False) -> pd.DataFrame | None:
         """
-        Round the events of the active LRS to the specified number of 
+        Round the events of the LRS to the specified number of 
         decimals.
         """
         # Round events
         events = self.events.round(decimals=decimals, inplace=False)
         # Apply changes to the DataFrame
-        obj = self if inplace else self.copy()
+        obj = self if inplace else self.copy(deep=True)
         if self.is_located:
             obj.locs = events.locs
         if self.is_linear:
@@ -1052,10 +937,51 @@ class LRS_Accessor(object):
             obj.ends = events.ends
         return None if inplace else obj.df
     
+    @_method_require(is_grouped=True)
+    def impute_keys(self, other, keys=None, func='mode') -> pd.DataFrame:
+        """
+        Impute missing key values from this dataframe onto another dataframe 
+        based on matches between other keys and LRS locations.
+
+        Parameters
+        ----------
+        other : DataFrame
+            The DataFrame to impute key values onto.
+        keys : list, optional
+            A list of key column labels to impute. If None, all key columns
+            from the active LRS not present on the other will be imputed.
+        func : str, default 'mode'
+            EventsRelation aggregation function to use when multiple matches
+            are found. See the EventsRelation class for available options.
+        """
+        # Validate other dataframe
+        if not isinstance(other, pd.DataFrame):
+            raise TypeError("Input object must be of type `pd.DataFrame`.")
+        if not other.lr.is_lrs_set:
+            raise LRSCompatibilityError("Input DataFrame has no LRS set.")
+        # Define keys to impute
+        if keys is None:
+            keys = [key for key in self.key_col if key not in other.columns]
+        else:
+            for key in keys:
+                if key not in self.key_col:
+                    raise KeyError(f"Key column '{key}' not found in the active LRS.")
+                if key not in self.df.columns:
+                    raise KeyError(f"Key column '{key}' not found in the current DataFrame.")
+        # Define LRS to use for relation
+        lrs = self.lrs.remove_key(keys)
+        # Relate the dataframes
+        relation = self.set_lrs(lrs).lr.relate(other.lr.set_lrs(lrs)).T[keys]
+        data = getattr(relation, func)(squeeze=False)
+        # Apply imputed keys to other dataframe
+        df = other.copy()
+        df[keys] = data
+        return df
+    
     @_method_require(is_linear=True)
     def resegment(self, length=1, fill='cut', inplace=False, return_relation=False) -> pd.DataFrame | None:
         """
-        Resegment the events of the active LRS to the specified length.
+        Resegment the events of the LRS to the specified length.
 
         Parameters
         ----------
@@ -1341,10 +1267,10 @@ class LRS_Accessor(object):
         dist_label : str, default 'project_distance'
             The label for the distance column in the returned DataFrame.
         """
-        # Ensure that the active LRS has a location column
+        # Ensure that the LRS has a location column
         if self.loc_col is None:
             raise ValueError(
-                "Active LRS must contain a location column to be applied to "
+                "LRS must contain a location column to be applied to "
                 "the projected points."
             )
         # Validate input geodataframe
@@ -1406,28 +1332,3 @@ class LRS_Accessor(object):
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
-
-# Internal helper methods
-
-def lrs_like(obj):
-    """
-    Create a copy of the input LRS_Accessor's DataFrame with the same LRS 
-    settings.
-
-    Parameters
-    ----------
-    obj : LRS_Accessor
-        The input LRS_Accessor to copy LRS settings from.
-
-    Returns
-    -------
-    df : DataFrame
-        A copy of the input LRS_Accessor's DataFrame with the same LRS 
-        settings.
-    """
-    if isinstance(obj, LRS_Accessor):
-        return obj.lrs_like(obj.df)
-    else:
-        raise TypeError(
-            "Input object must be an LRS_Accessor instance."
-        )
