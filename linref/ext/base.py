@@ -45,6 +45,11 @@ class LRS(object):
             f"closed={"'" + self.closed + "'" if isinstance(self.closed, str) else self.closed})"
         )
     
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, LRS):
+            return False
+        return self.params == other.params
+    
     @property
     def is_linear(self) -> bool:
         return (self.beg_col is not None) and (self.end_col is not None)
@@ -928,7 +933,7 @@ class LRS_Accessor(object):
         else:
             return (df, sorter) if return_inverse else df
         
-    @_method_require(is_linear=True, is_spatial=True)
+    @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
     def get_chains(self, name='chain') -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
@@ -959,8 +964,8 @@ class LRS_Accessor(object):
         )
         return chains.reindex_like(self.df)
     
-    @_method_require(is_linear=True, is_spatial=True)
-    def add_chaining(self, name='chain', inplace=False, errors='raise') -> pd.DataFrame | None:
+    @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
+    def add_chaining(self, name='chain', inplace=False, replace=False) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
@@ -972,31 +977,35 @@ class LRS_Accessor(object):
             The name of the chain index column to return.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
-        errors : {'raise', 'overwrite', 'ignore'}, default 'raise'
-            How to handle errors when the specified column name already exists
-            in the dataframe.
+        replace : bool, default False
+            Whether to replace an existing column with the same name in the
+            dataframe. If False, an error will be raised if the column already
+            exists.
         """
-        # Validate chain column name
-        if name in self.active_lrs.key_col:
-            if errors == 'ignore':
-                return None if inplace else self.df
-            elif errors == 'overwrite':
-                self.df = self.df.drop(columns=[name], errors='ignore')
-            else:
-                raise ValueError(
-                    f"Column name '{name}' is already in use as a key column in "
-                    "the active LRS.")
-        # Get chain indices
-        chains = self.get_chains(name=name)
+        # Prepare chain data
+        obj = self if inplace else self.copy(deep=True)
+        display(1, obj)
+        if name in obj.active_lrs.key_col:
+            chains = obj.remove_key(name, inplace=False).get_chains(name=name)
+        else:
+            chains = obj.get_chains(name=name)
+        
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
-        df[name] = chains
+        display(2, obj)
+        if name in obj.df and not replace:
+            raise ValueError(
+                f"Column name '{name}' is already in use in the DataFrame."
+            )
+        obj.df[name] = chains
         # Update LRS
-        if not name in self.active_lrs.key_col:
-            new_lrs = self.active_lrs.copy(deep=True)
+        display(3, obj)
+        if not name in obj.active_lrs.key_col:
+            new_lrs = obj.active_lrs.copy(deep=True)
             new_lrs.add_key(name)
-            df.lr.add_lrs(new_lrs, activate=True, inplace=True)
-        return None if inplace else df
+            obj.add_lrs(new_lrs, activate=True, inplace=True)
+        display(4, obj)
+        display(5, lrs_like(obj).lr)
+        return None if inplace else lrs_like(obj)
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
@@ -1396,3 +1405,29 @@ class LRS_Accessor(object):
         joined[self.loc_col] = locs
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
+    
+
+# Internal helper methods
+
+def lrs_like(obj):
+    """
+    Create a copy of the input LRS_Accessor's DataFrame with the same LRS 
+    settings.
+
+    Parameters
+    ----------
+    obj : LRS_Accessor
+        The input LRS_Accessor to copy LRS settings from.
+
+    Returns
+    -------
+    df : DataFrame
+        A copy of the input LRS_Accessor's DataFrame with the same LRS 
+        settings.
+    """
+    if isinstance(obj, LRS_Accessor):
+        return obj.lrs_like(obj.df)
+    else:
+        raise TypeError(
+            "Input object must be an LRS_Accessor instance."
+        )
