@@ -823,6 +823,30 @@ class LRS_Accessor(object):
         else:
             return (df, sorter) if return_inverse else df
         
+    @_method_require(is_grouped=True)
+    def get_group(self, group) -> pd.DataFrame:
+        """
+        Retrieve a subset of the dataframe corresponding to a specific group
+        based on the LRS key columns.
+
+        Parameters
+        ----------
+        group : group value or array-like of group values
+            The group value or array-like of group values to retrieve.
+
+        Returns
+        -------
+        group_df : pd.DataFrame
+            A subset of the dataframe corresponding to the specified group.
+        """
+        # Get group indices
+        try:
+            index = self.events.select_group(group).index
+        except:
+            raise KeyError(f"Group {group} not found in the DataFrame.")
+        # Return subset of dataframe
+        return self.df.loc[index]
+        
     @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
     def get_chains(self, name='chain') -> pd.Series:
         """
@@ -938,7 +962,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_grouped=True)
-    def impute_keys(self, other, keys=None, func='mode') -> pd.DataFrame:
+    def impute_keys(self, other, keys=None, func='first') -> pd.DataFrame:
         """
         Impute missing key values from this dataframe onto another dataframe 
         based on matches between other keys and LRS locations.
@@ -950,7 +974,7 @@ class LRS_Accessor(object):
         keys : list, optional
             A list of key column labels to impute. If None, all key columns
             from the active LRS not present on the other will be imputed.
-        func : str, default 'mode'
+        func : str, default 'first'
             EventsRelation aggregation function to use when multiple matches
             are found. See the EventsRelation class for available options.
         """
@@ -971,8 +995,8 @@ class LRS_Accessor(object):
         # Define LRS to use for relation
         lrs = self.lrs.remove_key(keys)
         # Relate the dataframes
-        relation = self.set_lrs(lrs).lr.relate(other.lr.set_lrs(lrs)).T[keys]
-        data = getattr(relation, func)(squeeze=False)
+        relation = self.set_lrs(lrs).lr.relate(other.lr.set_lrs(lrs))[keys]
+        data = getattr(relation, func)(squeeze=False, axis=0)
         # Apply imputed keys to other dataframe
         df = other.copy()
         df[keys] = data
@@ -1042,18 +1066,21 @@ class LRS_Accessor(object):
             A copy of the current DataFrame with the events resegmented.
         """
         # Resegment events
-        output = self.events.resegment(length=length, fill=fill, return_relation=return_relation)
-        events = output[0] if isinstance(output, tuple) else output
+        events, relation = self.events.resegment(length=length, fill=fill, return_relation=True)
         # Apply changes to the DataFrame
         df_left = events.to_frame()
         df_right = self.df[self.other_cols]
         df = pd.merge(df_left, df_right, left_index=True, right_index=True)
+        # Update relation object
+        relation = relation.T
+        relation.left_df = df
+        relation.right_df = self.df
         # Return results
         if inplace:
             self._df = df
             return
         else:
-            return (df, output[-1]) if return_relation else df
+            return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)
     def dissolve(

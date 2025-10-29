@@ -273,16 +273,16 @@ class EventsRelation(object):
                 raise TypeError("The 'left_df' parameter must be a pandas DataFrame.")
             if self.left.num_events != self._left_df.shape[0]:
                 raise ValueError(
-                    "The number of events in the left dataframe must match the "
-                    "number of events in the left events data object.")
+                    f"The number of events in the left dataframe ({self._left_df.shape[0]}) must match the "
+                    f"number of events in the left events data object ({self.left.num_events}).")
         if self._right_df is not None:
             if not isinstance(self._right_df, pd.DataFrame):
                 raise TypeError("The 'right_df' parameter must be a pandas DataFrame.")
             if self.right.num_events != self._right_df.shape[0]:
                 raise ValueError(
-                    "The number of events in the right dataframe must match the "
-                    "number of events in the right events data object.")
-        
+                    f"The number of events in the right dataframe ({self._right_df.shape[0]}) must match the "
+                    f"number of events in the right events data object ({self.right.num_events}).")
+
     def _get_method_data(self, method) -> sp.csr_matrix | None:
         # Set default method if none provided
         if method is None:
@@ -560,6 +560,130 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
+    def single(self, index=0, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning the first value for
+        intersecting events.
+
+        Parameters
+        ----------
+        index : int, default 0
+            The index of the value to return for intersecting events. If the 
+            index is out of bounds for a given event, NaNs will be returned for
+            that event.
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            where m is the number of events in the right dataframe if axis=0
+            or the number of events in the left dataframe if axis=1.
+        """
+        # Validate index
+        if not isinstance(index, int):
+            raise ValueError("Index must be an integer.")
+        
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+        arr = arr.T if axis == 1 else arr
+
+        # Iterate over sparse rows
+        output = []
+        for row in arr:
+            # Get data values
+            values = data[row.indices]
+            try:
+                values = values[index, :]
+            except IndexError:
+                values = np.empty((1, values.shape[1]))
+                values.fill(np.nan)
+            # Log values
+            output.append(values)
+        
+        # Convert to numpy array of lists
+        output_array = np.vstack(output)
+        return output_array
+    
+    def first(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning the first value for
+        intersecting events.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            where m is the number of events in the right dataframe if axis=0
+            or the number of events in the left dataframe if axis=1.
+        """
+        return self.single(data=data, index=0, axis=axis, squeeze=squeeze, **kwargs)
+    
+    def last(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+        """
+        Aggregate all input data values along the specified axis of the events
+        relation against the other axis, returning the last value for
+        intersecting events.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataframe.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            The aggregated data array. The shape of the array will be (m,) 
+            where m is the number of events in the right dataframe if axis=0
+            or the number of events in the left dataframe if axis=1.
+        """
+        return self.single(data=data, index=-1, axis=axis, squeeze=squeeze, **kwargs)
+    
+    @_get_selector_data_wrapper
+    @_require_agg_data
+    @_validate_agg_2d_data_wrapper
+    @_squeeze_output_wrapper
     def list(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
@@ -594,7 +718,7 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr if axis == 1 else arr.T
+        arr = arr.T if axis == 1 else arr
 
         # Iterate over sparse rows
         output = []
@@ -857,10 +981,12 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_method_data(method).tocsr() # Indexing requires CSR
+        arr = arr if axis == 1 else arr.T
+        data = data if axis == 1 else data.T
         
         # Perform aggregation
         aggregated = []
-        for column in data.T:
+        for column in data:
             # Sort unique values and identify splits in the weights data
             sorter = np.argsort(column)
             unique, splitter = np.unique(column[sorter], return_index=True)
