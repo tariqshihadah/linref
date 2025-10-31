@@ -142,7 +142,7 @@ class LRS(object):
 
         return None if inplace else obj
     
-    def add_key(self, key_col) -> None:
+    def add_key(self, key_col, inplace=False) -> None:
         """
         Add one or more key columns to the LRS.
         
@@ -150,8 +150,12 @@ class LRS(object):
         ----------
         key_col : label or array-like
             The key column or array-like of key columns to add.
+        inplace : bool, default False
+            Whether to apply changes to the LRS in place.
         """
-        self.key_col.extend(label_list_or_none(key_col))
+        obj = self if inplace else self.copy(deep=True)
+        obj.key_col.extend(label_list_or_none(key_col))
+        return None if inplace else obj
 
     def remove_key(self, key_col, errors='raise', inplace=False) -> None:
         """
@@ -874,7 +878,8 @@ class LRS_Accessor(object):
         chains = pd.Series(
             np.concatenate(chains),
             index=np.concatenate(index),
-            name=name
+            name=name,
+            dtype=float
         )
         return chains.reindex_like(self.df)
     
@@ -908,7 +913,7 @@ class LRS_Accessor(object):
             new_lrs = df.lr.lrs
             chains = df.lr.remove_key(name, inplace=False).lr.get_chains(name=name)
         else:
-            new_lrs = df.lr.lrs.add_key(name)
+            new_lrs = df.lr.lrs.copy(deep=True).add_key(name, inplace=False)
             chains = df.lr.get_chains(name=name)
         
         # Apply changes to the DataFrame
@@ -1000,6 +1005,8 @@ class LRS_Accessor(object):
         # Apply imputed keys to other dataframe
         df = other.copy()
         df[keys] = data
+        # Update LRS of other dataframe
+        df.lr.set_lrs(self.lrs, inplace=True)
         return df
     
     @_method_require(is_linear=True)

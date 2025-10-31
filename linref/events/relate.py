@@ -503,7 +503,7 @@ class EventsRelation(object):
                 enforce_edges=enforce_edges,
                 chunksize=chunksize,
                 grouped=grouped
-            )
+            ).T
         elif self.left.is_linear and self.right.is_linear:
             arr = intersect_linear_linear(
                 self.left,
@@ -531,7 +531,7 @@ class EventsRelation(object):
     @_validate_agg_axis_wrapper
     def count(self, axis=1, **kwargs) -> np.ndarray:
         """
-        Count the number of intersections or overlays along the specified axis.
+        Count the number of intersections along the specified axis.
 
         Parameters
         ----------
@@ -551,7 +551,7 @@ class EventsRelation(object):
             or the number of events in the left dataframe if axis=1.
         """
         # Check for cached data
-        arr = self._get_overlay_data(**kwargs)
+        arr = self._get_intersect_data(**kwargs)
 
         # Perform aggregation
         return arr.sum(axis=axis)
@@ -599,7 +599,7 @@ class EventsRelation(object):
         
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr.T if axis == 1 else arr
+        arr = arr.T if axis == 0 else arr
 
         # Iterate over sparse rows
         output = []
@@ -981,18 +981,24 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_method_data(method).tocsr() # Indexing requires CSR
-        arr = arr if axis == 1 else arr.T
-        data = data if axis == 1 else data.T
+        arr = arr if axis == 0 else arr.T
         
         # Perform aggregation
         aggregated = []
-        for column in data:
+        for column_index, column in enumerate(data.T):
             # Sort unique values and identify splits in the weights data
-            sorter = np.argsort(column)
+            try:
+                sorter = np.argsort(column)
+            except TypeError:
+                raise TypeError(
+                    f"Selected data column index {column_index} contains non-"
+                    "sortable values (e.g., mixed types or strings and null "
+                    "values). Mode aggregation requires sortable data types."
+                )
             unique, splitter = np.unique(column[sorter], return_index=True)
             splitter = np.append(splitter, len(column))
             # Sort weights data before splitting
-            arr_sorted = arr.T[sorter] if axis == 1 else arr[sorter]
+            arr_sorted = arr[sorter]
             # Compute weighted scores for each unique value
             scores = []
             for i, j in zip(splitter[:-1], splitter[1:]):
