@@ -1,4 +1,5 @@
 from __future__ import annotations
+import warnings
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -431,7 +432,15 @@ class LRS_Accessor(object):
             return self._df[col].values
         except KeyError:
             return None
-    
+        
+    @property
+    def geoms_m_reduced(self) -> np.ndarray:
+        # Select M-enabled geometries and extract shapely geometries
+        geoms_m = self.geoms_m
+        if geoms_m is None:
+            return None
+        return np.array([geom_m.geom for geom_m in geoms_m])
+
     @property
     def is_grouped(self) -> bool:
         """
@@ -967,7 +976,7 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_grouped=True)
-    def impute_keys(self, other, keys=None, func='first') -> pd.DataFrame:
+    def impute_keys(self, other, keys=None, func='first', fillna=None, missing='warn') -> pd.DataFrame:
         """
         Impute missing key values from this dataframe onto another dataframe 
         based on matches between other keys and LRS locations.
@@ -982,6 +991,19 @@ class LRS_Accessor(object):
         func : str, default 'first'
             EventsRelation aggregation function to use when multiple matches
             are found. See the EventsRelation class for available options.
+        fillna : scalar or dict, optional
+            Value or dictionary of values to use to fill NaN values after
+            imputation. If None, no filling is performed. If provided as a
+            dictionary, keys should be column labels and values should be
+            the fill values for each column.
+        missing : {'warn', 'ignore', 'raise'}, default 'warn'
+            How to handle data that cannot be imputed because no matching
+            LRS locations were found.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the other DataFrame with imputed key values.
         """
         # Validate other dataframe
         if not isinstance(other, pd.DataFrame):
@@ -1005,6 +1027,27 @@ class LRS_Accessor(object):
         # Apply imputed keys to other dataframe
         df = other.copy()
         df[keys] = data
+        # Fill NaN values if needed
+        if fillna is not None:
+            # If fillna is a dict, confirm that all columns are within the 
+            # imputed keys
+            if isinstance(fillna, dict):
+                for col in fillna.keys():
+                    if col not in keys:
+                        raise KeyError(
+                            f"Fill value provided for column '{col}' which "
+                            f"was not imputed."
+                        )
+            df.fillna(value=fillna, inplace=True)
+        # Handle missing data
+        missing_data = df[keys].isna().any(axis=1)
+        if missing_data.any():
+            n_missing = missing_data.sum()
+            msg = f"{n_missing} rows contain missing key values after imputation."
+            if missing == 'warn':
+                warnings.warn(msg, UserWarning)
+            elif missing == 'raise':
+                raise ValueError(msg)
         # Update LRS of other dataframe
         df.lr.set_lrs(self.lrs, inplace=True)
         return df
@@ -1184,6 +1227,136 @@ class LRS_Accessor(object):
         # Return results
         return (df, relation) if return_relation else df
     
+    @_method_require(is_linear=True)
+    def cut_from(self, other, geom_col=None, geom_m_col=None, multiple='first', inplace=False) -> pd.DataFrame | None:
+        """
+        Cut new geometries for the events in the dataframe from the geometries
+        of another dataframe based on the LRS locations.
+        
+        Parameters
+        ----------
+        other : DataFrame
+            The other DataFrame to cut geometries from. Must have an equivalent 
+            linear referencing system with populated M-enabled linear 
+            geometries.
+        geom_col : str, optional
+            The name of the geometry column to create in the dataframe. If None,
+            use the geometry column name from the LRS if present, otherwise
+            use the geometry column name from the other dataframe LRS if present,
+            otherwise 'geometry'. This will also update the LRS geometry 
+            column name.
+        geom_m_col : str, optional
+            The name of the geometry_m column to create in the dataframe. If None,
+            use the geometry_m column name from the LRS if present, otherwise
+            use the geometry_m column name from the other dataframe LRS if present,
+            otherwise 'geometry_m'. This will also update the LRS geometry_m 
+            column name.
+        multiple : {'first', 'last', 'merge', 'list', 'raise'}, default 'first'
+            The strategy to use when multiple geometries intersect.
+            - 'first' : Use the first intersecting geometry only.
+            - 'last' : Use the last intersecting geometry only.
+            - 'merge' : Attempt to merge all intersecting geometries into a 
+                        single M-enabled geometry.
+            - 'raise' : Raise an error if multiple geometries intersect.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Validate other dataframe
+        if not isinstance(other, pd.DataFrame):
+            raise TypeError("Input object must be of type `pd.DataFrame`.")
+        if not other.lr.is_lrs_set:
+            raise LRSCompatibilityError("Input DataFrame has no LRS set.")
+        if not other.lr.lrs.is_spatial_m:
+            raise LRSCompatibilityError(
+                "Input DataFrame LRS has no geometry_m column set."
+            )
+        
+        # Define geometry column names
+        if geom_col is None:
+            geom_col = \
+                self.geom_col if self.geom_col is not None else \
+                other.lr.geom_col if other.lr.geom_col is not None else \
+                'geometry'
+        if geom_m_col is None:
+            geom_m_col = \
+                self.geom_m_col if self.geom_m_col is not None else \
+                other.lr.geom_m_col if other.lr.geom_m_col is not None else \
+                'geometry_m'
+
+        # Relate dataframes
+        relation = self.relate(other)
+        # Cut geometries
+        cut_geoms_m = relation.cut(axis=1, multiple=multiple)
+        cut_geoms = np.array([geom_m.geom for geom_m in cut_geoms_m])
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        df[geom_col] = cut_geoms
+        df[geom_m_col] = cut_geoms_m
+        # Update LRS if needed
+        if self.lrs.geom_col != geom_col or self.lrs.geom_m_col != geom_m_col:
+            lrs = df.lr.lrs.copy(deep=True)
+            lrs = lrs.set_params(geom_col=geom_col, geom_m_col=geom_m_col)
+            df.lr.set_lrs(lrs, inplace=True)    
+        return None if inplace else df
+    
+    @_method_require(is_located=True)
+    def interpolate_from(self, other, geom_col=None, multiple='first', inplace=False) -> pd.DataFrame | None:
+        """
+        Interpolate new point geometries for the located events in the 
+        dataframe from the geometries of another dataframe based on the LRS 
+        locations.
+        
+        Parameters
+        ----------
+        other : DataFrame
+            The other DataFrame to interpolate geometries from. Must have an 
+            equivalent linear referencing system with populated M-enabled 
+            linear geometries.
+        geom_col : str, optional
+            The name of the geometry column to create in the dataframe. If None,
+            use the geometry column name from the LRS if present, otherwise
+            use the geometry column name from the other dataframe LRS if present,
+            otherwise 'geometry'. This will also update the LRS geometry 
+            column name.
+        multiple : {'first', 'last', 'raise'}, default 'first'
+            The strategy to use when multiple geometries intersect.
+            - 'first' : Use the first intersecting geometry only.
+            - 'last' : Use the last intersecting geometry only.
+            - 'raise' : Raise an error if multiple geometries intersect.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Validate other dataframe
+        if not isinstance(other, pd.DataFrame):
+            raise TypeError("Input object must be of type `pd.DataFrame`.")
+        if not other.lr.is_lrs_set:
+            raise LRSCompatibilityError("Input DataFrame has no LRS set.")
+        if not other.lr.lrs.is_spatial_m:
+            raise LRSCompatibilityError(
+                "Input DataFrame LRS has no geometry_m column set."
+            )
+        
+        # Define geometry column name
+        if geom_col is None:
+            geom_col = \
+                self.geom_col if self.geom_col is not None else \
+                other.lr.geom_col if other.lr.geom_col is not None else \
+                'geometry'
+            
+        # Relate dataframes
+        relation = self.relate(other)
+        # Interpolate geometries
+        interp_geoms = relation.interpolate(axis=1, multiple=multiple)
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        df[geom_col] = interp_geoms
+        # Update LRS if needed
+        if self.lrs.geom_col != geom_col:
+            lrs = df.lr.lrs.copy(deep=True)
+            lrs = lrs.set_params(geom_col=geom_col)
+            df.lr.set_lrs(lrs, inplace=True)    
+        return None if inplace else df
+
     def relate(self, other, cache=True) -> relate.EventsRelation:
         """
         Create an events data relationship between two linearly referenced
