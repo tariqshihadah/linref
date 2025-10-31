@@ -36,6 +36,48 @@ def _get_selector_data_wrapper(func) -> callable:
         return func(*args, data=data, **kwargs)
     return wrapper
 
+def _get_linestring_m_data_wrapper(func) -> callable:
+    """
+    Decorator for getting linestring M data.
+    """
+    def wrapper(*args, **kwargs):
+        axis = kwargs.get('axis', 1)
+        data = kwargs.pop('data', None)
+        self = args[0]
+        # Attempt to get data if selector is set
+        if data is None:
+            if self._selector is None:
+                try:
+                    data = \
+                        self.left_df .lr.geoms_m if axis == 0 else \
+                        self.right_df.lr.geoms_m
+                    assert data is not None
+                except (AttributeError, AssertionError):
+                    raise ValueError(
+                        "No linestring M data found in the selected dataframe. "
+                        f"Ensure that the {'left' if axis == 0 else 'right'} "
+                        "dataframe has linestring M geometry data and that it "
+                        "is set within the dataframe's LRS."
+                    )
+            else:
+                data = self._get_selected_data(axis)
+        else:
+            data = np.asarray(data)
+        # Validate data type
+        if isinstance(data[0], geometry.LineString):
+            raise TypeError(
+                "Input aggregation data does not contain M values. Use "
+                "the `add_geom_m` method to add M values to LineString "
+                "geometries."
+            )
+        elif not isinstance(data[0], geometry.LineStringM):
+            raise TypeError(
+                "Input aggregation data must be a list or array of "
+                "LineStringM geometry objects."
+            )
+        return func(*args, data=data, **kwargs)
+    return wrapper
+
 def _validate_agg_axis_wrapper(func) -> callable:
     """
     Decorator for validating aggregation axis input.
@@ -158,7 +200,7 @@ class EventsRelation(object):
         # Initialize and validate
         self._validate_events()
         self.reset_cache()
-        self._set_selector(None)
+        self._set_selector(None, inplace=True)
 
     def __getitem__(self, key) -> EventsRelation:
         """
@@ -1010,6 +1052,199 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
     
+    @_get_linestring_m_data_wrapper
+    @_require_agg_data
+    @_validate_agg_1d_data_wrapper
+    def interpolate(self, data=None, axis=1, multiple='first', **kwargs) -> np.ndarray:
+        """
+        Interpolate new point geometries from intersecting events based on the 
+        location of the target events, returning an array of interpolated
+        geometries.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) where n is the number of events in the left 
+            dataframe if axis=0 or the number of events in the right dataframe if 
+            axis=1. This will result in an output shape of (m,), where m is the 
+            number of events in the opposite dataframe.
+
+            Data must contain LineStringM objects.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        multiple : {'first', 'last', 'merge', 'list', 'raise'}, default 'first'
+            The strategy to use when multiple geometries intersect.
+            - 'first' : Use the first intersecting geometry only.
+            - 'last' : Use the last intersecting geometry only.
+            - 'list' : Return a list of all interpolated geometries.
+            - 'raise' : Raise an error if multiple geometries intersect.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            An array containing the interpolated geometries for all 
+            intersecting events. The shape of the array will be (m,), where m 
+            is the number of events in the right dataframe if axis=0 or the 
+            number of events in the left dataframe if axis=1.
+        """
+        # Ensure both linear and point datasets contain relevant features
+        if axis == 1 and not (self.left.is_point and self.right.is_linear):
+            raise ValueError(
+                "Left events must be point and right events must be linear "
+                "for 'interpolate' aggregation with axis=1."
+            )
+        if axis == 0 and not (self.left.is_linear and self.right.is_point):
+            raise ValueError(
+                "Left events must be linear and right events must be point "
+                "for 'interpolate' aggregation with axis=0."
+            )
+        
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+        arr = arr if axis == 1 else arr.T
+
+        # Pull event locations
+        locs = self.left.locs if axis == 1 else self.right.locs
+
+        # Iterate over sparse rows
+        output = []
+        for row, loc in zip(arr, locs):
+            # Get data values
+            geoms = data[row.indices]
+            # Determine approach to interpolate multiple geometries
+            if multiple == 'first':
+                geoms = geoms[:1]
+            elif multiple == 'last':
+                geoms = geoms[-1:]
+            elif multiple == 'raise':
+                if len(geoms) > 1:
+                    raise ValueError(
+                        "Multiple intersecting geometries found when 'raise' "
+                        "option is set for 'interpolate' aggregation."
+                    )
+            # Interpolate new geometries from intersecting geometries
+            interp_geoms = [
+                geom.interpolate(loc, normalized=False, m=True, snap=True)
+                for geom in geoms
+            ]
+            # Determine approach to post-processing multiple geometries
+            if multiple == 'list':
+                pass  # Keep as list
+            else:  # 'first' or 'last'
+                interp_geoms = interp_geoms[0] if interp_geoms else None
+            # Log values
+            output.append(interp_geoms)
+
+        # Convert to numpy array of lists if needed
+        if multiple == 'list':
+            output_array = np.empty((len(output), data.shape[0]), dtype=object)
+            output_array[:] = output
+        else:
+            output_array = np.array(output, dtype=object)
+        return output_array
+    
+    @_get_linestring_m_data_wrapper
+    @_require_agg_data
+    @_validate_agg_1d_data_wrapper
+    def cut(self, data=None, axis=1, multiple='first', **kwargs) -> np.ndarray:
+        """
+        Cut new linear geometries from intersecting events based on the begin 
+        and end bounds of the target events, returning an array of cut 
+        geometries.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) where n is the number of events in the left 
+            dataframe if axis=0 or the number of events in the right dataframe if 
+            axis=1. This will result in an output shape of (m,), where m is the 
+            number of events in the opposite dataframe.
+
+            Data must contain LineStringM objects.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        multiple : {'first', 'last', 'merge', 'list', 'raise'}, default 'first'
+            The strategy to use when multiple geometries intersect.
+            - 'first' : Use the first intersecting geometry only.
+            - 'last' : Use the last intersecting geometry only.
+            - 'merge' : Attempt to merge all intersecting geometries into a 
+                        single M-enabled geometry.
+            - 'list' : Return a list of all cut intersecting geometries.
+            - 'raise' : Raise an error if multiple geometries intersect.
+
+        Returns
+        -------
+        arr : numpy.ndarray
+            An array containing the cut geometries for all intersecting events. 
+            The shape of the array will be (m,), where m is the number of 
+            events in the right dataframe if axis=0 or the number of 
+            events in the left dataframe if axis=1.
+        """
+        # Ensure both datasets are linear and contain relevant features
+        if not (self.left.is_linear and self.right.is_linear):
+            raise ValueError(
+                "Both left and right events must be linear for 'cut' aggregation."
+            )
+        
+        # Check for cached data
+        arr = self._get_intersect_data(**kwargs)
+        arr = arr if axis == 1 else arr.T
+
+        # Pull event bounds
+        begs = self.left.begs if axis == 1 else self.right.begs
+        ends = self.left.ends if axis == 1 else self.right.ends
+
+        # Iterate over sparse rows
+        output = []
+        for row, beg, end in zip(arr, begs, ends):
+            # Get data values
+            geoms = data[row.indices]
+            # Determine approach to cut multiple geometries
+            if multiple == 'first':
+                geoms = geoms[:1]
+            elif multiple == 'last':
+                geoms = geoms[-1:]
+            elif multiple == 'raise':
+                if len(geoms) > 1:
+                    raise ValueError(
+                        "Multiple intersecting geometries found when 'raise' "
+                        "option is set for 'cut' aggregation."
+                    )
+            # Cut new geometries from intersecting geometries
+            cut_geoms = [
+                geom.cut(beg, end, normalized=False, m=True, snap=True)
+                for geom in geoms
+            ]
+            # Determine approach to post-processing multiple geometries
+            if multiple == 'merge':
+                cut_geoms = geometry.linemerge_m(
+                    cut_geoms,
+                    allow_multiple=False,
+                    allow_mismatch=False,
+                    squeeze=True,
+                    cast_geom=True,
+                )
+            elif multiple == 'list':
+                pass  # Keep as list
+            else:  # 'first' or 'last'
+                cut_geoms = cut_geoms[0] if cut_geoms else None
+            # Log values
+            output.append(cut_geoms)
+        
+        # Convert to numpy array of lists if needed
+        if multiple == 'list':
+            output_array = np.empty((len(output), data.shape[0]), dtype=object)
+            output_array[:] = output
+        else:
+            output_array = np.array(output, dtype=object)
+        return output_array
+
     @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper

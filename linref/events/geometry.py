@@ -50,13 +50,16 @@ class LineStringM:
                 try:
                     m = np.array(m)
                 except:
-                    raise ValueError('LineStringM m must be a numpy array')
+                    raise ValueError("LineStringM m must be a numpy array.")
             # Enforce input shape
             if len(m) != len(self.geom.coords):
-                raise ValueError('LineStringM m must be same length as coords')
+                raise ValueError(
+                    f"LineStringM m must be same length as coords. Received {len(m)} "
+                    f"M values for coords of length {len(self.geom.coords)}."
+                )
             # Enforce monotonic increase
             if not np.all(np.diff(m) >= 0):
-                raise ValueError('LineStringM m must be monotonic increasing')
+                raise ValueError("LineStringM m must be monotonic and increasing.")
         self._m = m
 
     @property
@@ -272,7 +275,7 @@ class LineStringM:
         """
         # Check if M values are defined
         if self.m is None:
-            raise ValueError('Cannot convert distance to M value: M values are not defined')
+            raise ValueError("Cannot convert distance to M value: M values are not defined")
         # Check input snapping
         distance, snapped = self._check_snapping(distance, normalized=normalized, m=False, snap=snap)
         if snapped != 0:
@@ -370,11 +373,15 @@ class LineStringM:
             raise ValueError('normalized and m cannot both be True')
         # Check input snapping and transform if needed
         if m:
+            beg_m = beg
+            end_m = end
             beg = self.m_to_distance(beg, snap=snap)
             end = self.m_to_distance(end, snap=snap)
         else:
             beg = self._check_snapping(beg, normalized=normalized, m=m, snap=snap)[0]
             end = self._check_snapping(end, normalized=normalized, m=m, snap=snap)[0]
+            beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
+            end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
 
         # Compute the substring of the LineString
         new_geom = shapely.ops.substring(self.geom, beg, end, normalized=normalized)
@@ -387,15 +394,33 @@ class LineStringM:
         
         # Compute the M values for the substring
         if self.m is not None:
-            beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
-            end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
             m = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
             m = np.insert(m, 0, beg_m)
             m = np.append(m, end_m)
         else:
             m = None
+        # Identify and address cases where number of M values does not match
+        # number of vertices (due to the substring operation producing zero-
+        # length chords)
+        if m is not None:
+            if len(m) != len(new_geom.coords):
+                # Warn for now
+                warnings.warn(
+                    "M values length does not match number of vertices in cut "
+                    "geometry; adjusting M values to match", RuntimeWarning)
+                # Recompute M values based on proportional lengths
+                chord_lengths = get_chord_lengths(new_geom, normalized=False)
+                if chord_lengths[0] == 0:
+                    new_geom = LineString(new_geom.coords[1:])
+                elif chord_lengths[-1] == 0:
+                    new_geom = LineString(new_geom.coords[:-1])
+                else:
+                    raise ValueError(
+                        f"M values length of {len(m)} does not match number "
+                        f"of vertices in cut geometry of {len(new_geom.coords)}."
+                    )
         return LineStringM(new_geom, m=m)
-        
+
 
 #
 # Helper functions
