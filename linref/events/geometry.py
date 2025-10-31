@@ -18,6 +18,17 @@ class LineStringM:
     
     def __repr__(self):
         return self.wkt
+    
+    def __eq__(self, other):
+        if not isinstance(other, LineStringM):
+            return False
+        if not self.geom == other.geom:
+            return False
+        if self.m is None and other.m is None:
+            return True
+        if (self.m is None) != (other.m is None):
+            return False
+        return np.array_equal(self.m, other.m)
 
     @property
     def geom(self):
@@ -98,6 +109,29 @@ class LineStringM:
         # Add M values to the WKT representation
         points = [f'{x[0]} {x[1]} {m}' for x, m in zip(self.geom.coords, self.m)]
         return 'LINESTRING M (' + ', '.join(points) + ')'
+    
+    @classmethod
+    def from_wkt(cls, wkt):
+        """
+        Create a LineStringM object from a WKT representation.
+
+        Parameters
+        ----------
+        wkt : str
+            The WKT representation of the LineStringM.
+        """
+        # Validate input type
+        if not isinstance(wkt, str):
+            raise ValueError("WKT must be a string")
+        # Parse the WKT string
+        if not wkt.startswith("LINESTRING M"):
+            raise ValueError("WKT must be of type LINESTRING M")
+        coord_str = wkt[len("LINESTRING M ("):-1]
+        coord_tuples = [tuple(map(float, point.split())) for point in coord_str.split(", ")]
+        coords = [(x[0], x[1]) for x in coord_tuples]
+        m = np.array([x[2] for x in coord_tuples])
+        geom = LineString(coords)
+        return cls(geom, m)
     
     def copy(self, deep=False):
         """
