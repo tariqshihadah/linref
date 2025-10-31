@@ -1183,7 +1183,7 @@ class LRS_Accessor(object):
             loc_name=self.loc_col,
             beg_name=self.beg_col,
             end_name=self.end_col,
-        ).lr.lrs_like(self)
+        )
         relation.left_df = df
         relation.right_df = self.df
 
@@ -1222,7 +1222,19 @@ class LRS_Accessor(object):
 
         # - No valid geometry column
         elif merge_geom:
-            raise ValueError("Cannot merge geometries: no geometry column in the dataframe.")
+            raise ValueError(
+                "Cannot merge geometries: no geometry column in the dataframe."
+            )
+
+        # Upgrade to geodataframe
+        try:
+            df = gpd.GeoDataFrame(
+                df, geometry=self.geom_col, crs=self.df.crs
+            ).lr.lrs_like(self)
+        except:
+            raise ValueError(
+                "Failed to convert dissolved DataFrame to GeoDataFrame."
+            )
 
         # Return results
         return (df, relation) if return_relation else df
@@ -1355,6 +1367,34 @@ class LRS_Accessor(object):
             lrs = df.lr.lrs.copy(deep=True)
             lrs = lrs.set_params(geom_col=geom_col)
             df.lr.set_lrs(lrs, inplace=True)    
+        return None if inplace else df
+    
+    def parse_geom_m_wkt(self, geom_m_col=None, inplace=False) -> pd.DataFrame | None:
+        """
+        Parse the WKT representation of the geometry_m column into a
+        LineStringM object.
+
+        Parameters
+        ----------
+        geom_m_col : str, optional
+            The name of the geometry_m column to parse. If None, use the
+            geometry_m column name from the LRS if present.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Define geometry column name
+        if geom_m_col is None:
+            if not self.lrs.is_spatial_m:
+                raise ValueError(
+                    "No geometry_m column defined in the LRS. "
+                    "Please provide a geometry_m_col parameter."
+                )
+            else:
+                geom_m_col = self.lrs.geom_m_col
+
+        # Parse WKT
+        df = self.df if inplace else self.df.copy()
+        df[geom_m_col] = df[geom_m_col].apply(geometry.parse_linestring_m_wkt)
         return None if inplace else df
 
     def relate(self, other, cache=True) -> relate.EventsRelation:

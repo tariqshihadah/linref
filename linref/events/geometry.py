@@ -14,10 +14,10 @@ class LineStringM:
         self.m = m
 
     def __str__(self):
-        return self.wkt + r' # linref compatibility approximation'
+        return self.wkt
     
     def __repr__(self):
-        return self.wkt
+        return self.wkt + r' # linref compatibility approximation'
     
     def __eq__(self, other):
         if not isinstance(other, LineStringM):
@@ -123,6 +123,8 @@ class LineStringM:
         # Validate input type
         if not isinstance(wkt, str):
             raise ValueError("WKT must be a string")
+        # Remove comment if needed
+        wkt = wkt.split(" # ")[0]
         # Parse the WKT string
         if not wkt.startswith("LINESTRING M"):
             raise ValueError("WKT must be of type LINESTRING M")
@@ -671,3 +673,33 @@ def get_chord_lengths(ls, normalized=False):
     if normalized:
         lengths = lengths / ls.length
     return lengths
+
+def parse_linestring_wkt(wkt):
+    """
+    Parse a WKT representation of one or many LineStrings, returning one or 
+    an array of LineString objects.
+
+    Parameters
+    ----------
+    wkt : str or array-like of str
+        The WKT representation of the LineString.
+    """
+    if isinstance(wkt, (list, np.ndarray)):
+        return np.array([shapely.from_wkt(wkt_i) for wkt_i in wkt])
+    else:
+        return shapely.from_wkt(wkt)
+
+def parse_linestring_m_wkt(wkt):
+    """
+    Parse a WKT representation of one or many LineStringMs, returning one or 
+    an array of LineStringM objects.
+
+    Parameters
+    ----------
+    wkt : str or array-like of str
+        The WKT representation of the LineStringM.
+    """
+    if isinstance(wkt, (list, np.ndarray)):
+        return np.array([LineStringM.from_wkt(wkt_i) for wkt_i in wkt])
+    else:
+        return LineStringM.from_wkt(wkt)
