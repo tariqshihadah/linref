@@ -416,6 +416,12 @@ class LRS_Accessor(object):
         self._df[col] = values
 
     @property
+    def event_lengths(self) -> np.ndarray:
+        if not self.is_linear:
+            return None
+        return self.ends - self.begs
+
+    @property
     def geoms(self) -> np.ndarray:
         # Select data from the dataframe if geometry is present
         col = self.geom_col
@@ -1053,7 +1059,7 @@ class LRS_Accessor(object):
         return df
     
     @_method_require(is_linear=True)
-    def resegment(self, length=1, fill='cut', inplace=False, return_relation=False) -> pd.DataFrame | None:
+    def resegment(self, length=1, fill='cut', return_relation=False, cut_geom=True) -> pd.DataFrame | None:
         """
         Resegment the events of the LRS to the specified length.
 
@@ -1104,11 +1110,12 @@ class LRS_Accessor(object):
                         [---------|              ]
                         [         |--------------]
 
-        inplace : bool, default False
-            Whether to apply changes to the DataFrame in place.
         return_relation : bool, default False
             Whether to return an EventsRelation object between the resegmented
             events and the input events to allow for easy aggregation of data.
+        cut_geom : bool, default True
+            Whether to cut new geometries for the resegmented events based on
+            the existing geometries in the dataframe.
 
         Returns
         -------
@@ -1118,19 +1125,40 @@ class LRS_Accessor(object):
         # Resegment events
         events, relation = self.events.resegment(length=length, fill=fill, return_relation=True)
         # Apply changes to the DataFrame
-        df_left = events.to_frame()
+        df_left = events.to_frame(
+            index_name=self._df.index.name,
+            group_name=self.key_col,
+            loc_name=self.loc_col,
+            beg_name=self.beg_col,
+            end_name=self.end_col,
+        )
         df_right = self.df[self.other_cols]
         df = pd.merge(df_left, df_right, left_index=True, right_index=True)
         # Update relation object
         relation = relation.T
         relation.left_df = df
         relation.right_df = self.df
+        # Cut new geometries if needed
+        if cut_geom and self.is_spatial_m:
+            try:
+                df[self.geom_m_col] = relation.cut()
+                df[self.geom_col] = np.array([geom_m.geom for geom_m in df[self.geom_m_col]])
+                df = gpd.GeoDataFrame(
+                    df, geometry=self.geom_col, crs=self.df.crs
+                )
+            except:
+                raise ValueError(
+                    f"Unable to cut new geometries for resegmented events."
+                )
+        elif cut_geom and self.is_spatial:
+            raise ValueError(
+                f"Cannot cut new geometries: no geometry_m column in the "
+                "dataframe. This can be resolved by adding a geometry_m using "
+                "the `add_geom_m` method."
+            )
         # Return results
-        if inplace:
-            self._df = df
-            return
-        else:
-            return (df, relation) if return_relation else df
+        df = df.lr.lrs_like(self)
+        return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)
     def dissolve(

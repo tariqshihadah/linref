@@ -149,6 +149,26 @@ class LineStringM:
     def _check_snapping(self, distance, normalized=False, m=False, snap=False):
         """
         Check if snapping is required for the distance input and type.
+
+        Parameters
+        ----------
+        distance : float
+            The distance along the geometry to check.
+        normalized : bool, default False
+            Whether the distance is normalized (0-1) or absolute.
+        m : bool, default False
+            Whether the distance should be interpreted as an M value.
+        snap : bool, default False
+            Whether to snap the distance to the nearest vertex if it is out of 
+            range. If False, a ValueError will be raised if the distance is out
+            of range.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the (possibly snapped) distance and a snap
+            indicator (0 = no snap, 1 = snapped to beginning, 2 = snapped to 
+            end).
         """
         # Ensure only one distance type is specified
         if normalized and m:
@@ -409,13 +429,13 @@ class LineStringM:
             raise ValueError('normalized and m cannot both be True')
         # Check input snapping and transform if needed
         if m:
-            beg_m = beg
-            end_m = end
+            beg_m = self._check_snapping(beg, normalized=normalized, m=True, snap=snap)[0]
+            end_m = self._check_snapping(end, normalized=normalized, m=True, snap=snap)[0]
             beg = self.m_to_distance(beg, snap=snap)
             end = self.m_to_distance(end, snap=snap)
         else:
-            beg = self._check_snapping(beg, normalized=normalized, m=m, snap=snap)[0]
-            end = self._check_snapping(end, normalized=normalized, m=m, snap=snap)[0]
+            beg = self._check_snapping(beg, normalized=normalized, m=False, snap=snap)[0]
+            end = self._check_snapping(end, normalized=normalized, m=False, snap=snap)[0]
             beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
             end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
 

@@ -424,7 +424,7 @@ def resegment(events, length=1, fill='cut', return_relation=False):
         col_index = reverse_index
         arr = sp.csr_array(
             (np.ones(len(reverse_index)), (row_index, col_index))
-        )
+        ).T
         # Prepare relation object
         relation = relate.EventsRelation(events, new_events, cache=True)
         relation._intersect_data = arr
