@@ -12,7 +12,7 @@ from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
-from linref.events import relate, geometry
+from linref.events import modify, relate, geometry
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 
 
@@ -1409,6 +1409,50 @@ class LRS_Accessor(object):
         return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)
+    def integrate(
+        self,
+        objs : pd.DataFrame | list[pd.DataFrame],
+        fill_gaps: bool = False,
+        split_at_locs: bool = False,
+        inverse_col: str | list[str] | None = None
+        ):
+        """
+        Combine one or more linearly referenced dataframes with the current 
+        dataframe, creating new linear events based on least common intervals 
+        among all input events. The input dataframes must have equivalent linear
+        referencing systems.
+
+        Parameters
+        ----------
+        objs : pd.DataFrame | list[pd.DataFrame]
+            A DataFrame or a list of DataFrames with equivalent linear 
+            referencing systems to integrate.
+        fill_gaps : bool, default False
+            Whether to fill gaps in merged events between the maximum beginning
+            and minimum ending points of all input events within a group. These
+            gaps will be represented as events with no associated input events.
+        split_at_locs : bool, default False
+            Whether to split events at location points within the input events.
+            This allows for breaking events at point events as well as linear
+            events.
+        inverse_col : str or list of str, optional
+            The label or list of labels for the inverse index columns that map
+            integrated events to the original events from each input dataframe.
+            If a single string is provided, all inverse index columns will use
+            the same label with an appended suffix of '_0', '_1', etc. If None,
+            default labels of 'integrated_index_0', 'integrated_index_1', etc.
+            will be used.
+        """
+        # Perform integration
+        return integrate(
+            ([self.df] + objs) if isinstance(objs, list) else [self.df, objs],
+            fill_gaps=fill_gaps,
+            split_at_locs=split_at_locs,
+            inverse_col=inverse_col,
+            index_adjustment=1
+        )
+    
+    @_method_require(is_linear=True)
     def cut_from(self, other, geom_col=None, geom_m_col=None, multiple='first', inplace=False) -> pd.DataFrame | None:
         """
         Cut new geometries for the events in the dataframe from the geometries
@@ -1748,3 +1792,106 @@ class LRS_Accessor(object):
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
+
+# Helpfer functions for event modification operations
+
+def integrate(
+        objs: list[pd.DataFrame],
+        fill_gaps: bool = False,
+        split_at_locs: bool = False,
+        inverse_col: str | list[str] | None = None,
+        **kwargs
+    ) -> pd.DataFrame:
+    """
+    Combine multiple linearly referenced dataframes into a single dataframe,
+    creating new linear events based on least common intervals among all input 
+    events.
+
+    Parameters
+    ----------
+    objs : list of DataFrame
+        A list of DataFrames with equivalent linear referencing systems to
+        integrate.
+    fill_gaps : bool, default False
+        Whether to fill gaps in merged events between the maximum beginning
+        and minimum ending points of all input events within a group. These
+        gaps will be represented as events with no associated input events.
+    split_at_locs : bool, default False
+        Whether to split events at location points within the input events.
+        This allows for breaking events at point events as well as linear
+        events.
+    inverse_col : str or list of str, optional
+        The label or list of labels for the inverse index columns that map
+        integrated events to the original events from each input dataframe.
+        If a single string is provided, all inverse index columns will use
+        the same label with an appended suffix of '_0', '_1', etc. If None,
+        default labels of 'integrated_index_0', 'integrated_index_1', etc.
+        will be used.
+    """
+    # Check for dataframe index adjustment
+    adj = kwargs.pop('index_adjustment', 0)
+    if len(kwargs) > 0:
+        raise TypeError(
+            f"integrate() got unexpected keyword arguments: "
+            f"{', '.join(kwargs.keys())}"
+        )
+    # Validate input dataframes
+    if not isinstance(objs, list):
+        raise TypeError("Input `objs` must be a list of DataFrames.")
+    if len(objs) < 1:
+        raise ValueError(
+            "Input `objs` must contain at least one DataFrame."
+        )
+    for i, obj in enumerate(objs):
+        if not isinstance(obj, pd.DataFrame):
+            raise TypeError(
+                f"Input object at index {i - adj} is not a DataFrame."
+            )
+        if not obj.lr.is_lrs_set:
+            raise LRSCompatibilityError(
+                f"Input DataFrame at index {i - adj} has no LRS set."
+            )
+        if not obj.lr.lrs.is_linear:
+            raise LRSCompatibilityError(
+                f"Input DataFrame at index {i - adj} LRS has no linear events."
+            )
+        # Validate that all LRS are equivalent
+        if not obj.lr.lrs == objs[0].lr.lrs:
+            raise LRSCompatibilityError(
+                f"Input DataFrame at index {i - adj} has an incompatible "
+                "linear referencing system."
+            )
+    # Validate inverse column names
+    if inverse_col is None:
+        inverse_col = [f'integrated_index_{i}' for i in range(len(objs))]
+    elif isinstance(inverse_col, str):
+        inverse_col = [f'{inverse_col}_{i}' for i in range(len(objs))]
+    elif isinstance(inverse_col, list):
+        if len(inverse_col) != len(objs):
+            raise ValueError(
+                "Input `inverse_col` list length must match number of input "
+                "dataframes."
+            )
+    else:
+        raise TypeError(
+            "Input `inverse_col` must be a string, list of strings, or None."
+        )
+        
+    # Perform integration
+    events, indices = modify.integrate(
+        [obj.lr.events for obj in objs],
+        fill_gaps=fill_gaps,
+        split_at_locs=split_at_locs,
+        return_index=True
+    )
+    # Convert events to dataframe
+    df = events.to_frame(
+        index_name=None,
+        group_name=objs[0].lr.key_col,
+        beg_name=objs[0].lr.beg_col,
+        end_name=objs[0].lr.end_col,
+    )
+    # Append indices from each input dataframe
+    df[inverse_col] = indices
+
+    return df
