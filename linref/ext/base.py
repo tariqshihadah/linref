@@ -224,6 +224,9 @@ class LRS(object):
 
 @register_dataframe_accessor("lr")
 class LRS_Accessor(object):
+    """
+    Accessor for working with linear referencing systems (LRS) in GeoDataFrames.
+    """
 
     # Initialize default LRS list
     _default_lrs = None
@@ -265,6 +268,9 @@ class LRS_Accessor(object):
 
     @property
     def df(self) -> pd.DataFrame:
+        """
+        Return the underlying DataFrame.
+        """
         return self._df
     
     @df.setter
@@ -272,9 +278,13 @@ class LRS_Accessor(object):
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input DataFrame must be of type `pandas.DataFrame`.")
         self._df = df
-    
+
     @property
-    def target_cols(self) -> list[str]:
+    def lrs_cols(self) -> list[str]:
+        """
+        Return a list of all LRS event-related columns in the dataframe, 
+        including key, location, begin, and end columns as defined in the LRS.
+        """
         cols = []
         if self.is_grouped:
             cols.extend(self.key_col)
@@ -285,9 +295,33 @@ class LRS_Accessor(object):
         return cols
     
     @property
+    def target_cols(self) -> list[str]:
+        """
+        Return a list of all LRS event and geometry-related columns in the
+        dataframe, including key, location, begin, end, and geometry columns
+        as defined in the LRS.
+        """
+        cols = []
+        if self.is_grouped:
+            cols.extend(self.key_col)
+        if self.is_located:
+            cols.append(self.loc_col)
+        if self.is_linear:
+            cols.extend([self.beg_col, self.end_col])
+        if self.is_spatial:
+            cols.append(self.geom_col)
+        if self.is_spatial_m:
+            cols.append(self.geom_m_col)
+        return cols
+    
+    @property
     def other_cols(self) -> list[str]:
+        """
+        Return a list of all non-LRS event and geometry-related columns in the
+        dataframe.
+        """
         # Get all restricted columns
-        remove = self.target_cols + [self.geom_col, self.geom_m_col]
+        remove = self.target_cols
         cols = self._df.columns.to_list()
         for col in remove:
             cols.remove(col)
@@ -295,6 +329,9 @@ class LRS_Accessor(object):
 
     @property
     def lrs(self) -> LRS:
+        """
+        The LRS object currently set for the DataFrame.
+        """
         return self._lrs
     
     @lrs.setter
@@ -305,10 +342,16 @@ class LRS_Accessor(object):
 
     @property
     def is_lrs_set(self) -> bool:
+        """
+        Whether an LRS object is currently set for the DataFrame.
+        """
         return self.lrs is not None
 
     @property
     def key_col(self) -> list[str]:
+        """
+        Return a list of all event key columns in the set LRS if defined.
+        """
         try:
             return self.lrs.key_col
         except AttributeError:
@@ -316,6 +359,9 @@ class LRS_Accessor(object):
 
     @property
     def loc_col(self) -> str:
+        """
+        Return the location column in the set LRS if defined.
+        """
         try:
             return self.lrs.loc_col
         except AttributeError:
@@ -323,6 +369,9 @@ class LRS_Accessor(object):
 
     @property
     def beg_col(self) -> str:
+        """
+        Return the begin column in the set LRS if defined.
+        """
         try:
             return self.lrs.beg_col
         except AttributeError:
@@ -330,6 +379,9 @@ class LRS_Accessor(object):
 
     @property
     def end_col(self) -> str:
+        """
+        Return the end column in the set LRS if defined.
+        """
         try:
             return self.lrs.end_col
         except AttributeError:
@@ -337,6 +389,9 @@ class LRS_Accessor(object):
     
     @property
     def geom_col(self) -> str:
+        """
+        Return the geometry column in the set LRS if defined.
+        """
         try:
             return self.lrs.geom_col
         except AttributeError:
@@ -344,6 +399,9 @@ class LRS_Accessor(object):
 
     @property
     def geom_m_col(self) -> str:
+        """
+        Return the M-enabled geometry column in the set LRS if defined.
+        """
         try:
             return self.lrs.geom_m_col
         except AttributeError:
@@ -351,6 +409,9 @@ class LRS_Accessor(object):
 
     @property
     def closed(self) -> str:
+        """
+        Return the closure type in the set LRS if defined.
+        """
         try:
             return self.lrs.closed
         except AttributeError:
@@ -358,14 +419,25 @@ class LRS_Accessor(object):
 
     @property
     def index(self) -> np.ndarray:
+        """
+        Return the index values of the dataframe. Equivalent to 
+        self.df.index.values.
+        """
         return self._df.index.values
     
     @property
     def keys(self) -> np.ndarray:
+        """
+        Return the event keys from the dataframe as an array.
+        """
         return self.get_keys(require=False)
         
     @property
     def locs(self) -> np.ndarray:
+        """
+        Return the location values from the dataframe as an array. If no
+        location column is defined in the LRS, returns None.
+        """
         # Select data from the dataframe if locations are present
         col = self.loc_col
         try:
@@ -383,6 +455,10 @@ class LRS_Accessor(object):
                 
     @property
     def begs(self) -> np.ndarray:
+        """
+        Return the begin location values from the dataframe as an array. If no
+        begin column is defined in the LRS, returns None.
+        """
         # Select data from the dataframe if begin locations are present
         col = self.beg_col
         try:
@@ -400,6 +476,10 @@ class LRS_Accessor(object):
         
     @property
     def ends(self) -> np.ndarray:
+        """
+        Return the end location values from the dataframe as an array. If no
+        end column is defined in the LRS, returns None.
+        """
         # Select data from the dataframe if end locations are present
         col = self.end_col
         try:
@@ -417,12 +497,20 @@ class LRS_Accessor(object):
 
     @property
     def event_lengths(self) -> np.ndarray:
+        """
+        Return the event lengths from the dataframe as an array. If no
+        begin and end columns are defined in the LRS, returns None.
+        """
         if not self.is_linear:
             return None
         return self.ends - self.begs
 
     @property
     def geoms(self) -> np.ndarray:
+        """
+        Return the geometry values from the dataframe as an array. If no
+        geometry column is defined in the LRS, returns None.
+        """
         # Select data from the dataframe if geometry is present
         col = self.geom_col
         try:
@@ -432,6 +520,10 @@ class LRS_Accessor(object):
         
     @property
     def geoms_m(self) -> np.ndarray:
+        """
+        Return the M-enabled geometry values from the dataframe as an array. If
+        no M-enabled geometry column is defined in the LRS, returns None.
+        """
         # Select data from the dataframe if geometry is present
         col = self.geom_m_col
         try:
@@ -441,6 +533,10 @@ class LRS_Accessor(object):
         
     @property
     def geoms_m_reduced(self) -> np.ndarray:
+        """
+        Extract and return the shapely geometries from the M-enabled geometry
+        column in the dataframe.
+        """
         # Select M-enabled geometries and extract shapely geometries
         geoms_m = self.geoms_m
         if geoms_m is None:
@@ -580,6 +676,22 @@ class LRS_Accessor(object):
                          for geom, geom_m in zip(self.geoms, self.geoms_m)])
     
     def get_keys(self, col=None, require=True) -> np.ndarray:
+        """
+        Return the event keys from the dataframe as an array.
+
+        Parameters
+        ----------
+        col : str, optional
+            The column name to use for extracting keys. If None, uses the
+            default key columns in the LRS.
+        require : bool, default True
+            Whether to raise an error if the key column is not found.
+
+        Returns
+        -------
+        np.ndarray
+            An array of event keys.
+        """
         # Select data from the dataframe if keys are present
         if col is None:
             col = self.key_col
@@ -596,6 +708,14 @@ class LRS_Accessor(object):
     def get_events(self, key_col=None, require=True) -> EventsData:
         """
         Return the events object for the active LRS.
+
+        Parameters
+        ----------
+        key_col : str, optional
+            The column name to use for extracting keys. If None, uses the
+            default key columns in the LRS.
+        require : bool, default True
+            Whether to raise an error if the key column is not found.
         """
         # Get keys if needed
         if key_col is None:
@@ -1123,7 +1243,7 @@ class LRS_Accessor(object):
             A copy of the current DataFrame with the events resegmented.
         """
         # Resegment events
-        events, relation = self.events.resegment(length=length, fill=fill, return_relation=True)
+        events = self.events.resegment(length=length, fill=fill)
         # Apply changes to the DataFrame
         df_left = events.to_frame(
             index_name=self._df.index.name,
@@ -1133,11 +1253,12 @@ class LRS_Accessor(object):
             end_name=self.end_col,
         )
         df_right = self.df[self.other_cols]
-        df = pd.merge(df_left, df_right, left_index=True, right_index=True)
-        # Update relation object
-        relation = relation.T
-        relation.left_df = df
-        relation.right_df = self.df
+        df = pd.merge(df_left, df_right, left_index=True, right_index=True).lr.lrs_like(self)
+        # Prepare relation object as needed
+        if return_relation or cut_geom:
+            relation = df.lr.relate(self)
+            relation.left_df = df
+            relation.right_df = self.df
         # Cut new geometries if needed
         if cut_geom and self.is_spatial_m:
             try:
@@ -1145,7 +1266,7 @@ class LRS_Accessor(object):
                 df[self.geom_col] = np.array([geom_m.geom for geom_m in df[self.geom_m_col]])
                 df = gpd.GeoDataFrame(
                     df, geometry=self.geom_col, crs=self.df.crs
-                )
+                ).lr.lrs_like(self)
             except:
                 raise ValueError(
                     f"Unable to cut new geometries for resegmented events."
@@ -1157,7 +1278,6 @@ class LRS_Accessor(object):
                 "the `add_geom_m` method."
             )
         # Return results
-        df = df.lr.lrs_like(self)
         return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)

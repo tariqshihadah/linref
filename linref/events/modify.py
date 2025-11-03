@@ -419,16 +419,7 @@ def resegment(events, length=1, fill='cut', return_relation=False):
     # Return results
     outputs = [new_events]
     if return_relation:
-        # Prepare relation array
-        row_index = np.arange(len(reverse_index))
-        col_index = reverse_index
-        arr = sp.csr_array(
-            (np.ones(len(reverse_index)), (row_index, col_index))
-        ).T
-        # Prepare relation object
-        relation = relate.EventsRelation(events, new_events, cache=True)
-        relation._intersect_data = arr
-        relation._intersect_kwargs = {}
+        relation = relate.EventsRelation(new_events, events, cache=True)
         outputs.append(relation)
     return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
