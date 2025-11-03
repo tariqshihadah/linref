@@ -383,7 +383,7 @@ def resegment(events, length=1, fill='cut', return_relation=False):
         zip(events.begs, events.ends, events.index_data, events.groups_data, num_segments):
         # Compute new default segment bounds
         new_begs = np.arange(0, max(num_segment, 1)) * length + orig_beg
-        new_ends = new_begs + length
+        new_ends = np.append(new_begs[1:], new_begs[-1] + length)
         # Adjust bounds based on fill method
         if fill == 'balance':
             if ((orig_end - new_begs[-1]) < (length / 2)) and (num_segment > 1):

@@ -233,7 +233,7 @@ class LRS_Accessor(object):
 
     def __init__(self, df) -> None:
         # Log dataframe
-        self._df = df
+        self.df = df
         # Initialize LRS
         self._lrs = self._default_lrs.copy()
 
@@ -277,6 +277,8 @@ class LRS_Accessor(object):
     def df(self, df) -> None:
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input DataFrame must be of type `pandas.DataFrame`.")
+        if isinstance(df.index, pd.MultiIndex):
+            raise ValueError("MultiIndex DataFrames are not currently supported.")
         self._df = df
 
     @property
@@ -1179,7 +1181,14 @@ class LRS_Accessor(object):
         return df
     
     @_method_require(is_linear=True)
-    def resegment(self, length=1, fill='cut', return_relation=False, cut_geom=True) -> pd.DataFrame | None:
+    def resegment(
+        self,
+        length=1,
+        fill='cut',
+        inverse_col=None,
+        return_relation=False,
+        cut_geom=True
+        ) -> pd.DataFrame | None:
         """
         Resegment the events of the LRS to the specified length.
 
@@ -1230,6 +1239,11 @@ class LRS_Accessor(object):
                         [---------|              ]
                         [         |--------------]
 
+        inverse_col : str, default 'segment_index'
+            The label for the inverse index column that maps resegmented
+            events to the original events. If not provided and the index of 
+            the dataframe is unnamed, defaults to 'segment_index'. If the index
+            is named, uses the name of the index.
         return_relation : bool, default False
             Whether to return an EventsRelation object between the resegmented
             events and the input events to allow for easy aggregation of data.
@@ -1254,6 +1268,13 @@ class LRS_Accessor(object):
         )
         df_right = self.df[self.other_cols]
         df = pd.merge(df_left, df_right, left_index=True, right_index=True).lr.lrs_like(self)
+        # Reset index and add inverse index
+        if inverse_col is None:
+            if self._df.index.name is None:
+                inverse_col = 'segment_index'
+            else:
+                inverse_col = self._df.index.name
+        df = df.reset_index(drop=False, names=inverse_col)
         # Prepare relation object as needed
         if return_relation or cut_geom:
             relation = df.lr.relate(self)
