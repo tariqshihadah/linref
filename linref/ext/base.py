@@ -12,7 +12,7 @@ from linref.ext.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
-from linref.events import modify, relate, geometry
+from linref.events import modify, relate, geometry, integration
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 
 
@@ -622,6 +622,32 @@ class LRS_Accessor(object):
             # Check for presence of geometry column in the dataframe
             return self.geom_m_col in self._df.columns
         
+    @property
+    def is_contiguous(self) -> bool:
+        """
+        Return whether linear geometries in the dataframe when grouped by LRS 
+        keys are contiguous, producing single continuous geometries without 
+        gaps.
+        """
+        if not self.is_linear or not self.is_spatial:
+            return False
+        # Check for contiguity by dissolving and counting geometries
+        counts = self.df.dissolve(by=self.key_col).line_merge().count_geometries().values
+        return all(counts == 1)
+    
+    @property
+    def is_chained(self) -> bool:
+        """
+        Return whether linear geometries in the dataframe when grouped by LRS 
+        keys are chained, producing continuous geometries without overlaps or 
+        gaps.
+        """
+        if not self.is_linear or not self.is_spatial:
+            return False
+        # Check for chaining by generating new chains and checking for multiples
+        chains = self.get_chains()
+        return all(chains == 0)
+
     def study(self) -> dict:
         """
         Evaluate which LRS properties are satisfied by the dataframe.
@@ -1453,7 +1479,7 @@ class LRS_Accessor(object):
         )
     
     @_method_require(is_linear=True)
-    def cut_from(self, other, geom_col=None, geom_m_col=None, multiple='first', inplace=False) -> pd.DataFrame | None:
+    def cut_from(self, other, geom_col=None, geom_m_col=None, multiple='first', inplace=False) -> gpd.GeoDataFrame | None:
         """
         Cut new geometries for the events in the dataframe from the geometries
         of another dataframe based on the LRS locations.
@@ -1485,10 +1511,15 @@ class LRS_Accessor(object):
             - 'raise' : Raise an error if multiple geometries intersect.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : GeoDataFrame
+            A copy of the current DataFrame with new cut geometries.
         """
         # Validate other dataframe
-        if not isinstance(other, pd.DataFrame):
-            raise TypeError("Input object must be of type `pd.DataFrame`.")
+        if not isinstance(other, gpd.GeoDataFrame):
+            raise TypeError("Input object must be of type `gpd.GeoDataFrame`.")
         if not other.lr.is_lrs_set:
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not other.lr.lrs.is_spatial_m:
@@ -1521,11 +1552,17 @@ class LRS_Accessor(object):
         if self.lrs.geom_col != geom_col or self.lrs.geom_m_col != geom_m_col:
             lrs = df.lr.lrs.copy(deep=True)
             lrs = lrs.set_params(geom_col=geom_col, geom_m_col=geom_m_col)
-            df.lr.set_lrs(lrs, inplace=True)    
+            update_lrs = True
+        else:
+            update_lrs = False
+        # Upgrade to GeoDataFrame
+        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=other.crs)
+        if update_lrs:
+            df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
     
     @_method_require(is_located=True)
-    def interpolate_from(self, other, geom_col=None, multiple='first', inplace=False) -> pd.DataFrame | None:
+    def interpolate_from(self, other, geom_col=None, multiple='first', inplace=False) -> gpd.GeoDataFrame | None:
         """
         Interpolate new point geometries for the located events in the 
         dataframe from the geometries of another dataframe based on the LRS 
@@ -1550,6 +1587,11 @@ class LRS_Accessor(object):
             - 'raise' : Raise an error if multiple geometries intersect.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : GeoDataFrame
+            A copy of the current DataFrame with new interpolated geometries.
         """
         # Validate other dataframe
         if not isinstance(other, pd.DataFrame):
@@ -1579,7 +1621,13 @@ class LRS_Accessor(object):
         if self.lrs.geom_col != geom_col:
             lrs = df.lr.lrs.copy(deep=True)
             lrs = lrs.set_params(geom_col=geom_col)
-            df.lr.set_lrs(lrs, inplace=True)    
+            update_lrs = True
+        else:
+            update_lrs = False
+        # Upgrade to GeoDataFrame
+        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=other.crs)
+        if update_lrs:
+            df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
     
     def parse_geom_m_wkt(self, geom_m_col=None, inplace=False) -> pd.DataFrame | None:
@@ -1878,7 +1926,7 @@ def integrate(
         )
         
     # Perform integration
-    events, indices = modify.integrate(
+    events, indices = integration.integrate(
         [obj.lr.events for obj in objs],
         fill_gaps=fill_gaps,
         split_at_locs=split_at_locs,
@@ -1891,7 +1939,11 @@ def integrate(
         beg_name=objs[0].lr.beg_col,
         end_name=objs[0].lr.end_col,
     )
-    # Append indices from each input dataframe
-    df[inverse_col] = indices
+    # Convert appendices from generic to dataframe-specific indices
+    for i, obj in enumerate(objs):
+        selection = indices[:, i]
+        index = np.where(selection != -1, obj.index.values[selection], np.nan)
+        # Append indices from each input dataframe
+        df[inverse_col[i]] = index
 
     return df
