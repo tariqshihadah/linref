@@ -5,6 +5,7 @@ from linref.events import base, geometry
 from linref.ext import utility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 from scipy import sparse as sp
+from scipy.stats import norm
 import copy
 
 
@@ -981,9 +982,13 @@ class EventsRelation(object):
             (m, x), respectively, where m is the number of events in the 
             opposite dataset. If None, the events relationship data will be
             summed directly.
-        method : {'intersect', 'overlay'}, default 'overlay'
+        method : {'intersect', 'overlay'}, optional
             The method to use for the events relationship data being 
             multiplied.
+            If not provided, the 'intersect' method will be used if point 
+            events are being aggregated, otherwise the 'overlay' method will be
+            used. If 'overlay' is selected but one or both event datasets are
+            point events, an LRSConfigurationError will be raised.
         axis : int, default 1
             The axis along which to aggregate the events relationship.
             - 0 : Aggregate left events onto the right events index.
@@ -1036,11 +1041,15 @@ class EventsRelation(object):
             dataframe if axis=1. This will result in an output shape of (m,) or 
             (m, x), respectively, where m is the number of events in the 
             opposite dataset.
-        method : {'intersect', 'overlay'}, default 'overlay'
+        method : {'intersect', 'overlay'}, optional
             The method to use for the events relationship data being 
             aggregated. If 'overlay', the overlay data will be used, producing
             a length-weighted mean. If 'intersect', the intersection data will
             be used, producing a count-weighted mean.
+            If not provided, the 'intersect' method will be used if point 
+            events are being aggregated, otherwise the 'overlay' method will be
+            used. If 'overlay' is selected but one or both event datasets are
+            point events, an LRSConfigurationError will be raised.
         axis : int, default 1
             The axis along which to aggregate the events relationship.
             - 0 : Aggregate left events onto the right events index.
@@ -1085,7 +1094,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def mode(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def mode(self, data=None, axis=1, method=None, squeeze=True, **kwargs) -> np.ndarray:
         """
         Compute the mode of the input data along the specified axis of the events 
         relationship, multiplying by the overlay or intersection data and summing 
@@ -1100,15 +1109,19 @@ class EventsRelation(object):
             dataframe if axis=1. This will result in an output shape of (m,) or 
             (m, x), respectively, where m is the number of events in the 
             opposite dataset.
-        method : {'intersect', 'overlay'}, default 'overlay'
-            The method to use for the events relationship data being 
-            aggregated. If 'overlay', the overlay data will be used, producing
-            a length-weighted mode. If 'intersect', the intersection data will
-            be used, producing a count-weighted mode.
         axis : int, default 1
             The axis along which to aggregate the events relationship.
             - 0 : Aggregate left events onto the right events index.
             - 1 : Aggregate right events onto the left events index.
+        method : {'intersect', 'overlay'}, optional
+            The method to use for the events relationship data being 
+            aggregated. If 'overlay', the overlay data will be used, producing
+            a length-weighted mode. If 'intersect', the intersection data will
+            be used, producing a count-weighted mode.
+            If not provided, the 'intersect' method will be used if point 
+            events are being aggregated, otherwise the 'overlay' method will be
+            used. If 'overlay' is selected but one or both event datasets are
+            point events, an LRSConfigurationError will be raised.
         squeeze : bool, default True
             Whether to squeeze the output array to a 1D array if possible.
         **kwargs
@@ -1156,18 +1169,167 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
     
+    @_get_selector_data_wrapper
+    @_validate_agg_2d_data_wrapper
+    @_squeeze_output_wrapper
     def distribute(
         self,
-        decay_size=0,
-        decay_func='linear',
-        length_normalize=True,
-        axis=1,
+        data: np.array = None,
+        axis: int = 1,
+        method: str = None,
+        decay_size: int = 0,
+        decay_func: str = 'linear',
+        direction: str = 'both',
+        length_normalize: bool = True,
+        squeeze: bool = True,
         ):
         """
+        Distribute the share of intersecting events along neighboring events
+        based on a decay function. The share of each intersecting event is
+        distributed to neighboring events up to the specified decay size,
+        with the share decreasing according to the specified decay function.
+        Results are normalized to sum to 1.0 for each intersecting event and 
+        can be length-normalized to favor longer events.
+
+        Results of this method can be interpreted as a smoothed overlay of the
+        events relationship, where intersecting events contribute to neighboring
+        events based on distance and decay. This operates similar to a sliding 
+        window analysis, where the window size is determined by the decay size
+        and the aggregation of windows is determined by the decay function.
+
+        The resulting distributed shares can be multiplied by input data to 
+        weight the distribution by specific values. For example, if the input 
+        data represents crash frequencies, the distributed shares can be used 
+        to estimate a smoothed crash frequency profile along the linear events.
+
+        Parameters
+        ----------
+        data : array-like or None, default None
+            The data to aggregate along the axis of the events relationship. Data 
+            must have a shape of (n,) or (n, x) where n is the number of events
+            in the left dataframe if axis=0 or the number of events in the right
+            dataframe if axis=1. This will result in an output shape of (m,) or 
+            (m, x), respectively, where m is the number of events in the 
+            opposite dataset.
+        axis : int, default 1
+            The axis along which to aggregate the events relationship.
+            - 0 : Aggregate left events onto the right events index.
+            - 1 : Aggregate right events onto the left events index.
+        method : {'intersect', 'overlay'}, optional
+            The method to use for the events relationship data being 
+            aggregated. If 'overlay', the overlay data will be used, 
+            distributing shares based on length of overlap. If 'intersect', 
+            the intersection data will be used, distributing shares based on
+            count of overlapping events.
+            If not provided, the 'intersect' method will be used if point 
+            events are being aggregated, otherwise the 'overlay' method will be
+            used. If 'overlay' is selected but one or both event datasets are
+            point events, an LRSConfigurationError will be raised.
+        decay_size : int, default 0
+            The number of neighboring events to which the share of intersecting
+            events should be distributed. A decay size of 0 means no distribution
+            will occur and intersecting events will retain their full share, 
+            producing results similar to the `count` aggregator.
+        decay_func : {'linear', 'exponential', 'gaussian', 'flat'} or DecayFunction, default 'linear'
+            The decay function to use for distributing shares to neighboring
+            events. This can be a string indicating a predefined decay function
+            or an instance of a custom DecayFunction subclass.
+            - 'linear' : Linearly decreases share with distance.
+            - 'exponential' : Exponentially decreases share with distance.
+            - 'gaussian' : Decreases share based on a Gaussian distribution.
+            - 'flat' : No decrease in share with distance (equal distribution).
+        direction : {'both', 'forward', 'backward'}, default 'both'
+            The direction in which to distribute shares to neighboring events.
+            - 'both' : Distribute shares to both forward and backward neighboring
+              events.
+            - 'forward' : Distribute shares only to forward neighboring events.
+            - 'backward' : Distribute shares only to backward neighboring events.
+        length_normalize : bool, default True
+            Whether to length-normalize the distributed shares by multiplying
+            by the lengths of the events. This assigns a greater share to longer
+            events.
+        squeeze : bool, default True
+            Whether to squeeze the output array to a 1D array if possible.
         """
-        pass
-        # Create another relation type checking for same groups, ignoring bounds
-    
+        # Validate decay function
+        if isinstance(decay_func, str):
+            if decay_func in ['linear', 'lin']:
+                decay_func = LinearDecay(decay_size)
+            elif decay_func in ['exponential', 'exp']:
+                decay_func = ExponentialDecay(decay_size)
+            elif decay_func in ['gaussian', 'gauss']:
+                decay_func = GaussianDecay(decay_size)
+            elif decay_func in ['flat', 'none', None]:
+                decay_func = FlatDecay(decay_size)
+            else:
+                raise ValueError(
+                    "Invalid decay function string provided. Must be one of "
+                    "'linear', 'exponential', 'gaussian', or 'flat'."
+                )
+        elif not isinstance(decay_func, DecayFunction):
+            raise ValueError(
+                "Invalid decay function provided. Must be a string or an "
+                "instance of DecayFunction."
+            )
+
+        # Get relational data and adjust for axis
+        arr = self._get_method_data(method).tolil() # Improved performance with lil
+        if axis == 0:
+            arr = arr.T
+            lengths = self.right.lengths.reshape(-1, 1)
+        else:
+            lengths = self.left.lengths.reshape(-1, 1)
+
+        # Distribute intersection share based on decay function
+        scale = decay_func(0) # Get scale at zero distance (generally 1.0)
+        distributed = arr * scale
+        for step in range(1, min(decay_size + 1, arr.shape[0])):
+            # Get scale for this step
+            scale = decay_func(step)
+            # Apply scale and add to distribution results
+            if direction in ['both', 'backward', 'back']:
+                distributed[:-step, :] += arr[step:, :] * scale
+            if direction in ['both', 'forward', 'forw']:
+                distributed[step:, :] += arr[:-step, :] * scale
+        # Enforce equal groups by zeroing out distributed shares that
+        # cross group boundaries
+        if self.left.is_grouped:
+            equal_groups = self._get_equal_groups_data()
+            equal_groups = equal_groups.T if axis == 0 else equal_groups
+            distributed = distributed.multiply(equal_groups)
+        
+        # Multiply result shares by event lengths to favor longer events
+        if length_normalize:
+            distributed *= lengths
+        
+        # Normalize result shares to sum to 1.0
+        # Convert from matrix (may become unnecessary in future scipy versions)
+        denominator = np.asarray(distributed.sum(axis=0)).flatten()
+        # Get indices with non-zero values
+        nonzero_locs = distributed.nonzero()
+        # Enforce CSR format for efficient indexing
+        distributed = distributed.tocsr()
+        # Normalize only non-zero locations to avoid division by zero
+        distributed[nonzero_locs] = \
+            distributed[nonzero_locs] / denominator[nonzero_locs[1]]
+        
+        # Multiply by data if provided
+        if data is not None:
+            # Check for simple all 1s data for optimization
+            if data.shape[1] == 1 and np.all(data == 1):
+                output_array = np.asarray(distributed.sum(axis=1))
+            else:
+                aggregated = []
+                for column in data.T:
+                    aggregated.append(
+                        np.asarray(distributed.multiply(column).sum(axis=1))
+                    )
+                # Concatenate results
+                output_array = np.hstack(aggregated)
+        else:
+            output_array = np.asarray(distributed.sum(axis=1))
+        return output_array
+
     @_get_linestring_m_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
@@ -1763,3 +1925,117 @@ def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None) -> 
         np.logical_and(res, mask, out=res)
     
     return res
+
+
+# -----------------------------------------------------------------------------
+# Decay functions for distribution
+# -----------------------------------------------------------------------------
+
+
+class DecayFunction:
+    """
+    Base class for decay functions used in distribution. To define a custom
+    decay function, subclass this class and implement the `decay` method.
+    All decay functions must take a distance (float) as input and return a 
+    decay weight (float) between 0 and 1.
+    """
+    def __init__(self, decay_size: float):
+        self.decay_size = decay_size
+    
+    def __call__(self, distance: float) -> float:
+        # Check decay size
+        if self.decay_size == 0:
+            return 1.0
+        # Validate distance
+        if distance < 0:
+            raise ValueError("Distance must be non-negative.")
+        elif distance == 0:
+            return 1.0
+        # Apply decay function
+        return self.decay(distance)
+    
+    @property
+    def decay_size(self) -> float:
+        return self._decay_size
+    
+    @decay_size.setter
+    def decay_size(self, value: float):
+        if value < 0:
+            raise ValueError("Decay size must be non-negative.")
+        self._decay_size = value
+
+    @property
+    def decay_cap(self) -> float:
+        return self.decay_size + 1
+        
+    def decay(self, distance: float) -> float:
+        """
+        Compute the decay weight for a given distance.
+
+        Parameters
+        ----------
+        distance : float
+            The distance from the target event.
+
+        Returns
+        -------
+        weight : float
+            The decay weight between 0 and 1.
+        """
+        raise NotImplementedError("DecayFunction is an abstract base class.")
+
+
+class LinearDecay(DecayFunction):
+    """
+    Linear decay function.
+    """
+    
+    def decay(self, distance: float) -> float:
+        return 1.0 - (distance / self.decay_cap)
+        
+
+class ExponentialDecay(DecayFunction):
+    """
+    Exponential decay function.
+    """
+    
+    def __init__(self, decay_size: float, rate: float = 1.0):
+        super().__init__(decay_size)
+        self.rate = rate
+
+    def decay(self, distance: float) -> float:
+        return np.exp(-5 * (distance / self.decay_cap))
+        
+    @property
+    def rate(self) -> float:
+        return self._rate
+
+    @rate.setter
+    def rate(self, value: float):
+        if value < 0:
+            raise ValueError("Rate must be non-negative.")
+        self._rate = value
+
+
+class GaussianDecay(DecayFunction):
+    """
+    Gaussian decay function, producing values between 1.0 at distance 0 and 
+    approximately 0.01 at distance equal to decay_size, following a normal
+    distribution curve.
+    """
+    
+    def __init__(self, decay_size: float):
+        super().__init__(decay_size)
+        self.denominator = norm.pdf(0, loc=0, scale=1)
+
+    def decay(self, distance: float) -> float:
+        return norm.pdf(distance / self.decay_size * 3, loc=0, scale=1) / self.denominator
+        
+
+class FlatDecay(DecayFunction):
+    """
+    Flat decay function.
+    """
+
+    def decay(self, distance: float) -> float:
+        return 1.0

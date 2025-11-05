@@ -1437,7 +1437,7 @@ class LRS_Accessor(object):
     @_method_require(is_linear=True)
     def integrate(
         self,
-        objs : pd.DataFrame | list[pd.DataFrame],
+        objs: pd.DataFrame | list[pd.DataFrame],
         fill_gaps: bool = False,
         split_at_locs: bool = False,
         inverse_col: str | list[str] | None = None
