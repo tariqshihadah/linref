@@ -188,7 +188,7 @@ def _squeeze_output_wrapper(func) -> callable:
 
 class EventsRelation(object):
 
-    _valid_relate_agg_methods = {'overlay', 'intersect'}
+    _valid_relate_agg_methods = {'equal_groups', 'overlay', 'intersect'}
 
     def __init__(self, left, right, left_df=None, right_df=None, cache=True) -> None:
         # Log input data
@@ -277,6 +277,10 @@ class EventsRelation(object):
         return self.left.num_events, self.right.num_events
     
     @property
+    def equal_groups_data(self) -> sp.csr_matrix | None:
+        return self._equal_groups_data
+    
+    @property
     def overlay_data(self) -> sp.csr_matrix | None:
         return self._overlay_data
         
@@ -296,10 +300,56 @@ class EventsRelation(object):
         # Swap left and right dataframes
         obj._left_df, obj._right_df = obj._right_df, obj._left_df
         # Swap cached data
+        obj._equal_groups_data = obj._equal_groups_data.T if obj._equal_groups_data is not None else None
         obj._overlay_data = obj._overlay_data.T if obj._overlay_data is not None else None
         obj._intersect_data = obj._intersect_data.T if obj._intersect_data is not None else None
         return obj
-    
+
+    def cache_memory_usage(self, unit='MB') -> float:
+        """
+        Get the memory usage of the cached data.
+
+        Parameters
+        ----------
+        unit : {'bytes', 'KB', 'MB', 'GB'}, default 'MB'
+            The unit to return the memory usage in. Must be one of:
+            - 'bytes' : Bytes
+            - 'KB' : Kilobytes
+            - 'MB' : Megabytes
+            - 'GB' : Gigabytes
+        """
+        # If no data cached, return 0
+        if not self._cache:
+            return 0.0
+        # Calculate memory usage
+        bytes = 0
+        if self._equal_groups_data is not None:
+            bytes += \
+                self._equal_groups_data.data    .nbytes + \
+                self._equal_groups_data.indptr  .nbytes + \
+                self._equal_groups_data.indices .nbytes
+        if self._overlay_data is not None:
+            bytes += \
+                self._overlay_data.data    .nbytes + \
+                self._overlay_data.indptr  .nbytes + \
+                self._overlay_data.indices .nbytes
+        if self._intersect_data is not None:
+            bytes += \
+                self._intersect_data.data    .nbytes + \
+                self._intersect_data.indptr  .nbytes + \
+                self._intersect_data.indices .nbytes
+        # Convert to requested unit
+        if unit == 'bytes':
+            return bytes
+        elif unit == 'KB':
+            return bytes / 1024
+        elif unit == 'MB':
+            return bytes / 1024**2
+        elif unit == 'GB':
+            return bytes / 1024**3
+        else:
+            raise ValueError(f"Invalid unit '{unit}'. Must be one of 'bytes', 'KB', 'MB', or 'GB'.")
+
     def _validate_events(self) -> None:
         """
         Validate the input events data.
@@ -330,7 +380,9 @@ class EventsRelation(object):
         if method is None:
             method = 'overlay' if (self.left.is_linear and self.right.is_linear) else 'intersect'
         # Validate method
-        if method == 'overlay':
+        if method == 'equal_groups':
+            return self._get_equal_groups_data()
+        elif method == 'overlay':
             if self.left.is_point or self.right.is_point:
                 raise LRSConfigurationError(
                     "Overlay method cannot be used with point events. "
@@ -342,6 +394,11 @@ class EventsRelation(object):
             raise ValueError(
                 f"Invalid method provided ({method}). Must be one of "
                 f"{self._valid_relate_agg_methods}.")
+        
+    def _get_equal_groups_data(self, **kwargs) -> sp.csr_matrix | None:
+        if self.equal_groups_data is None:
+            return self.equal_groups(**kwargs)
+        return self.equal_groups_data
         
     def _get_intersect_data(self, **kwargs) -> sp.csr_matrix | None:
         if self.intersect_data is None:
@@ -365,6 +422,13 @@ class EventsRelation(object):
         return copy.deepcopy(self) if deep else copy.copy(self)
     
     def reset_cache(self) -> None:
+        """
+        Reset all cached data from computations on the relationships between 
+        the left and right events, including equal groups, intersections,
+        and overlays.
+        """
+        self._equal_groups_data = None
+        self._equal_groups_kwargs = None
         self._overlay_data = None
         self._overlay_kwargs = None
         self._intersect_data = None
@@ -443,6 +507,46 @@ class EventsRelation(object):
             raise ValueError(
                 "Invalid selector provided. Must be a string, list, or slice.")
         
+    def equal_groups(self, chunksize=1000, grouped=True) -> sp.csr_matrix:
+        """
+        Compute a boolean matrix indicating whether left and right events
+        belong to the same group.
+
+        Parameters
+        ----------
+        chunksize : int or None, default 1000
+            The maximum number of events to process in a single chunk.
+            Input chunksize will affect the memory usage and performance of
+            the function. This does not affect actual results, only 
+            computation.
+        grouped : bool, default True
+            Whether to process the overlay operation for each group separately.
+            This will affect the memory usage and performance of the function. 
+            This does not affect actual results, only computation.
+
+        Returns
+        -------
+        arr : scipy.sparse.csr_matrix
+            The sparse boolean matrix of group equality results. The shape of 
+            the matrix will be (m, n), where m is the number of events in the 
+            left dataframe and n is the number of events in the right dataframe.
+        """
+        # Perform equal groups check
+        arr = equal_groups(
+            self.left,
+            self.right,
+            chunksize=chunksize,
+            grouped=grouped
+        )
+        # Cache results
+        if self._cache:
+            self._equal_groups_data = arr
+            self._equal_groups_kwargs = {
+                'chunksize': chunksize,
+                'grouped': grouped
+            }
+        return arr
+
     def overlay(self, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
@@ -1052,6 +1156,18 @@ class EventsRelation(object):
         # Concatenate results
         return np.vstack(aggregated).T
     
+    def distribute(
+        self,
+        decay_size=0,
+        decay_func='linear',
+        length_normalize=True,
+        axis=1,
+        ):
+        """
+        """
+        pass
+        # Create another relation type checking for same groups, ignoring bounds
+    
     @_get_linestring_m_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
@@ -1465,6 +1581,30 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
         np.multiply(overlap, mask, out=overlap)
     
     return overlap
+
+@_grouped_operation_wrapper
+@_chunked_operation_wrapper
+def equal_groups(left, right, chunksize=None) -> sp.csr_matrix:
+    """
+    Identify equal groups between two collections of events.
+    """
+    # Validate inputs
+    if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
+        raise TypeError("Input objects must be EventsData class instances.")
+    if left.is_grouped != right.is_grouped:
+        raise ValueError("Input collections must have the same grouping status.")
+
+    # If not grouped, return all True array
+    if not left.is_grouped:
+        res = np.ones((left.num_events, right.num_events), dtype=bool)
+    else:
+        # Reshape arrays for broadcasting
+        left_groups = left.groups.reshape(-1, 1)
+        right_groups = right.groups.reshape(1, -1)
+        # Test for equality of groups
+        res = np.equal(left_groups, right_groups)
+    
+    return res
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
