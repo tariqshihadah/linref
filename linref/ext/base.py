@@ -647,6 +647,25 @@ class LRS_Accessor(object):
         # Check for chaining by generating new chains and checking for multiples
         chains = self.get_chains()
         return all(chains == 0)
+    
+    @property
+    def valid_events(self) -> pd.Series:
+        """
+        Return a boolean Series indicating which events in the dataframe are
+        valid according to the active LRS, e.g., have populated key columns 
+        and event bounds.
+        """
+        # Identify valid events
+        valid = pd.Series(np.ones(self._df.shape[0], dtype=bool), index=self.index)
+        # Check key columns
+        for col in self.key_col:
+            valid &= self._df[col].notna()
+        # Check event bounds
+        if self.is_located:
+            valid &= self._df[self.loc_col].notna()
+        if self.is_linear:
+            valid &= self._df[self.beg_col].notna() & self._df[self.end_col].notna()
+        return valid
 
     def study(self) -> dict:
         """
