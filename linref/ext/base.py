@@ -1860,10 +1860,59 @@ class LRS_Accessor(object):
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
 
-# Helpfer functions for event modification operations
+# Helper functions for event operations
+
+def test_compatibility(dfs: list[pd.DataFrame]) -> None:
+    """
+    Validate that all dataframes have compatible LRS objects assigned, 
+    raising various errors for incompatible LRS configurations.
+
+    Parameters
+    ----------
+    dfs : list of DataFrame
+        A list of DataFrames to validate.
+    """
+    # Validate input list
+    if not isinstance(dfs, list):
+        raise TypeError("Input `dfs` must be a list of DataFrames.")
+    if len(dfs) < 1:
+        raise ValueError(
+            "Input `dfs` must contain at least one DataFrame."
+        )
+    
+    # Validate basic LRS settings
+    for i, df in enumerate(dfs):
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError(
+                "All input objects must be of type `pd.DataFrame`. Object "
+                f"at index {i} is not a DataFrame."
+            )
+        if not df.lr.is_lrs_set:
+            raise LRSCompatibilityError(
+                f"Input dataframe at index {i} has no LRS set."
+            )
+        
+    # Validate LRS compatibility
+    primary_df = dfs[0]
+    for i, df in enumerate(dfs[1:]):
+        # Number of key columns
+        if len(primary_df.lr.key_col) != len(df.lr.key_col):
+            raise LRSCompatibilityError(
+                f"LRS of dataframe at index {i + 1} has a different number "
+                "of key columns than the dataframe at index 0. Received "
+                f"{len(df.lr.key_col)} columns, but expected "
+                f"{len(primary_df.lr.key_col)}."
+            )
+        # Key column data types
+        if primary_df.lr.events.groups.dtype != df.lr.events.groups.dtype:
+            raise LRSCompatibilityError(
+                f"LRS of dataframe at index {i + 1} has different key column "
+                "data types than the dataframe at index 0."
+            )
+    return dfs
 
 def integrate(
-        objs: list[pd.DataFrame],
+        dfs: list[pd.DataFrame],
         fill_gaps: bool = False,
         split_at_locs: bool = False,
         inverse_col: str | list[str] | None = None,
@@ -1876,7 +1925,7 @@ def integrate(
 
     Parameters
     ----------
-    objs : list of DataFrame
+    dfs : list of DataFrame
         A list of DataFrames with equivalent linear referencing systems to
         integrate.
     fill_gaps : bool, default False
@@ -1903,38 +1952,38 @@ def integrate(
             f"{', '.join(kwargs.keys())}"
         )
     # Validate input dataframes
-    if not isinstance(objs, list):
-        raise TypeError("Input `objs` must be a list of DataFrames.")
-    if len(objs) < 1:
+    if not isinstance(dfs, list):
+        raise TypeError("Input `dfs` must be a list of DataFrames.")
+    if len(dfs) < 1:
         raise ValueError(
-            "Input `objs` must contain at least one DataFrame."
+            "Input `dfs` must contain at least one DataFrame."
         )
-    for i, obj in enumerate(objs):
-        if not isinstance(obj, pd.DataFrame):
+    for i, df in enumerate(dfs):
+        if not isinstance(df, pd.DataFrame):
             raise TypeError(
                 f"Input object at index {i - adj} is not a DataFrame."
             )
-        if not obj.lr.is_lrs_set:
+        if not df.lr.is_lrs_set:
             raise LRSCompatibilityError(
                 f"Input DataFrame at index {i - adj} has no LRS set."
             )
-        if not obj.lr.lrs.is_linear:
+        if not df.lr.lrs.is_linear:
             raise LRSCompatibilityError(
                 f"Input DataFrame at index {i - adj} LRS has no linear events."
             )
         # Validate that all LRS are equivalent
-        if not obj.lr.lrs == objs[0].lr.lrs:
+        if not df.lr.lrs == dfs[0].lr.lrs:
             raise LRSCompatibilityError(
                 f"Input DataFrame at index {i - adj} has an incompatible "
                 "linear referencing system."
             )
     # Validate inverse column names
     if inverse_col is None:
-        inverse_col = [f'integrated_index_{i}' for i in range(len(objs))]
+        inverse_col = [f'integrated_index_{i}' for i in range(len(dfs))]
     elif isinstance(inverse_col, str):
-        inverse_col = [f'{inverse_col}_{i}' for i in range(len(objs))]
+        inverse_col = [f'{inverse_col}_{i}' for i in range(len(dfs))]
     elif isinstance(inverse_col, list):
-        if len(inverse_col) != len(objs):
+        if len(inverse_col) != len(dfs):
             raise ValueError(
                 "Input `inverse_col` list length must match number of input "
                 "dataframes."
@@ -1946,7 +1995,7 @@ def integrate(
         
     # Perform integration
     events, indices = integration.integrate(
-        [obj.lr.events for obj in objs],
+        [df.lr.events for df in dfs],
         fill_gaps=fill_gaps,
         split_at_locs=split_at_locs,
         return_index=True
@@ -1954,14 +2003,14 @@ def integrate(
     # Convert events to dataframe
     df = events.to_frame(
         index_name=None,
-        group_name=objs[0].lr.key_col,
-        beg_name=objs[0].lr.beg_col,
-        end_name=objs[0].lr.end_col,
+        group_name=dfs[0].lr.key_col,
+        beg_name=dfs[0].lr.beg_col,
+        end_name=dfs[0].lr.end_col,
     )
     # Convert appendices from generic to dataframe-specific indices
-    for i, obj in enumerate(objs):
+    for i, df in enumerate(dfs):
         selection = indices[:, i]
-        index = np.where(selection != -1, obj.index.values[selection], np.nan)
+        index = np.where(selection != -1, df.index.values[selection], np.nan)
         # Append indices from each input dataframe
         df[inverse_col[i]] = index
 
