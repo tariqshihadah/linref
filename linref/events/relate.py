@@ -865,7 +865,7 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr.T if axis == 1 else arr
+        arr = arr if axis == 1 else arr.T
 
         # Iterate over sparse rows
         output = []
@@ -967,7 +967,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def sum(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def sum(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Sum the input data along the specified axis of the events relationship,
         multiplying by the overlay or intersection data and summing the result.
@@ -1026,7 +1026,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def mean(self, data=None, method='overlay', axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def mean(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
         """
         Compute the mean of the input data along the specified axis of the events 
         relationship, multiplying by the overlay or intersection data and summing 
@@ -1162,8 +1162,13 @@ class EventsRelation(object):
             scores = []
             for i, j in zip(splitter[:-1], splitter[1:]):
                 scores.append(arr_sorted[i:j].sum(axis=0))
+            scores = np.vstack(scores)
             # Find mode using the highest score for each record
-            mode = unique[np.argmax(np.vstack(scores), axis=0)]
+            mode = np.where(
+                scores.sum(axis=0) > 0,
+                unique[np.argmax(scores, axis=0)],
+                np.nan
+            )
             aggregated.append(mode)
 
         # Concatenate results

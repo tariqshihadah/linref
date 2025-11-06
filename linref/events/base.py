@@ -17,15 +17,15 @@ class EventsData:
 
     def __init__(
             self, 
-            index=None, 
-            groups=None, 
-            locs=None, 
-            begs=None, 
-            ends=None, 
-            closed=None, 
-            dtype=float, 
-            copy=None,
-            force_monotonic=True,
+            index: np.ndarray = None, 
+            groups: np.ndarray = None, 
+            locs: np.ndarray = None, 
+            begs: np.ndarray = None, 
+            ends: np.ndarray = None, 
+            closed: np.ndarray = None, 
+            dtype: np.dtype = float, 
+            copy: bool = None,
+            force_monotonic: bool = True,
             **kwargs
         ):
         # Validate inputs

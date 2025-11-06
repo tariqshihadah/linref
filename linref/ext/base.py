@@ -695,14 +695,17 @@ class LRS_Accessor(object):
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not self.is_lrs_set:
             raise LRSConfigurationError("Current DataFrame has no LRS set.")
-        if len(self.lrs.key_col) != len(other.lr.lrs.key_col):
-            raise LRSCompatibilityError(
-                "LRS of other DataFrame has a different number of key "
-                f"columns. Received {len(other.lr.lrs.key_col)} "
-                f"columns, but expected {len(self.lrs.key_col)}."
-            )
-        if self.events.groups.dtype != other.lr.events.groups.dtype:
-            raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
+        if self.is_grouped:
+            if not other.lr.is_grouped:
+                raise LRSCompatibilityError("LRS of other DataFrame is not grouped.")
+            if len(self.lrs.key_col) != len(other.lr.lrs.key_col):
+                raise LRSCompatibilityError(
+                    "LRS of other DataFrame has a different number of key "
+                    f"columns. Received {len(other.lr.lrs.key_col)} "
+                    f"columns, but expected {len(self.lrs.key_col)}."
+                )
+            if self.events.groups.dtype != other.lr.events.groups.dtype:
+                raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
         return other
     
     def check_exact_geoms(self, if_missing: bool=True) -> np.ndarray:
