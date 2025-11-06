@@ -666,6 +666,14 @@ class LRS_Accessor(object):
         if self.is_linear:
             valid &= self._df[self.beg_col].notna() & self._df[self.end_col].notna()
         return valid
+    
+    def invalid_events(self) -> pd.Series:
+        """
+        Return a boolean Series indicating which events in the dataframe are
+        invalid according to the active LRS, e.g., have missing key columns 
+        or event bounds.
+        """
+        return ~self.valid_events
 
     def study(self) -> dict:
         """
@@ -2004,7 +2012,7 @@ def integrate(
         return_index=True
     )
     # Convert events to dataframe
-    df = events.to_frame(
+    integrated = events.to_frame(
         index_name=None,
         group_name=dfs[0].lr.key_col,
         beg_name=dfs[0].lr.beg_col,
@@ -2013,8 +2021,12 @@ def integrate(
     # Convert appendices from generic to dataframe-specific indices
     for i, df in enumerate(dfs):
         selection = indices[:, i]
-        index = np.where(selection != -1, df.index.values[selection], np.nan)
+        index = np.where(
+            selection != -1,
+            df.index.values[selection],
+            np.nan
+        )
         # Append indices from each input dataframe
-        df[inverse_col[i]] = index
+        integrated[inverse_col[i]] = index
 
-    return df
+    return integrated
