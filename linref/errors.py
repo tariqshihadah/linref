@@ -6,3 +6,9 @@ class LRSConfigurationError(LinrefError):
 
 class LRSCompatibilityError(LinrefError):
     """Exception raised for LRS compatibility issues between DataFrames."""
+
+class GeometryTopologyError(LinrefError):
+    """Exception raised for errors in geometry topology."""
+
+class EventTopologyError(LinrefError):
+    """Exception raised for errors in event topology."""

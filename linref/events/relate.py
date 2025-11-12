@@ -1506,7 +1506,7 @@ class EventsRelation(object):
             ]
             # Determine approach to post-processing multiple geometries
             if multiple == 'merge':
-                cut_geoms = geometry.linemerge_m(
+                cut_geoms = geometry.line_merge_m(
                     cut_geoms,
                     allow_multiple=False,
                     allow_mismatch=False,
@@ -1531,7 +1531,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def linemerge_m(self, data=None, axis=1, **kwargs) -> pd.Series:
+    def line_merge_m(self, data=None, axis=1, **kwargs) -> pd.Series:
         """
         Aggregate all input data values along the specified axis of the events
         relationship against the other axis, returning a pandas Series with
@@ -1568,7 +1568,7 @@ class EventsRelation(object):
         for row in arr:
             # Get data values
             geoms = data[row.indices]
-            merged = geometry.linemerge_m(
+            merged = geometry.line_merge_m(
                 geoms,
                 allow_multiple=False,
                 allow_mismatch=False,

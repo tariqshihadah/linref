@@ -53,26 +53,56 @@ class LRS(object):
     
     @property
     def is_linear(self) -> bool:
+        """
+        Return whether the LRS is linear (i.e., has begin and end columns 
+        defined). This does not check for presence of the columns in the 
+        DataFrame.
+        """
         return (self.beg_col is not None) and (self.end_col is not None)
     
     @property
     def is_point(self) -> bool:
+        """
+        Return whether the LRS is point-based (i.e., has a location column but
+        no begin or end columns defined). This does not check for presence of 
+        the columns in the DataFrame.
+        """
         return (self.loc_col is not None) and (self.beg_col is None) and (self.end_col is None)
     
     @property
     def is_located(self) -> bool:
+        """
+        Return whether the LRS is located (i.e., has a location column 
+        defined). This does not check for presence of the column in the 
+        DataFrame.
+        """
         return self.loc_col is not None
     
     @property
     def is_grouped(self) -> bool:
+        """
+        Return whether the LRS is grouped (i.e., has one or more key columns
+        defined). This does not check for presence of the columns in the 
+        DataFrame.
+        """
         return self.key_col is not None
     
     @property
     def is_spatial(self) -> bool:
+        """
+        Return whether the LRS is spatial (i.e., has a geometry column
+        defined). This does not check for presence of the column in the
+        DataFrame.
+        """
         return self.geom_col is not None
     
     @property
     def is_spatial_m(self) -> bool:
+        """
+        Return whether the LRS is spatial with M-enabled geometries (i.e., has
+        a geometry_m column defined). This does not check for presence of the
+        column in the DataFrame.
+        """
         return self.geom_m_col is not None
     
     @property
@@ -563,7 +593,7 @@ class LRS_Accessor(object):
         Return whether the active LRS is linear and the begin and end columns
         are present in the dataframe.
         """
-        if self.beg_col is None or self.end_col is None:
+        if not self.lrs.is_linear:
             return False
         else:
             # Check for presence of begin and end columns in the dataframe
@@ -575,14 +605,8 @@ class LRS_Accessor(object):
         Return whether the active LRS is point-based and the location column is
         present in the dataframe.
         """
-        if self.loc_col is None:
+        if not self.lrs.is_point:
             return False
-        if self.beg_col is not None:
-            if self.beg_col in self._df.columns:
-                return False
-        if self.end_col is not None:
-            if self.end_col in self._df.columns:
-                return False
         # Check for presence of location column in the dataframe
         return self.loc_col in self._df.columns
     
@@ -592,7 +616,7 @@ class LRS_Accessor(object):
         Return whether the active LRS is located and the location column is 
         present in the dataframe.
         """
-        if self.loc_col is None:
+        if not self.lrs.is_located:
             return False
         else:
             # Check for presence of location column in the dataframe
@@ -604,7 +628,7 @@ class LRS_Accessor(object):
         Return whether the active LRS is spatial and the geometry column is 
         present in the dataframe.
         """
-        if self.geom_col is None:
+        if not self.lrs.is_spatial:
             return False
         else:
             # Check for presence of geometry column in the dataframe
@@ -616,12 +640,60 @@ class LRS_Accessor(object):
         Return whether the active LRS is spatial and the geometry column is 
         present in the dataframe.
         """
-        if self.geom_m_col is None:
+        if not self.lrs.is_spatial_m:
             return False
         else:
             # Check for presence of geometry column in the dataframe
             return self.geom_m_col in self._df.columns
         
+    @property
+    def is_lrs_grouped(self) -> bool:
+        """
+        Return whether the active LRS is grouped, regardless of presence of key
+        columns in the dataframe.
+        """
+        return self.lrs.is_grouped
+    
+    @property
+    def is_lrs_linear(self) -> bool:
+        """
+        Return whether the active LRS is linear, regardless of presence of 
+        begin and end columns in the dataframe.
+        """
+        return self.lrs.is_linear
+    
+    @property
+    def is_lrs_point(self) -> bool:
+        """
+        Return whether the active LRS is point-based, regardless of presence of 
+        location column in the dataframe.
+        """
+        return self.lrs.is_point
+
+    @property
+    def is_lrs_located(self) -> bool:
+        """
+        Return whether the active LRS is located, regardless of presence of 
+        location column in the dataframe.
+        """
+        return self.lrs.is_located
+    
+    @property
+    def is_lrs_spatial(self) -> bool:
+        """
+        Return whether the active LRS is spatial, regardless of presence of 
+        geometry column in the dataframe.
+        """
+        return self.lrs.is_spatial
+    
+    @property
+    def is_lrs_spatial_m(self) -> bool:
+        """
+        Return whether the active LRS is spatial with M values, regardless of 
+        presence of geometry column in the dataframe.
+        """
+        return self.lrs.is_spatial_m
+
     @property
     def is_contiguous(self) -> bool:
         """
@@ -712,6 +784,7 @@ class LRS_Accessor(object):
                     f"columns. Received {len(other.lr.lrs.key_col)} "
                     f"columns, but expected {len(self.lrs.key_col)}."
                 )
+            
             if self.events.groups.dtype != other.lr.events.groups.dtype:
                 raise LRSCompatibilityError("LRS of other DataFrame has different key column data types.")
         return other
@@ -947,8 +1020,8 @@ class LRS_Accessor(object):
 
     def add_geom_m(self, name='geometry_m', inplace=False) -> pd.DataFrame | None:
         """
-        Add a geometry column to the DataFrame based on the begin and end 
-        locations of the LRS.
+        Add an M-enabled geometry column to the DataFrame based on the begin 
+        and end values of the LRS.
 
         Parameters
         ----------
@@ -1045,7 +1118,7 @@ class LRS_Accessor(object):
         return self.df.loc[index]
         
     @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
-    def get_chains(self, name='chain') -> pd.Series:
+    def get_chains(self, name='chain', enforce_m=True) -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
         contiguous linear geometries within each group.
@@ -1054,18 +1127,33 @@ class LRS_Accessor(object):
         ----------
         name : str, default 'chain'
             The name of the chain index column to return.
+        enforce_m : bool, default True
+            Whether to require the use of M-enabled geometries for chaining.
+            If True, an error will be raised if M-enabled geometries are not 
+            present in the dataframe.
 
         Returns
         -------
         chains : pd.Series
             A series of chain indices for each event in the dataframe.
         """
+        # Validate presence of M-enabled geometries
+        if enforce_m and not self.is_spatial_m:
+            raise ValueError(
+                "M-enabled geometries are required for chaining but are not "
+                "present in the DataFrame. Use `add_geom_m` to add M-enabled "
+                "geometries."
+            )
         # Iterate over groups
         index = []
         chains = []
         for group, df in self.iter_groups():
             # Get chain indices
-            chains.append(geometry.get_linestring_chains(df[self.geom_col]))
+            if enforce_m:
+                chains_i = geometry.get_linestring_chains(df[self.geom_m_col].values)
+            else:
+                chains_i = geometry.get_linestring_chains(df[self.geom_col].values)
+            chains.append(chains_i)
             index.append(df.index.values)
         # Return series
         chains = pd.Series(
@@ -1113,6 +1201,22 @@ class LRS_Accessor(object):
         df[name] = chains
         df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
+    
+    @_method_require(is_spatial=True)
+    def add_linear_events(
+        self,
+        names: list[str] | None = None,
+        inplace: bool = False,
+        replace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Add begin and end location columns to the dataframe based on the 
+        lengths of contiguous linear geometries within each group, adding new
+        columns to the dataframe for begin and end locations.
+        """
+        pass
+        # ADD CHAINING? ADD ORDER INTEGERS? ALLOW PRE-CHAINED EVENTS?
+
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
@@ -1194,6 +1298,10 @@ class LRS_Accessor(object):
             raise TypeError("Input object must be of type `pd.DataFrame`.")
         if not other.lr.is_lrs_set:
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
+        if not other.lr.is_located and not other.lr.is_linear:
+            raise LRSCompatibilityError(
+                "Other dataframe contains no valid event bounds."
+            )
         # Define keys to impute
         if keys is None:
             keys = [key for key in self.key_col if key not in other.columns]
@@ -1419,7 +1527,7 @@ class LRS_Accessor(object):
         # - Merge from existing geometry_m column
         if merge_geom and self.is_spatial_m:
             try:
-                merged_m = relation[self.geom_m_col].linemerge_m()
+                merged_m = relation[self.geom_m_col].line_merge_m()
             except GeometryTypeError:
                 raise GeometryTypeError(
                     "Linear geometries of adjacent events are disjointed and "
@@ -1434,7 +1542,7 @@ class LRS_Accessor(object):
         # - Merge from ad-hoc geometry_m data
         elif merge_geom and self.is_spatial:
             try:
-                merged_m = relation.linemerge_m(data=self.build_geom_m())
+                merged_m = relation.line_merge_m(data=self.build_geom_m())
             except GeometryTypeError:
                 raise GeometryTypeError(
                     "Linear geometries of adjacent events are disjointed and "
@@ -1452,14 +1560,17 @@ class LRS_Accessor(object):
             )
 
         # Upgrade to geodataframe
-        try:
-            df = gpd.GeoDataFrame(
-                df, geometry=self.geom_col, crs=self.df.crs
-            ).lr.lrs_like(self)
-        except:
-            raise ValueError(
-                "Failed to convert dissolved DataFrame to GeoDataFrame."
-            )
+        if merge_geom:
+            try:
+                df = gpd.GeoDataFrame(
+                    df, geometry=self.geom_col, crs=self.df.crs
+                ).lr.lrs_like(self)
+            except:
+                raise ValueError(
+                    "Failed to convert dissolved DataFrame to GeoDataFrame."
+                )
+        else:
+            df = df.lr.lrs_like(self)
 
         # Return results
         return (df, relation) if return_relation else df
