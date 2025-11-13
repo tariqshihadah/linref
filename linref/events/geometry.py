@@ -708,7 +708,7 @@ def line_merge_m(
     allow_multiple: bool = False,
     allow_mismatch: bool = False,
     squeeze: bool = False,
-    return_index: bool = False,
+    return_orders: bool = False,
     return_chains: bool = False,
     cast_geom: bool = False
     ):
@@ -734,7 +734,7 @@ def line_merge_m(
     squeeze : bool, default False
         If True and only one merged geometry is produced, returns the geometry 
         directly instead of a list containing the single geometry.
-    return_index : bool, default False
+    return_orders : bool, default False
         If True, also returns a list of indices indicating the order of the 
         input lines in the merged geometries.
     return_chains : bool, default False
@@ -851,7 +851,6 @@ def line_merge_m(
 
     # Check if multiple merged geometries are allowed
     if not allow_multiple and len(merged_geoms) > 1:
-        display(merged_geoms)
         raise GeometryTopologyError(
             "Multiple merged geometries were produced. "
             "Set allow_multiple=True to permit this."
@@ -862,7 +861,7 @@ def line_merge_m(
     # Return merged geometries and order and chain mappings as lists as 
     # requested
     returns = [merged_geoms]
-    if return_index:
+    if return_orders:
         returns.append(list(orders))
     if return_chains:
         returns.append(list(chains))
@@ -898,7 +897,7 @@ def get_linestring_chains(objs):
         objs,
         allow_multiple=True,
         allow_mismatch=False,
-        return_index=False,
+        return_orders=False,
         return_chains=True,
         squeeze=False,
         cast_geom=True

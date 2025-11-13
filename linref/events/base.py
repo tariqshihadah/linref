@@ -144,8 +144,15 @@ class EventsData:
         """
         if self.is_located:
             return len(self._locs)
-        else:
+        elif self.is_linear:
             return len(self._begs)
+        elif self.is_grouped:
+            return len(self._groups)
+        else:
+            try:
+                return len(self._index)
+            except:
+                raise ValueError("Cannot determine number of events.")
         
     @property
     def closed(self):
@@ -190,8 +197,8 @@ class EventsData:
         """
         Whether the events are points.
         """
-        # If begs and ends are not defined, the events are points.
-        return self._begs is None and self._ends is None
+        # If begs and ends are not defined but location is defined, the events are points.
+        return self._begs is None and self._ends is None and self._locs is not None
     
     @property
     def is_located(self):
@@ -308,7 +315,18 @@ class EventsData:
             groups = utility._prepare_data_array(groups, 'groups')
         return groups
     
-    def _validate_data(self, index, groups, locs, begs, ends, dtype=None, copy=None, allow_duplicate_index=False):
+    def _validate_data(
+        self,
+        index: np.ndarray | None,
+        groups: np.ndarray | None,
+        locs: np.ndarray | None,
+        begs: np.ndarray | None,
+        ends: np.ndarray | None,
+        dtype: type | None = None,
+        copy: bool | None = None,
+        allow_duplicate_index: bool = False,
+        allow_undefined_events: bool = False,
+    ) -> None:
         """
         Validate input data based on the requirements of the class.
         """
@@ -351,11 +369,12 @@ class EventsData:
         
         # - Invalid input data case
         else:
-            raise LRSConfigurationError(
-                "Invalid input data. Must provide either `locs`, `begs` and `ends`, or both. "
-                f"Received: locs={locs is not None}, begs={begs is not None}, ends={ends is not None}."
-            )
-
+            if not allow_undefined_events:
+                raise LRSConfigurationError(
+                    "Invalid input data. Must provide either `locs`, `begs` and `ends`, or both. "
+                    f"Received: locs={locs is not None}, begs={begs is not None}, ends={ends is not None}."
+                )
+            
         # Validate index and groups
         if not index is None:
             index = self._validate_index(index, allow_duplicate_index=allow_duplicate_index)
@@ -381,6 +400,7 @@ class EventsData:
             self._index = index
         else:
             self.reset_index(inplace=True)
+        return
 
     def to_frame(self, index_name=None, group_name=None, loc_name='loc', beg_name='beg', end_name='end'):
         """
@@ -548,9 +568,10 @@ class EventsData:
             Whether to perform the operation in place, returning None.
         """
         # Check for events type
-        if self.is_point and not closed is None:
+        if not self.is_linear and not closed is None:
             raise LRSConfigurationError(
-                f"Point events do not have closed parameters. Provided: {closed}"
+                f"Only linear events can have closed parameters. Provided: "
+                f"closed={closed}"
             )
         # Validate input closed parameter
         if closed is None:

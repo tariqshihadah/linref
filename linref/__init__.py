@@ -4,6 +4,7 @@ from linref.ext.base import LRS, LRS_Accessor
 
 # Expose additional features
 from linref.ext.base import integrate
+from linref.analysis.direction import extract_direction, extract_bearing
 
 # Expose extension settings
 set_default_lrs = LRS_Accessor.set_default_lrs

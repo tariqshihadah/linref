@@ -13,7 +13,7 @@ from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, geometry, integration
-from linref.errors import LRSConfigurationError, LRSCompatibilityError
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
 
 
 class LRS(object):
@@ -128,7 +128,7 @@ class LRS(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
-    def set_params(self, inplace=False, **kwargs) -> None:
+    def set_params(self, inplace=False, **kwargs) -> LRS | None:
         """
         Set LRS parameters.
 
@@ -759,7 +759,7 @@ class LRS_Accessor(object):
         Return the events object for the active LRS.
         """
         # Create the events object
-        return self.get_events()
+        return self.get_events(allow_undefined_events=True)
     
     def _validate_other_dataframe_lrs(self, other) -> None:
         """
@@ -836,7 +836,7 @@ class LRS_Accessor(object):
                 raise e
             return None
         
-    def get_events(self, key_col=None, require=True) -> EventsData:
+    def get_events(self, key_col=None, require=True, allow_undefined_events=False) -> EventsData:
         """
         Return the events object for the active LRS.
 
@@ -847,6 +847,11 @@ class LRS_Accessor(object):
             default key columns in the LRS.
         require : bool, default True
             Whether to raise an error if the key column is not found.
+        allow_undefined_events : bool, default False
+            Whether to allow undefined events when creating the EventsData 
+            object. If False, will raise an error if undefined events are 
+            present. Undefined events are those with no defined location, 
+            begin, or end values.
         """
         # Get keys if needed
         if key_col is None:
@@ -860,8 +865,9 @@ class LRS_Accessor(object):
             locs=self.locs if self.loc_col else None,
             begs=self.begs if self.beg_col else None,
             ends=self.ends if self.end_col else None,
-            closed=self.closed if not self.is_point else None,
-            force_monotonic=False
+            closed=self.closed if self.is_linear else None,
+            force_monotonic=False,
+            allow_undefined_events=allow_undefined_events
         )
     
     def copy(self, deep=False) -> LRS_Accessor:
@@ -1039,7 +1045,7 @@ class LRS_Accessor(object):
         if self.lrs.geom_m_col != name:
             new_lrs = self.lrs.copy(deep=True)
             new_lrs.geom_m_col = name
-            df.lr.add_lrs(new_lrs, activate=True)
+            df.lr.set_lrs(new_lrs, activate=True)
         return None if inplace else df
 
     @_method_require(is_grouped=True)
@@ -1142,7 +1148,7 @@ class LRS_Accessor(object):
             raise ValueError(
                 "M-enabled geometries are required for chaining but are not "
                 "present in the DataFrame. Use `add_geom_m` to add M-enabled "
-                "geometries."
+                "geometries or set `enforce_m` to False."
             )
         # Iterate over groups
         index = []
@@ -1165,7 +1171,7 @@ class LRS_Accessor(object):
         return chains.reindex_like(self.df)
     
     @_method_require(is_linear=True, is_spatial=True)
-    def add_chaining(self, name='chain', inplace=False, replace=False) -> pd.DataFrame | None:
+    def add_chaining(self, name='chain', inplace=False, replace=False, enforce_m=True) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
@@ -1182,6 +1188,10 @@ class LRS_Accessor(object):
             Whether to replace an existing column with the same name in the
             dataframe. If False, an error will be raised if the column already
             exists.
+        enforce_m : bool, default True
+            Whether to require the use of M-enabled geometries for chaining.
+            If True, an error will be raised if M-enabled geometries are not 
+            present in the dataframe.
         """
         # Validate column name
         if name in self.df and not replace:
@@ -1203,9 +1213,17 @@ class LRS_Accessor(object):
         return None if inplace else df
     
     @_method_require(is_spatial=True)
-    def add_linear_events(
+    def generate_linear_events(
         self,
-        names: list[str] | None = None,
+        beg_col: str | None = None,
+        end_col: str | None = None,
+        chain_col: str | None = None,
+        geom_m_col: str | None = None,
+        add_chain: bool = True,
+        add_geom_m: bool = True,
+        scale: float = 1.0,
+        decimals: int | None = None,
+        allow_disjoint: bool = False,
         inplace: bool = False,
         replace: bool = False
     ) -> pd.DataFrame | None:
@@ -1214,9 +1232,118 @@ class LRS_Accessor(object):
         lengths of contiguous linear geometries within each group, adding new
         columns to the dataframe for begin and end locations.
         """
-        pass
-        # ADD CHAINING? ADD ORDER INTEGERS? ALLOW PRE-CHAINED EVENTS?
-
+        # Validate column names
+        if beg_col is None:
+            if self.beg_col is not None:
+                beg_col = self.beg_col
+            else:
+                beg_col = 'beg'
+        if end_col is None:
+            if self.end_col is not None:
+                end_col = self.end_col
+            else:
+                end_col = 'end'
+        if add_chain:
+            if chain_col is None:
+                if self.lrs.is_grouped and 'chain' in self.lrs.key_col:
+                    chain_col = 'chain'
+                else:
+                    chain_col = 'chain'
+        else:
+            if not chain_col is None:
+                raise ValueError(
+                    "Cannot specify `chain_col` when `add_chain` is False."
+                )
+        if add_geom_m:
+            if geom_m_col is None:
+                if self.geom_m_col is not None:
+                    geom_m_col = self.geom_m_col
+                else:
+                    geom_m_col = 'geometry_m'
+        else:
+            if not geom_m_col is None:
+                raise ValueError(
+                    "Cannot specify `geom_m_col` when `add_geom_m` is False."
+                )
+        for col_name in [beg_col, end_col, geom_m_col]:
+            if col_name in self.df and not replace:
+                raise ValueError(
+                    f"Column name '{col_name}' is already in use in the "
+                    "DataFrame."
+                )
+        
+        # Iterate over groups
+        index  = []
+        orders = []
+        chains = []
+        begs   = []
+        ends   = []
+        for group, df in self.remove_key(chain_col).lr.iter_groups():
+            # Get group geometries
+            geoms = df[self.geom_col].values
+            # Get chain indices
+            try:
+                _, orders_i, chains_i = geometry.line_merge_m(
+                    geoms,
+                    allow_multiple=allow_disjoint,
+                    allow_mismatch=False,
+                    return_orders=True,
+                    return_chains=True,
+                    squeeze=False,
+                    cast_geom=True
+                )
+            except GeometryTopologyError:
+                raise GeometryTopologyError(
+                    f"Unable to merge geometries in group {group}. Ensure "
+                    "geometries are contiguous and non-overlapping within "
+                    "each group. If non-contiguous geometries are expected, "
+                    "add chaining first using `add_chaining`, or set "
+                    "`allow_disjoint=True`."
+                )
+            # Compute lengths of geometries
+            try:
+                lengths = np.array([geom.length for geom in geoms]) * scale
+                if decimals is not None:
+                    lengths = np.round(lengths, decimals=decimals)
+            except:
+                raise ValueError(
+                    f"Unable to compute lengths of geometries in group "
+                    f"{group}."
+                )
+            # Sort lengths by order
+            sorter = np.argsort(orders_i)
+            # Compute cumulative lengths
+            cum_lengths = np.cumsum(lengths[orders_i])
+            # Compute begin and end locations based on cumulative lengths
+            begs_i = np.append(0, cum_lengths[:-1])
+            ends_i = cum_lengths
+            # Store results in original order
+            begs.append(begs_i[sorter])
+            ends.append(ends_i[sorter])
+            chains.append(chains_i)
+            index.append(df.index.values)
+        
+        # Concatenate results and apply to DataFrame
+        index = np.concatenate(index)
+        df = self.df if inplace else self.df.copy()
+        df[beg_col] = pd.Series(np.concatenate(begs), index=index)
+        df[end_col] = pd.Series(np.concatenate(ends), index=index)
+        if add_chain:
+            df[chain_col] = pd.Series(np.concatenate(chains), index=index)
+        # Update LRS
+        new_lrs = df.lr.lrs.copy(deep=True)
+        new_lrs.beg_col = beg_col
+        new_lrs.end_col = end_col
+        if add_chain:
+            if chain_col not in new_lrs.key_col:
+                new_lrs.add_key(chain_col, inplace=True)
+        df.lr.set_lrs(new_lrs, inplace=True)
+        # Add M-enabled geometries if needed
+        if add_geom_m:
+            df.lr.add_geom_m(name=geom_m_col, inplace=True)
+        
+        # Return updated DataFrame
+        return None if inplace else df
 
     @_method_require(is_linear=True)
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
