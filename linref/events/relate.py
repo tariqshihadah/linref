@@ -470,10 +470,8 @@ class EventsRelation(object):
         # Determine index and dataframe to pull from
         if axis == 0:
             df = self.left_df
-            index = self.left.index
         elif axis == 1:
             df = self.right_df
-            index = self.right.index
         else:
             raise ValueError("Invalid axis provided. Must be 0 or 1.")
         # Confirm that dataframes are set
@@ -485,21 +483,21 @@ class EventsRelation(object):
             raise ValueError("No selector set. Set a selector with indexing.")
         if isinstance(self._selector, str):
             try:
-                return df.loc[index, self._selector].values
+                return df.loc[:, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column label '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, list):
             try:
-                return df.loc[index, self._selector].values
+                return df.loc[:, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column labels '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, slice):
             try:
-                return df.loc[index, self._selector].values
+                return df.loc[:, self._selector].values
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column slice '{self._selector}' "
@@ -1565,16 +1563,22 @@ class EventsRelation(object):
 
         # Iterate over sparse rows
         output = []
-        for row in arr:
+        for i, row in enumerate(arr):
             # Get data values
             geoms = data[row.indices]
-            merged = geometry.line_merge_m(
-                geoms,
-                allow_multiple=False,
-                allow_mismatch=False,
-                squeeze=True,
-                cast_geom=True,
-            )
+            try:
+                merged = geometry.line_merge_m(
+                    geoms,
+                    allow_multiple=False,
+                    allow_mismatch=False,
+                    squeeze=True,
+                    cast_geom=True,
+                )
+            except Exception:
+                display(geoms, row.indices)
+                raise Exception(
+                    f"Error occurred during merge on row number {i}."
+                )
             # Log values
             output.append(merged)
         

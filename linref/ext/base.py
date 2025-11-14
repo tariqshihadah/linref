@@ -1596,7 +1596,7 @@ class LRS_Accessor(object):
     def dissolve(
         self, 
         retain=[], 
-        sort=False, 
+        sort=True, 
         inverse_index=True, 
         inverse_col='dissolved_index', 
         merge_geom=True,
@@ -1609,7 +1609,7 @@ class LRS_Accessor(object):
         ----------
         retain : list, default []
             A list of column labels to retain during the dissolve operation.
-        sort : bool, default False
+        sort : bool, default True
             Whether to sort the events before dissolving. If True, results 
             will still be aligned to the original events. Unsorted events
             may produce unexpected results.
@@ -1655,8 +1655,8 @@ class LRS_Accessor(object):
         if merge_geom and self.is_spatial_m:
             try:
                 merged_m = relation[self.geom_m_col].line_merge_m()
-            except GeometryTypeError:
-                raise GeometryTypeError(
+            except GeometryTopologyError:
+                raise GeometryTopologyError(
                     "Linear geometries of adjacent events are disjointed and "
                     "cannot be merged into a single geometry."
                 )
@@ -1670,8 +1670,8 @@ class LRS_Accessor(object):
         elif merge_geom and self.is_spatial:
             try:
                 merged_m = relation.line_merge_m(data=self.build_geom_m())
-            except GeometryTypeError:
-                raise GeometryTypeError(
+            except GeometryTopologyError:
+                raise GeometryTopologyError(
                     "Linear geometries of adjacent events are disjointed and "
                     "cannot be merged into a single geometry."
                 )

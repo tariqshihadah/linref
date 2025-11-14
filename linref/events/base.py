@@ -644,7 +644,7 @@ class EventsData:
         index = np.lexsort(by)
         return index
 
-    def sort(self, by, return_inverse=False, inplace=False):
+    def sort(self, by, return_index=False, inplace=False):
         f"""
         Sort the events by a selected event data anchor.
         
@@ -653,9 +653,9 @@ class EventsData:
         by : {common.keys_all}
             The event data property or list of properties by which all events 
             should be sorted.
-        return_inverse : bool, default False
+        return_index : bool, default False
             Whether to return an array of the indices which represent the 
-            inverse of the performed sort in addition to the sorted events.
+            performed sort in addition to the sorted events.
         inplace : bool, default False
             Whether to perform the operation in place, returning None.
         """
@@ -665,10 +665,10 @@ class EventsData:
         # Apply changes
         res = self if inplace else self.copy()
         res = res.select(index, ignore=True, inplace=False)
-        res = res if not return_inverse else (res, index)
+        res = res if not return_index else (res, index)
         return None if inplace else res
     
-    def sort_standard(self, return_inverse=False, inplace=False):
+    def sort_standard(self, return_index=False, inplace=False):
         """
         Sort the events by their positional information in the standard order
         of 'groups', 'begs', 'ends' for linear events and 'groups', 'locs' 
@@ -676,9 +676,9 @@ class EventsData:
 
         Parameters
         ----------
-        return_inverse : bool, default False
+        return_index : bool, default False
             Whether to return an array of the indices which represent the 
-            inverse of the performed sort in addition to the sorted events.
+            performed sort in addition to the sorted events.
         inplace : bool, default False
             Whether to perform the operation in place, returning None.
         """
@@ -692,7 +692,7 @@ class EventsData:
             by.append('locs')
         
         # Apply sorting
-        return self.sort(by, return_inverse=return_inverse, inplace=inplace)
+        return self.sort(by, return_index=return_index, inplace=inplace)
     
     def duplicated(self, subset=None, keep='first'):
         """

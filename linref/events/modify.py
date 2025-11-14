@@ -34,7 +34,7 @@ def dissolve(events, sort=False, return_index=False, return_relation=False):
     if sort:
         events_original = events.copy()
         events, events_sorter = \
-            events.sort_standard(return_inverse=True, inplace=False)
+            events.sort_standard(return_index=True, inplace=False)
     
     # Define indices to align inverse index and relation index to the input 
     # events
