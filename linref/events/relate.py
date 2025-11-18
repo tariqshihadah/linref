@@ -1276,7 +1276,7 @@ class EventsRelation(object):
             )
 
         # Get relational data and adjust for axis
-        arr = self._get_method_data(method).tolil() # Improved performance with lil
+        arr = self._get_method_data(method).tocsr()#.tolil() # Improved performance with lil
         if axis == 0:
             arr = arr.T
             lengths = self.right.lengths.reshape(-1, 1)
@@ -1284,16 +1284,24 @@ class EventsRelation(object):
             lengths = self.left.lengths.reshape(-1, 1)
 
         # Distribute intersection share based on decay function
-        scale = decay_func(0) # Get scale at zero distance (generally 1.0)
-        distributed = arr * scale
+        scale = decay_func(0)
+        if not scale == 1:
+            raise ValueError(
+                "Decay function must return a scale of 1.0 for step 0."
+            )
+        distributed = arr.copy()
+        # Create a padded array for efficient shifting
+        padded = sp.vstack([
+            sp.csr_matrix((decay_size, arr.shape[1])),
+            arr,
+            sp.csr_matrix((decay_size, arr.shape[1]))
+        ])
         for step in range(1, min(decay_size + 1, arr.shape[0])):
-            # Get scale for this step
-            scale = decay_func(step)
-            # Apply scale and add to distribution results
-            if direction in ['both', 'backward', 'back']:
-                distributed[:-step, :] += arr[step:, :] * scale
-            if direction in ['both', 'forward', 'forw']:
-                distributed[step:, :] += arr[:-step, :] * scale
+            # Aggregate shifted shares
+            if direction in ['forward', 'forw', 'both']:
+                distributed += padded[decay_size + step : arr.shape[0] + decay_size + step, :] * decay_func(step)
+            if direction in ['backward', 'back', 'both']:
+                distributed += padded[decay_size - step : arr.shape[0] + decay_size - step, :] * decay_func(step)
         # Enforce equal groups by zeroing out distributed shares that
         # cross group boundaries
         if self.left.is_grouped:
@@ -1328,7 +1336,7 @@ class EventsRelation(object):
                         np.asarray(distributed.multiply(column).sum(axis=1))
                     )
                 # Concatenate results
-                output_array = np.hstack(aggregated)
+                output_array = np.vstack(aggregated).T
         else:
             output_array = np.asarray(distributed.sum(axis=1))
         return output_array

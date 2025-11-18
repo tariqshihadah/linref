@@ -1274,7 +1274,6 @@ class LRS_Accessor(object):
         
         # Iterate over groups
         index  = []
-        orders = []
         chains = []
         begs   = []
         ends   = []
@@ -1329,7 +1328,9 @@ class LRS_Accessor(object):
         df[beg_col] = pd.Series(np.concatenate(begs), index=index)
         df[end_col] = pd.Series(np.concatenate(ends), index=index)
         if add_chain:
-            df[chain_col] = pd.Series(np.concatenate(chains), index=index)
+            df[chain_col] = pd.Series(
+                np.concatenate(chains), index=index, dtype=float
+            )
         # Update LRS
         new_lrs = df.lr.lrs.copy(deep=True)
         new_lrs.beg_col = beg_col
@@ -2023,15 +2024,15 @@ class LRS_Accessor(object):
         )
 
     @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
-    def project(self, other, buffer=100, nearest=True, distance_col='project_distance'):
+    def project(self, other, buffer=100, nearest=True, distance_col='project_distance', dropna=True):
         """
         Project the input DataFrame of point events onto the active DataFrame
         of linear events.
 
         Parameters
         ----------
-        other : DataFrame
-            The other DataFrame to project. Must be point-based and spatially
+        other : GeoDataFrame
+            The other GeoDataFrame to project. Must be point-based and spatially
             referenced.
         buffer : float, default 100
             The buffer distance to use when searching for nearest linear events.
@@ -2042,6 +2043,11 @@ class LRS_Accessor(object):
             equidistant points exist, choose the first result that appears.
         dist_label : str, default 'project_distance'
             The label for the distance column in the returned DataFrame.
+        dropna : bool, default True
+            Whether to drop rows from the returned DataFrame where no matching
+            linear event was found within the defined buffer. Events with no
+            match will have NaN values for LRS columns which may produce 
+            unexpected results in subsequent operations.
         """
         # Ensure that the LRS has a location column
         if self.loc_col is None:
@@ -2105,6 +2111,12 @@ class LRS_Accessor(object):
                 return
         locs = joined.apply(_project, axis=1)
         joined[self.loc_col] = locs
+        # Drop rows with no match if needed
+        if dropna:
+            joined = joined.dropna(
+                subset=self.key_col + [self.loc_col],
+                how='any',
+            )
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
