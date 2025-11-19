@@ -8,7 +8,7 @@ import copy, hashlib
 from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from scipy import sparse as sp
-from linref.ext.utility import label_list_or_none, label_or_none
+from linref.common.utility import label_list_or_none, label_or_none
 from linref.events.common import closed_all
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
