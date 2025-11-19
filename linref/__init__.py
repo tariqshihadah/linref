@@ -8,3 +8,4 @@ from linref.analysis.direction import extract_direction, extract_bearing
 
 # Expose extension settings
 set_default_lrs = LRS_Accessor.set_default_lrs
+set_default_geometry_sync = LRS_Accessor.set_default_geometry_sync

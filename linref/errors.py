@@ -12,3 +12,9 @@ class GeometryTopologyError(LinrefError):
 
 class EventTopologyError(LinrefError):
     """Exception raised for errors in event topology."""
+
+class GeometrySyncError(LinrefError):
+    """Exception raised for errors in geometry synchronization."""
+
+class GeometrySyncWarning(Warning):
+    """Warning raised for potential issues in geometry synchronization."""

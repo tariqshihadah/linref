@@ -5,8 +5,8 @@ from linref.ext.base import LRS
 # Define default LRS instances
 #
 
-LRS(
-    keys_col='key',
+DEFAULT_LRS = LRS(
+    keys_col=['key'],
     locs_col='loc',
     begs_col='beg',
     ends_col='end',

@@ -14,6 +14,7 @@ from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, geometry, integration
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
+from linref.ext.validation import _method_deprecates_geometry
 
 
 class LRS(object):
@@ -260,12 +261,15 @@ class LRS_Accessor(object):
 
     # Initialize default LRS list
     _default_lrs = None
+    _default_geometry_sync = 'warn'
 
     def __init__(self, df) -> None:
         # Log dataframe
         self.df = df
         # Initialize LRS
         self._lrs = self._default_lrs.copy()
+        # Set geometry synchronization behavior
+        self._geometry_sync = self._default_geometry_sync
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -1079,6 +1083,47 @@ class LRS_Accessor(object):
         cls._default_lrs = lrs
 
     @classmethod
+    def set_default_geometry_sync(cls, behavior: str) -> None:
+        """
+        Set the default geometry synchronization behavior for the LRS_Accessor 
+        class. This behavior determines how to handle methods that may create 
+        discrepancies between event data and geometries.
+
+        Parameters
+        ----------
+        behavior : str
+            The geometry synchronization behavior. Must be one of 'none', 
+            'warn', 'error', or 'remove'.
+        """
+        valid_behaviors = ['none', 'warn', 'error', 'remove']
+        if behavior not in valid_behaviors:
+            raise ValueError(
+                f"Invalid geometry synchronization behavior '{behavior}'. "
+                f"Must be one of {valid_behaviors}."
+            )
+        cls._default_geometry_sync = behavior
+
+    def set_geometry_sync(self, behavior: str) -> None:
+        """
+        Set the geometry synchronization behavior for the LRS_Accessor instance.
+        This behavior determines how to handle methods that may create 
+        discrepancies between event data and geometries.
+
+        Parameters
+        ----------
+        behavior : str
+            The geometry synchronization behavior. Must be one of 'none', 
+            'warn', 'error', or 'remove'.
+        """
+        valid_behaviors = ['none', 'warn', 'error', 'remove']
+        if behavior not in valid_behaviors:
+            raise ValueError(
+                f"Invalid geometry synchronization behavior '{behavior}'. "
+                f"Must be one of {valid_behaviors}."
+            )
+        self._geometry_sync = behavior
+
+    @classmethod
     def clear_default_lrs(cls) -> None:
         """
         Clear the default LRS objects from the LRS_Accessor class.
@@ -1347,6 +1392,7 @@ class LRS_Accessor(object):
         return None if inplace else df
 
     @_method_require(is_linear=True)
+    @_method_deprecates_geometry
     def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
         """
         Extend the begin and end locations of the LRS by the specified 
@@ -1360,6 +1406,7 @@ class LRS_Accessor(object):
         obj.ends = events.ends
         return None if inplace else obj.df
     
+    @_method_deprecates_geometry
     def shift(self, shift, inplace=False) -> pd.DataFrame | None:
         """
         Shift the events of the LRS by the specified amount.
@@ -1375,6 +1422,7 @@ class LRS_Accessor(object):
             obj.ends = events.ends
         return None if inplace else obj.df
     
+    @_method_deprecates_geometry
     def round(self, decimals=0, inplace=False) -> pd.DataFrame | None:
         """
         Round the events of the LRS to the specified number of 
