@@ -1947,6 +1947,83 @@ class LRS_Accessor(object):
             df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
     
+    def distribute_from(
+        self,
+        other: pd.DataFrame,
+        columns: list | str | None = None,
+        inplace: bool = False,
+        replace: bool = False,
+        **params
+    ) -> pd.DataFrame | None:
+        """
+        Distribute attribute data from another dataframe onto the current 
+        dataframe based on linear referencing relationships. This is a shortcut
+        for lr.relate(other)[columns].distribute(**params).
+
+        Parameters
+        ----------
+        other : DataFrame
+            The other DataFrame to distribute attributes from. Must have an 
+            equivalent linear referencing system.
+        columns : str or list, optional
+            The column label or list of column labels to distribute from the
+            other dataframe. If None, all columns except key and geometry
+            columns will be distributed.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        replace : bool, default False
+            Whether to replace existing columns in the DataFrame with the
+            same names as those being distributed. If False, an error will be
+            raised if any column names conflict.
+        **params
+            Additional parameters to pass to the EventsRelation.distribute
+            method.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with distributed attributes or 
+            None if inplace=True.
+        """
+        # Validate other dataframe
+        if not isinstance(other, pd.DataFrame):
+            raise TypeError("Input object must be of type `pd.DataFrame`.")
+        if not other.lr.is_lrs_set:
+            raise LRSCompatibilityError("Input DataFrame has no LRS set.")
+        # Validate columns to distribute
+        columns = label_list_or_none(columns)
+        # Check for column name conflicts
+        if not replace:
+            if columns is None:
+                if 'distributed' in self.df.columns:
+                    raise ValueError(
+                        "Default column name 'distributed' is already in use "
+                        "in the DataFrame. Set `replace=True` to overwrite "
+                        "existing columns."
+                    )
+            else:
+                conflict_cols = list(set(columns) & set(self.df.columns))
+                if len(conflict_cols) > 0:
+                    raise ValueError(
+                        f"Column name conflict(s) detected: {conflict_cols}. "
+                        "Set `replace=True` to overwrite existing columns."
+                    )
+        
+        # Relate dataframes
+        relation = self.relate(other)
+        relation._set_selector(columns, inplace=True)
+
+        # Distribute attributes
+        params['squeeze'] = False
+        distributed = relation.distribute(**params)
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        if columns is None:
+            df['distributed'] = distributed
+        else:
+            df[columns] = distributed
+        return None if inplace else df
+    
     def parse_geom_m_wkt(self, geom_m_col=None, inplace=False) -> pd.DataFrame | None:
         """
         Parse the WKT representation of the geometry_m column into a
