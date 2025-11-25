@@ -300,10 +300,9 @@ class EventsRelation(object):
         obj._left, obj._right = obj._right, obj._left
         # Swap left and right dataframes
         obj._left_df, obj._right_df = obj._right_df, obj._left_df
-        # Swap cached data
-        obj._equal_groups_data = obj._equal_groups_data.T if obj._equal_groups_data is not None else None
-        obj._overlay_data = obj._overlay_data.T if obj._overlay_data is not None else None
-        obj._intersect_data = obj._intersect_data.T if obj._intersect_data is not None else None
+        # Reset cache and selector
+        obj.reset_cache()
+        obj.reset_selector()
         return obj
 
     def cache_memory_usage(self, unit='MB') -> float:
@@ -376,40 +375,55 @@ class EventsRelation(object):
                     f"The number of events in the right dataframe ({self._right_df.shape[0]}) must match the "
                     f"number of events in the right events data object ({self.right.num_events}).")
 
-    def _get_method_data(self, method) -> sp.csr_matrix | None:
+    def _get_method_data(self, method, axis, **kwargs) -> sp.csr_matrix | None:
         # Set default method if none provided
         if method is None:
             method = 'overlay' if (self.left.is_linear and self.right.is_linear) else 'intersect'
         # Validate method
         if method == 'equal_groups':
-            return self._get_equal_groups_data()
+            return self._get_equal_groups_data(**kwargs)
         elif method == 'overlay':
             if self.left.is_point or self.right.is_point:
                 raise LRSConfigurationError(
                     "Overlay method cannot be used with point events. "
                     "Use 'intersect' method instead.")
-            return self._get_overlay_data()
+            return self._get_overlay_data(axis=axis, **kwargs)
         elif method == 'intersect':
-            return self._get_intersect_data()
+            return self._get_intersect_data(**kwargs)
         else:
             raise ValueError(
                 f"Invalid method provided ({method}). Must be one of "
                 f"{self._valid_relate_agg_methods}.")
         
     def _get_equal_groups_data(self, **kwargs) -> sp.csr_matrix | None:
-        if self.equal_groups_data is None:
-            return self.equal_groups(**kwargs)
-        return self.equal_groups_data
+        if self.equal_groups_data is not None:
+            if all(
+                self._equal_groups_kwargs.get(key, None) == value
+                for key, value in kwargs.items()
+            ):
+                return self.equal_groups_data
+        return self.equal_groups(**kwargs)
         
     def _get_intersect_data(self, **kwargs) -> sp.csr_matrix | None:
-        if self.intersect_data is None:
-            return self.intersect(**kwargs)
-        return self.intersect_data
+        if self.intersect_data is not None:
+            if all(
+                self._intersect_kwargs.get(key, None) == value
+                for key, value in kwargs.items()
+            ):
+                return self.intersect_data
+        return self.intersect(**kwargs)
     
-    def _get_overlay_data(self, **kwargs) -> sp.csr_matrix | None:
-        if self.overlay_data is None:
-            return self.overlay(**kwargs)
-        return self.overlay_data
+    def _get_overlay_data(self, axis=1, **kwargs) -> sp.csr_matrix | None:
+        # Adjust kwargs for axis
+        if not 'norm_by' in kwargs:
+            kwargs['norm_by'] = 'right' if axis == 1 else 'left'
+        if self.overlay_data is not None:
+            if all(
+                self._overlay_kwargs.get(key, None) == value
+                for key, value in kwargs.items()
+            ):
+                return self.overlay_data
+        return self.overlay(**kwargs)
 
     def copy(self, deep=False):
         """
@@ -434,6 +448,13 @@ class EventsRelation(object):
         self._overlay_kwargs = None
         self._intersect_data = None
         self._intersect_kwargs = None
+
+    def reset_selector(self) -> None:
+        """
+        Reset the selector used to select data from either the left or right
+        dataframe during aggregation operations.
+        """
+        return self._set_selector(None, inplace=True)
 
     def _set_selector(self, selector, inplace=False) -> None:
         """
@@ -546,13 +567,13 @@ class EventsRelation(object):
             }
         return arr
 
-    def overlay(self, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
+    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
         
         Parameters
         ----------
-        normalize : bool, default False
+        normalize : bool, default True
             Whether overlapping lengths should be normalized to give a 
             proportional result with a float value between 0 and 1.
         norm_by : str, default 'right'
@@ -1008,7 +1029,7 @@ class EventsRelation(object):
             1D array if possible.
         """
         # Check for cached data
-        arr = self._get_method_data(method)
+        arr = self._get_method_data(method, axis, **kwargs)
         
         # Perform aggregation
         aggregated = []
@@ -1069,7 +1090,7 @@ class EventsRelation(object):
             1D array if possible.
         """
         # Check for cached data
-        arr = self._get_method_data(method)
+        arr = self._get_method_data(method, axis, **kwargs)
         
         # Perform aggregation
         aggregated = []
@@ -1137,7 +1158,7 @@ class EventsRelation(object):
             1D array if possible.
         """
         # Check for cached data
-        arr = self._get_method_data(method).tocsr() # Indexing requires CSR
+        arr = self._get_method_data(method, axis, **kwargs).tocsr() # Indexing requires CSR
         arr = arr if axis == 0 else arr.T
         
         # Perform aggregation
@@ -1276,7 +1297,7 @@ class EventsRelation(object):
             )
 
         # Get relational data and adjust for axis
-        arr = self._get_method_data(method).tocsr()#.tolil() # Improved performance with lil
+        arr = self._get_method_data(method, axis, **kwargs).tocsr()
         if axis == 0:
             arr = arr.T
             lengths = self.right.lengths.reshape(-1, 1)
@@ -1370,6 +1391,9 @@ class EventsRelation(object):
             - 'last' : Use the last intersecting geometry only.
             - 'list' : Return a list of all interpolated geometries.
             - 'raise' : Raise an error if multiple geometries intersect.
+        **kwargs
+            Additional keyword arguments to pass to the intersection method
+            if it has not been previously computed and cached.
 
         Returns
         -------
@@ -1466,6 +1490,9 @@ class EventsRelation(object):
                         single M-enabled geometry.
             - 'list' : Return a list of all cut intersecting geometries.
             - 'raise' : Raise an error if multiple geometries intersect.
+        **kwargs
+            Additional keyword arguments to pass to the intersection method
+            if it has not been previously computed and cached.
 
         Returns
         -------
@@ -1557,6 +1584,9 @@ class EventsRelation(object):
             The axis along which to aggregate the events relationship.
             - 0 : Aggregate left events onto the right events index.
             - 1 : Aggregate right events onto the left events index.
+        **kwargs
+            Additional keyword arguments to pass to the intersection method
+            if it has not been previously computed and cached.
 
         Returns
         -------
