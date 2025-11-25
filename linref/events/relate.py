@@ -1583,7 +1583,6 @@ class EventsRelation(object):
                     cast_geom=True,
                 )
             except Exception:
-                display(geoms, row.indices)
                 raise Exception(
                     f"Error occurred during merge on row number {i}."
                 )

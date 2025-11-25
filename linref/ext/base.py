@@ -609,7 +609,7 @@ class LRS_Accessor(object):
         Return whether the active LRS is point-based and the location column is
         present in the dataframe.
         """
-        if not self.lrs.is_point:
+        if self.is_linear or not self.lrs.is_located:
             return False
         # Check for presence of location column in the dataframe
         return self.loc_col in self._df.columns
@@ -1257,6 +1257,76 @@ class LRS_Accessor(object):
         df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
+    @_method_require(is_point=True)
+    def point_to_linear(
+        self,
+        beg_col: str | None = None,
+        end_col: str | None = None,
+        replace: bool = False,
+        drop_loc: bool = False,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Convert point-based locations in the dataframe to linear begin and 
+        end locations, adding new begin and end columns to the dataframe.
+
+        Parameters
+        ----------
+        beg_col : str, optional
+            The name of the begin location column to add. If None, uses the
+            existing begin column name in the LRS, or 'beg' if no begin column
+            is defined.
+        end_col : str, optional
+            The name of the end location column to add. If None, uses the
+            existing end column name in the LRS, or 'end' if no end column is
+            defined.
+        replace : bool, default False
+            Whether to replace existing begin or end columns in the dataframe. 
+            If False, an error will be raised if the columns already exist.
+        drop_loc : bool, default False
+            Whether to drop the original location column from the dataframe
+            after conversion.
+        inplace : bool, default False
+            Whether to apply changes to the dataframe in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with begin and end location columns 
+            added.
+        """
+        # Validate column names
+        if beg_col is None:
+            if self.beg_col is not None:
+                beg_col = self.beg_col
+            else:
+                beg_col = 'beg'
+        if end_col is None:
+            if self.end_col is not None:
+                end_col = self.end_col
+            else:
+                end_col = 'end'
+        for col_name in [beg_col, end_col]:
+            if col_name in self.df and not replace:
+                raise ValueError(
+                    f"Column name '{col_name}' is already in use in the "
+                    "DataFrame."
+                )
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        locs = df[self.loc_col].values
+        df[beg_col] = locs
+        df[end_col] = locs
+        if drop_loc:
+            df = df.drop(columns=[self.loc_col])
+        # Update LRS if needed
+        if beg_col != self.beg_col or end_col != self.end_col:
+            new_lrs = df.lr.lrs.copy(deep=True)
+            new_lrs.beg_col = beg_col
+            new_lrs.end_col = end_col
+            df.lr.set_lrs(new_lrs, inplace=True)
+        return None if inplace else df
+    
     @_method_require(is_spatial=True)
     def generate_linear_events(
         self,
@@ -1391,25 +1461,70 @@ class LRS_Accessor(object):
         # Return updated DataFrame
         return None if inplace else df
 
-    @_method_require(is_linear=True)
     @_method_deprecates_geometry
-    def extend(self, extend_begs=0, extend_ends=0, inplace=False) -> pd.DataFrame | None:
+    def extend(
+        self,
+        extend_begs: float = 0,
+        extend_ends: float = 0,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
         """
         Extend the begin and end locations of the LRS by the specified 
         amounts.
+
+        Parameters
+        ----------
+        extend_begs : float, default 0
+            The amount to extend the begin locations. Can be negative to
+            shorten the begin locations.
+        extend_ends : float, default 0
+            The amount to extend the end locations. Can be negative to
+            shorten the end locations.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with extended begin and end 
+            locations.
         """
-        # Extend events
-        events = self.events.extend(extend_begs=extend_begs, extend_ends=extend_ends, inplace=False)
         # Apply changes to the DataFrame
         obj = self if inplace else self.copy(deep=True)
+        # Upgrade point to linear events if needed
+        if self.is_point:
+            obj.point_to_linear(inplace=True)
+        # Extend events
+        events = self.events.extend(
+            extend_begs=extend_begs,
+            extend_ends=extend_ends,
+            inplace=False
+        )
+        # Apply changes to the DataFrame
         obj.begs = events.begs
         obj.ends = events.ends
         return None if inplace else obj.df
     
     @_method_deprecates_geometry
-    def shift(self, shift, inplace=False) -> pd.DataFrame | None:
+    def shift(
+        self,
+        shift: float,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
         """
         Shift the events of the LRS by the specified amount.
+
+        Parameters
+        ----------
+        shift : float
+            The amount to shift the events by.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with shifted events.
         """
         # Shift events
         events = self.events.shift(shift, inplace=False)
@@ -1423,10 +1538,26 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_deprecates_geometry
-    def round(self, decimals=0, inplace=False) -> pd.DataFrame | None:
+    def round(
+        self,
+        decimals: int = 0,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
         """
         Round the events of the LRS to the specified number of 
         decimals.
+
+        Parameters
+        ----------
+        decimals : int, default 0
+            The number of decimal places to round the events to.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the current DataFrame with rounded events.
         """
         # Round events
         events = self.events.round(decimals=decimals, inplace=False)
