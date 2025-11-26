@@ -1206,7 +1206,8 @@ class EventsRelation(object):
         direction: str = 'both',
         length_normalize: bool = True,
         squeeze: bool = True,
-        ):
+        **kwargs
+    ) -> np.ndarray:
         """
         Distribute the share of intersecting events along neighboring events
         based on a decay function. The share of each intersecting event is

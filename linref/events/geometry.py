@@ -624,7 +624,6 @@ def _linemerge_m_mapping(objs, allow_multiple=False, allow_mismatch=False, cast_
                                 f"M values {node_m} and {sml_geom.m[0]}."
                             )
                             if not allow_mismatch:
-                                display(sml_coords, (i, j, cycle), (node, node_m, big_coords[0]), (sml_geom.m[0], sml_geom.m[-1]), (big_index, big_coords.shape[0]))
                                 raise GeometryTopologyError(msg)
                             else:
                                 warnings.warn(msg)
