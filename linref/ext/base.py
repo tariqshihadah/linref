@@ -2280,7 +2280,14 @@ class LRS_Accessor(object):
         )
 
     @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
-    def project(self, other, buffer=100, nearest=True, distance_col='project_distance', dropna=True):
+    def project(
+        self,
+        other: gpd.GeoDataFrame,
+        buffer: float = 100,
+        nearest: bool = True,
+        distance_col: str = 'project_distance',
+        dropna: bool = True
+    ) -> gpd.GeoDataFrame:
         """
         Project the input DataFrame of point events onto the active DataFrame
         of linear events.
@@ -2304,6 +2311,12 @@ class LRS_Accessor(object):
             linear event was found within the defined buffer. Events with no
             match will have NaN values for LRS columns which may produce 
             unexpected results in subsequent operations.
+
+        Returns
+        -------
+        df : GeoDataFrame
+            A copy of the other GeoDataFrame with projected LRS locations and
+            distance column added.
         """
         # Ensure that the LRS has a location column
         if self.loc_col is None:

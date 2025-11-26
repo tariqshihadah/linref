@@ -1,0 +1,416 @@
+from __future__ import annotations
+import warnings
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import shapely
+from shapely.ops import nearest_points
+from shapely.errors import GeometryTypeError
+from pandas.api.extensions import register_dataframe_accessor
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
+
+
+def parallel_project_hausdorff(
+    target: gpd.GeoDataFrame,
+    projected: gpd.GeoDataFrame,
+    buffer: float = 0,
+    max_distance: float = None,
+    match: int = 1,
+    densify: float = None
+):
+    """
+    Experimental class for performing projections of linear geometries onto
+    a primary linearly referenced layer using a series of tests based on the
+    Hausdorff distance metric.
+
+    The methodology involves the following steps:
+
+    1. Identify candidate target geometries by joining the bounds of each 
+    projected geometry to the target data using a specified buffer distance.
+    Only target geometries within the buffer distance of both ends of the 
+    projected geometry are retained as candidates.
+
+    2. For each candidate target geometry, compute the Hausdorff distance 
+    between the projected geometry and the target geometry. This distance
+    quantifies the maximum distance of a point on one geometry to the nearest
+    point on the other geometry.
+
+    3. Select the target geometry with the minimum Hausdorff distance as the
+    best match for the projected geometry, or specify multiple matches if 
+    desired.
+
+    4. Project the endpoints of the projected geometry onto the matched target
+    geometry to obtain linear referencing information, producing a new 
+    dataframe with the projected geometries referenced to the target's linear
+    referencing system.
+
+    Parameters
+    ----------
+    target : gpd.GeoDataFrame
+        The target GeoDataFrame with m-enabled geometries to project onto.
+    projected : gpd.GeoDataFrame
+        The GeoDataFrame containing geometries to be projected.
+    buffer : float, default 0
+        The buffer distance (in the units of the CRS) to use when identifying
+        candidate target geometries.
+    max_distance : float, optional
+        The maximum allowable Hausdorff distance (in the units of the CRS)
+        for a candidate target geometry to be considered a valid match. 
+        Geometries with a Hausdorff distance exceeding this value will not be
+        matched. If not specified, will default to be equal to the buffer 
+        value.
+    match : int, default 1
+        The number of closest matching target geometries to return for each
+        projected geometry based on the Hausdorff distance metric. If set to
+        1, only the closest match is returned. If set to a value greater than 
+        1, the specified number of closest matches are returned. If set to
+        0, all candidate matches within the max_distance are returned.
+    densify : float, optional
+        A value between 0 and 1 indicating the fraction of each geometry's
+        length to use for densification when computing the Hausdorff distance.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        A new GeoDataFrame containing the projected geometries with linear
+        referencing information based on the target's system.
+    """
+    # Validate input dataframes
+    if not isinstance(target, gpd.GeoDataFrame):
+        raise TypeError(
+            "Input projection target must be valid gpd.GeoDataFrame "
+            "instance."
+        )
+    if not isinstance(projected, gpd.GeoDataFrame):
+        raise TypeError(
+            "Input projected data must be valid gpd.GeoDataFrame instance."
+        )
+    # Ensure that target data has m-enabled geometries
+    if not target.lr.is_spatial_m:
+        raise LRSConfigurationError(
+            "Input projection target GeoDataFrame must have "
+            "m-enabled geometries."
+        )
+    # Validate additional parameters
+    try:
+        buffer = float(buffer)
+        assert buffer >= 0
+    except:
+        raise ValueError(
+            "Buffer parameter must be a non-negative numeric value."
+        )
+    if max_distance is None:
+        max_distance = buffer
+    else:
+        try:
+            max_distance = float(max_distance)
+            assert max_distance >= 0
+        except:
+            raise ValueError(
+                "Max distance parameter must be a non-negative numeric value."
+            )
+    try:
+        match = int(match)
+        assert match >= 0
+    except:
+        raise ValueError(
+            "Match parameter must be a non-negative integer value."
+        )
+    if densify is not None:
+        try:
+            densify = float(densify)
+            assert 0 <= densify <= 1
+        except:
+            raise ValueError(
+                "Densify parameter must be a float value between 0 and 1."
+            )
+        
+    # Create buffered target geometries for candidate selection
+    buffered = target.geometry.buffer(buffer).to_frame(name='__target_geom__')
+
+
+class ParallelProjector(object):
+    """
+    Experimental class for performing projections of linear geometries onto 
+    linear events collections.
+
+    The methodology used by this class involves the following steps:
+
+    1. Create sample points along the projected geometries using a fixed 
+    number of samples per geometry.
+
+    2. Spatially join these sample points to the target EventsCollection's 
+    geometry using the provided buffer distance to identify candidate matches.
+
+    3. Process all possible matches using the .match() method to produce 
+    linear referencing information for the projected geometries based on that 
+    of the target EventsCollection.
+    """
+
+    def __init__(
+        self,
+        target: gpd.GeoDataFrame,
+        projected: gpd.GeoDataFrame,
+        samples=3,
+        buffer=100
+    ) -> None:
+        self.target = target
+        self.projected = projected
+        self.samples = samples
+        self.buffer = buffer
+
+    @property
+    def target(self):
+        return self._target
+
+    @target.setter
+    def target(self, df):
+        # Validate object type
+        if not isinstance(df, gpd.GeoDataFrame):
+            raise TypeError(
+                "Input projection target must be valid gpd.GeoDataFrame "
+                "instance."
+            )
+        # Ensure that data has m-enabled geometries
+        if not df.lr.is_spatial_m:
+            raise LRSConfigurationError(
+                "Input projection target GeoDataFrame must have "
+                "m-enabled geometries."
+            )
+        self._target = df
+
+    @property
+    def target_buffered(self):
+        return self._target.set_geometry(
+            self._target.geometry.buffer(self.buffer)
+        )
+
+    @property
+    def projected(self):
+        return self._projected
+
+    @projected.setter
+    def projected(self, df):
+        # Validate object type
+        if not isinstance(df, gpd.GeoDataFrame):
+            raise TypeError(
+                "Input projected data must be valid gpd.GeoDataFrame instance."
+            )
+        self._projected = df
+    
+    @property
+    def samples(self):
+        return self._samples
+
+    @samples.setter
+    def samples(self, samples):
+        # Validate
+        if not isinstance(samples, int):
+            raise ValueError("Samples parameter must be an integer.")
+        self._samples = samples
+
+        # Build sampling points
+        self._build_sample_points()
+
+    @property
+    def buffer(self):
+        return self._buffer
+
+    @buffer.setter
+    def buffer(self, buffer):
+        # Validate
+        try:
+            buffer = float(buffer)
+            assert buffer >= 0
+            self._buffer = buffer
+        except:
+            raise ValueError(
+                "Buffer parameter must be a non-negative numeric value.")
+        
+        # Perform spatial join
+        self._buffer_join()
+
+    @property
+    def sample_locs(self):
+        return np.linspace(0, 1, num=self.samples)
+
+    @property
+    def sample_points(self):
+        return self._sample_points
+
+    @property
+    def projectors(self):
+        return self.projected.geometry.values
+
+    def _build_sample_points(self):
+        """
+        Build sample points along each projector geometry for matching.
+        """
+        # Generate sampling points
+        sample_locs = self.sample_locs
+        points = []
+        for projector in self.projectors:
+            # Interpolate sample points
+            points.extend([projector.interpolate(loc) for loc in \
+                sample_locs * projector.length])
+        self._sample_points = gpd.GeoDataFrame({
+            '__projector__': np.repeat(self.projected.index.values, self.samples),
+            'geometry': points}, geometry='geometry', crs=self.projected.crs
+        )
+
+    def _buffer_join(self):
+        """
+        Join projector sample points to target geometry within buffer for 
+        matching.
+        """
+        # Join sampling points with target data
+        joined = gpd.sjoin(
+            self.target_buffered,
+            self.sample_points,
+            predicate='intersects',
+            how='left'
+        )
+        # Define distance computation function
+        def _get_distance(o1, o2):
+            # If geometries are valid, compute distance
+            try:
+                p1, p2 = nearest_points(o1, o2)
+                return p1.distance(p2)
+            except (AttributeError, ValueError) as e:
+                return -1
+            
+        # Compute distances between matched geometries
+        joined.geometry = self.target.geometry
+        geometries = joined[[joined.geometry.name, 'index_right']].merge(
+            self.sample_points.geometry,
+            left_on='index_right',
+            right_index=True,
+            how='left'
+        )
+        geometries = zip(
+            geometries.iloc[:,0], # target geometry
+            geometries.iloc[:,2], # sample point geometry
+        )
+        joined['__distance__'] = \
+            list(map(lambda x: _get_distance(*x), geometries))
+
+        # Process, clean results
+        joined.index.rename('__target__', inplace=True)
+        joined = joined \
+            .reset_index(drop=False)[['__projector__','__target__','__distance__']]
+        joined = joined \
+            .sort_values(by=['__projector__','__target__'], ascending=True)
+        joined = joined.dropna(how='any')
+        self._joined = joined
+
+    def match(self, match='all', choose=1, sort_locs=True):
+        """
+        Perform the actual matching of nearby geometries to one another based 
+        on input analysis parameters, producing a dataframe which has been 
+        applied to the target EventsCollection's linear referencing system.
+        """
+        # Validate matching parameters
+        if match=='all':
+            match = self.samples
+        elif not isinstance(match, int):
+            raise ValueError("Match parameter must be 'all' or an integer <= "
+                             "samples.")
+        # Validate choose parameter
+        if not isinstance(choose, int):
+            if not choose=='all':
+                raise ValueError("Choose parameter must be 'all' or an "
+                                "integer >= 1")
+        elif choose < 1:
+            raise ValueError("Integer choose parameter must be >= 1")
+        
+        # Get target event bound labels
+        labels = [self.target.lr.beg_col, self.target.lr.end_col]
+
+        # Group unique pairs of targets and projectors
+        pair_unique, pair_index, pair_counts = np.unique(
+            self._joined.values[:,:2].astype(int),
+            axis=0,
+            return_index=True,
+            return_counts=True
+        )
+        # Test all unique pairs for minimum match count
+        match_mask = pair_counts >= match
+        # Compute mean distances for all unique matched pairs
+        all_distances = np.split(self._joined.values[:,2], pair_index)[1:]
+        split = np.array(all_distances, dtype=object)[match_mask]
+        mean_distances = np.array([np.mean(i) for i in split])
+        # Group matched targets for all matched projectors
+        proj_unique, proj_index = np.unique(
+            pair_unique[match_mask,0],
+            axis=0,
+            return_index=True
+        )
+        pair_distances = np.array(
+            np.split(mean_distances, proj_index)[1:], dtype=object)
+        
+        # Identify the index of the target(s) with the lowest mean distance for 
+        # each projector if requested
+        pair_groups = np.split(pair_unique[match_mask,1], proj_index)[1:]
+        if choose == 'all':
+            pair_select = [slice(None) for i in pair_distances]
+        elif choose == 1:
+            pair_select = [np.argmin(i) for i in pair_distances]
+        else:
+            pair_select = [np.argpartition(i, min(choose, i.size)-1) \
+                        [:min(choose, i.size)] \
+                        for i in pair_distances]
+        # - Produce a projector-target map
+        zipped = zip(pair_groups, pair_select)
+        targets = np.array(
+            [group[index] for group, index in zipped], dtype=object)
+        # - Flatten map if multiple choices
+        if choose != 1:
+            projectors = np.repeat(proj_unique, [len(i) for i in targets])
+            targets = np.concatenate(targets, axis=0)
+        else:
+            projectors = proj_unique
+
+        # Select the matched pairs
+        matched_pairs = pd.DataFrame({
+            '__projector__': projectors, '__target__': targets})
+        
+        # Merge matched records
+        proj_lines = self.projected.geometry.rename('__proj_lines__')
+        select = matched_pairs \
+            .merge(proj_lines, left_on='__projector__', right_index=True)
+        target_data = self.target[self.target.lr.key_col + [self.target.lr.geom_m_col]]
+        select = select \
+            .merge(target_data, left_on='__target__', right_index=True)
+        select = select.reset_index(drop=True)
+
+        # Project ends onto matched linestring_m
+        def _project(linestring_m, line):
+            try:
+                # Project bounds onto target linestring_m
+                boundary = line.boundary
+                beg, end = boundary.geoms[0], boundary.geoms[-1]
+                beg_loc, end_loc = linestring_m.project(beg, m=True), linestring_m.project(end, m=True)
+                return beg_loc, end_loc
+            except (AttributeError, IndexError):
+                return np.nan, np.nan
+        proj_bounds = np.asarray(list(map(
+            _project,
+            select[self.target.lr.geom_m_col].values,
+            select['__proj_lines__'].values
+        )))
+            
+        # Merge with input and target data
+        if sort_locs:
+            select[labels[0]] = proj_bounds.min(axis=1)
+            select[labels[1]] = proj_bounds.max(axis=1)
+        else:
+            select[labels[0]] = proj_bounds[:, 0]
+            select[labels[1]] = proj_bounds[:, 1]
+        clean = self.projected.drop(
+            columns=labels + [self.target.lr.geom_col, self.target.lr.geom_m_col], errors='ignore')
+        select = select \
+            .merge(clean, how='left', left_on='__projector__', right_index=True) \
+            .drop(columns=['__projector__', '__target__', '__proj_lines__', self.target.lr.geom_m_col],
+                  errors='ignore')
+        return select
+    
