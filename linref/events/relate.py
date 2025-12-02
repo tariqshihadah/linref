@@ -2,7 +2,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from linref.events import base, geometry
-from linref.common import utility
+from linref.utility import utility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 from scipy import sparse as sp
 from scipy.stats import norm
