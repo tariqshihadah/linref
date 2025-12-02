@@ -231,8 +231,7 @@ class LRS(object):
                 obj.key_col.remove(key)
             except ValueError:
                 if errors == 'raise':
-                    print(f"Attempted to remove key column '{key}' which was not found in {obj.key_col}.")
-                    raise KeyError(f"Key column '{key}' not found.")
+                    raise KeyError(f"Key column '{key}' not found in current list: {obj.key_col}.")
                 continue
         return None if inplace else obj
 

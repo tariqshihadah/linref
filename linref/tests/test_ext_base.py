@@ -459,7 +459,6 @@ class TestLRSAccessorMethods(unittest.TestCase):
     def test_remove_key(self):
         """Test removing key column from accessor."""
         df = self.df.lr.add_key(['dir', 'year'], inplace=False)
-        print(df.lr)
         df_modified = df.lr.remove_key('dir', inplace=False)
         
         self.assertNotIn('dir', df_modified.lr.key_col)
