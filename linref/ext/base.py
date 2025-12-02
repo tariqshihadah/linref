@@ -1571,7 +1571,14 @@ class LRS_Accessor(object):
         return None if inplace else obj.df
     
     @_method_require(is_grouped=True)
-    def impute_keys(self, other, keys=None, func='first', fillna=None, missing='warn') -> pd.DataFrame:
+    def impute_keys(
+        self,
+        other: pd.DataFrame,
+        keys: list | None = None,
+        func: str = 'first',
+        fillna: float | str | dict | None = None,
+        missing: str = 'warn'
+    ) -> pd.DataFrame:
         """
         Impute missing key values from this dataframe onto another dataframe 
         based on matches between other keys and LRS locations.
@@ -1659,7 +1666,7 @@ class LRS_Accessor(object):
         inverse_col=None,
         return_relation=False,
         cut_geom=True
-        ) -> pd.DataFrame | None:
+    ) -> pd.DataFrame | None:
         """
         Resegment the events of the LRS to the specified length.
 
@@ -1775,13 +1782,13 @@ class LRS_Accessor(object):
     @_method_require(is_linear=True)
     def dissolve(
         self, 
-        retain=[], 
-        sort=True, 
-        inverse_index=True, 
-        inverse_col='dissolved_index', 
-        merge_geom=True,
-        return_relation=False,
-        ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
+        retain: list = [], 
+        sort: bool = True, 
+        inverse_index: bool = True, 
+        inverse_col: str = 'dissolved_index', 
+        merge_geom: bool = True,
+        return_relation: bool = False,
+    ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
         Merge consecutive ranges. For best results, input events should be sorted.
 
@@ -1889,7 +1896,7 @@ class LRS_Accessor(object):
         fill_gaps: bool = False,
         split_at_locs: bool = False,
         inverse_col: str | list[str] | None = None
-        ):
+    ):
         """
         Combine one or more linearly referenced dataframes with the current 
         dataframe, creating new linear events based on least common intervals 
@@ -1927,7 +1934,14 @@ class LRS_Accessor(object):
         )
     
     @_method_require(is_linear=True)
-    def cut_from(self, other, geom_col=None, geom_m_col=None, multiple='first', inplace=False) -> gpd.GeoDataFrame | None:
+    def cut_from(
+        self,
+        other: gpd.GeoDataFrame,
+        geom_col: str | None = None,
+        geom_m_col: str | None = None,
+        multiple: str = 'first',
+        inplace: bool = False
+    ) -> gpd.GeoDataFrame | None:
         """
         Cut new geometries for the events in the dataframe from the geometries
         of another dataframe based on the LRS locations.
@@ -2010,7 +2024,13 @@ class LRS_Accessor(object):
         return None if inplace else df
     
     @_method_require(is_located=True)
-    def interpolate_from(self, other, geom_col=None, multiple='first', inplace=False) -> gpd.GeoDataFrame | None:
+    def interpolate_from(
+        self,
+        other: pd.DataFrame,
+        geom_col: str | None = None,
+        multiple: str = 'first',
+        inplace: bool = False
+    ) -> gpd.GeoDataFrame | None:
         """
         Interpolate new point geometries for the located events in the 
         dataframe from the geometries of another dataframe based on the LRS 
@@ -2155,7 +2175,11 @@ class LRS_Accessor(object):
             df[columns] = distributed
         return None if inplace else df
     
-    def parse_geom_m_wkt(self, geom_m_col=None, inplace=False) -> pd.DataFrame | None:
+    def parse_geom_m_wkt(
+        self,
+        geom_m_col: str | None = None,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
         """
         Parse the WKT representation of the geometry_m column into a
         LineStringM object.
@@ -2183,7 +2207,11 @@ class LRS_Accessor(object):
         df[geom_m_col] = df[geom_m_col].apply(geometry.parse_linestring_m_wkt)
         return None if inplace else df
 
-    def relate(self, other, cache=True) -> relate.EventsRelation:
+    def relate(
+        self,
+        other: pd.DataFrame,
+        cache: bool = True
+    ) -> relate.EventsRelation:
         """
         Create an events data relationship between two linearly referenced
         datasets.
@@ -2208,7 +2236,14 @@ class LRS_Accessor(object):
             right_df=other,
         )
     
-    def overlay(self, other, normalize=False, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_array:
+    def overlay(
+        self,
+        other: pd.DataFrame,
+        normalize: bool = False,
+        norm_by: str = 'right',
+        chunksize: int = 1000,
+        grouped: bool = True
+    ) -> sp.csr_array:
         """
         Overlay two sets of linearly referenced datasets, computing the 
         length or proportion of overlap between each pair of events.
@@ -2246,7 +2281,13 @@ class LRS_Accessor(object):
             grouped=grouped
         )
 
-    def intersect(self, other, enforce_edges=True, chunksize=1000, grouped=True) -> sp.csr_array:
+    def intersect(
+        self,
+        other: pd.DataFrame,
+        enforce_edges: bool = True,
+        chunksize: int = 1000,
+        grouped: bool = True
+    ) -> sp.csr_array:
         """
         Identify intersections between two sets of linearly referenced datasets.
 
