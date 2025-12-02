@@ -406,6 +406,16 @@ class LRS_Accessor(object):
         Whether an LRS object is currently set for the DataFrame.
         """
         return self.lrs is not None
+    
+    @property
+    def is_lrs_empty(self) -> bool:
+        """
+        Whether the currently set LRS object is empty (i.e., has no key, 
+        location, begin, end, or geometry columns defined).
+        """
+        if not self.is_lrs_set:
+            return True
+        return self._lrs == LRS()
 
     @property
     def key_col(self) -> list[str]:
@@ -1167,19 +1177,33 @@ class LRS_Accessor(object):
         """
         cls._default_lrs = LRS()
 
-    def sort_standard(self, return_inverse=False, inplace=False) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray] | None:
+    def sort_standard(
+        self,
+        return_index: bool = False,
+        inplace: bool = False
+    ) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray] | None:
         """
-        Sort the DataFrame in standard order based on the LRS columns.
+        Sort the dataframe by the LRS columns in the standard order
+        of 'groups', 'begs', 'ends' for linear events and 'groups', 'locs' 
+        for point events.
+
+        Parameters
+        ----------
+        return_index : bool, default False
+            Whether to return an array of the indices which represent the 
+            performed sort in addition to the sorted events.
+        inplace : bool, default False
+            Whether to perform the operation in place, returning None.
         """
         # Get sorter
-        sorter = self.events.sort_standard(return_inverse=True)[1]
+        sorter = self.events.sort_standard(return_index=True)[1]
         # Apply changes to the DataFrame
         df = self.df.iloc[sorter]
         if inplace:
             self._df = df
             return
         else:
-            return (df, sorter) if return_inverse else df
+            return (df, sorter) if return_index else df
         
     @_method_require(is_grouped=True)
     def get_group(self, group) -> pd.DataFrame:

@@ -30,7 +30,7 @@ class TestLRSInit(unittest.TestCase):
         """Test creating an empty LRS object with minimal parameters."""
         lrs = LRS()
         self.assertIsInstance(lrs, LRS)
-        self.assertIsNone(lrs.key_col)
+        self.assertTrue(len(lrs.key_col) == 0)
         self.assertIsNone(lrs.loc_col)
         self.assertIsNone(lrs.beg_col)
         self.assertIsNone(lrs.end_col)
@@ -89,8 +89,15 @@ class TestLRSInit(unittest.TestCase):
 
     def test_lrs_init_invalid_closed(self):
         """Test that invalid closed parameter raises error."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(LRSConfigurationError):
             LRS(closed='invalid_value')
+        with self.assertRaises(ValueError):
+            LRS(
+                key_col=['route'],
+                beg_col='beg',
+                end_col='end',
+                closed='invalid_value'
+            )
 
 
 class TestLRSProperties(unittest.TestCase):
@@ -252,8 +259,7 @@ class TestLRSAccessorInit(unittest.TestCase):
     def test_accessor_no_lrs_set(self):
         """Test accessor behavior when no LRS is set."""
         df = pd.DataFrame({'a': [1, 2, 3]})
-        self.assertFalse(df.lr.is_lrs_set)
-        self.assertIsNone(df.lr.lrs)
+        self.assertTrue(df.lr.is_lrs_empty)
 
     def test_set_lrs(self):
         """Test setting LRS on DataFrame."""
@@ -265,10 +271,10 @@ class TestLRSAccessorInit(unittest.TestCase):
         lrs = LRS(key_col=['route'], beg_col='beg', end_col='end', closed='right')
         df_with_lrs = df.lr.set_lrs(lrs, inplace=False)
         
-        self.assertTrue(df_with_lrs.lr.is_lrs_set)
+        self.assertFalse(df_with_lrs.lr.is_lrs_empty)
         self.assertEqual(df_with_lrs.lr.lrs, lrs)
         # Original unchanged
-        self.assertFalse(df.lr.is_lrs_set)
+        self.assertTrue(df.lr.is_lrs_empty)
 
     def test_set_lrs_inplace(self):
         """Test setting LRS in place."""
@@ -309,7 +315,7 @@ class TestLRSAccessorInit(unittest.TestCase):
         self.assertTrue(df.lr.is_lrs_set)
         
         df_cleared = df.lr.clear_lrs(inplace=False)
-        self.assertFalse(df_cleared.lr.is_lrs_set)
+        self.assertTrue(df_cleared.lr.is_lrs_empty)
 
 
 class TestLRSAccessorProperties(unittest.TestCase):
