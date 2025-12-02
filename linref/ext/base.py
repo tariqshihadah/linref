@@ -9,7 +9,7 @@ from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from scipy import sparse as sp
 from linref.utility.utility import label_list_or_none, label_or_none
-from linref.events.common import closed_all
+from linref.events.common import closed_all, default_closed
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, geometry, integration
@@ -86,7 +86,7 @@ class LRS(object):
         defined). This does not check for presence of the columns in the 
         DataFrame.
         """
-        return self.key_col is not None
+        return len(self.key_col) > 0
     
     @property
     def is_spatial(self) -> bool:
@@ -128,6 +128,32 @@ class LRS(object):
             Whether the created copy should be a deep copy.
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
+
+    def set_closed(self, closed=None, inplace=False) -> LRS | None:
+        """
+        Set LRS closure type.
+
+        Parameters
+        ----------
+        closed : {'left', 'right', 'left_mod', 'right_mod', 'both', 'neither'}, optional
+            The closure type to set. If None, sets to default closure type.
+        inplace : bool, default False
+            Whether to apply changes to the LRS in place.
+        """
+        if self.is_linear:
+            if closed is None:
+                closed = default_closed
+            elif closed not in closed_all:
+                raise ValueError(
+                    f"Invalid LRS closure: {closed}. Must be one of: {closed_all}.")
+        else:
+            if closed is not None:
+                raise LRSConfigurationError(
+                    "Cannot set closure type for non-linear LRS.")
+        obj = self if inplace else self.copy(deep=True)
+        obj.closed = closed
+        return None if inplace else obj
+
     
     def set_params(self, inplace=False, **kwargs) -> LRS | None:
         """
@@ -155,7 +181,7 @@ class LRS(object):
         obj = self if inplace else self.copy(deep=True)
         for key, value in kwargs.items():
             if key == 'key_col':
-                obj.key_col = label_list_or_none(value)
+                obj.key_col = label_list_or_none(value, if_none=[])
             elif key == 'loc_col':
                 obj.loc_col = label_or_none(value)
             elif key == 'beg_col':
@@ -167,10 +193,7 @@ class LRS(object):
             elif key == 'geom_m_col':
                 obj.geom_m_col = label_or_none(value)
             elif key == 'closed':
-                if value not in closed_all:
-                    raise ValueError(
-                        f"Invalid LRS closure: {value}. Must be one of: {closed_all}.")
-                obj.closed = value
+                obj.set_closed(closed=value, inplace=True)
 
         return None if inplace else obj
     
@@ -208,6 +231,7 @@ class LRS(object):
                 obj.key_col.remove(key)
             except ValueError:
                 if errors == 'raise':
+                    print(f"Attempted to remove key column '{key}' which was not found in {obj.key_col}.")
                     raise KeyError(f"Key column '{key}' not found.")
                 continue
         return None if inplace else obj
@@ -260,7 +284,7 @@ class LRS_Accessor(object):
     """
 
     # Initialize default LRS list
-    _default_lrs = None
+    _default_lrs = LRS()
     _default_geometry_sync = 'warn'
 
     def __init__(self, df) -> None:
@@ -585,7 +609,7 @@ class LRS_Accessor(object):
         Return whether the active LRS is grouped and the key columns are 
         present in the dataframe.
         """
-        if self.key_col is None:
+        if len(self.key_col) == 0:
             return False
         else:
             # Check for presence of key columns in the dataframe
@@ -885,6 +909,14 @@ class LRS_Accessor(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
+    def copy_df(self) -> pd.DataFrame:
+        """
+        Create a copy of the underlying DataFrame, preserving LRS settings.
+        """
+        df_copy = self.df.copy()
+        df_copy.lr.set_lrs(self.lrs, inplace=True)
+        return df_copy
+    
     def lrs_like(self, other, inplace=False) -> pd.DataFrame | None:
         """
         Assign the LRS settings of another DataFrame to the current DataFrame.
@@ -943,11 +975,15 @@ class LRS_Accessor(object):
         **kwargs
             The LRS parameters from an LRS object to modify.
         inplace : bool, default False
-            Whether to apply changes to the DataFrame in place.
+            Whether to apply changes to the DataFrame in place. Note, this
+            does not modify the existing LRS object in place, but creates a
+            modified copy of the existing LRS object and sets it to the 
+            DataFrame. To modify the LRS object itself, access the LRS object
+            directly via `df.lr.lrs`.
         """
         # Retrieve and modify LRS
         df = self.df if inplace else self.df.copy()
-        lrs = df.lr.lrs.copy(deep=True)
+        lrs = self.lrs.copy(deep=True)
         lrs.set_params(inplace=True, **kwargs)
         # Set the modified LRS
         df.lr._lrs = lrs
@@ -966,7 +1002,7 @@ class LRS_Accessor(object):
         """
         # Add key columns
         df = self.df if inplace else self.df.copy()
-        lrs = df.lr.lrs.copy(deep=True)
+        lrs = self.lrs.copy(deep=True)
         lrs.add_key(key_col, inplace=True)
         # Set the modified LRS
         df.lr._lrs = lrs
@@ -985,7 +1021,7 @@ class LRS_Accessor(object):
         """
         # Add key columns
         df = self.df if inplace else self.df.copy()
-        lrs = df.lr.lrs.copy(deep=True)
+        lrs = self.lrs.copy(deep=True)
         lrs.remove_key(key_col, inplace=True)
         # Set the modified LRS
         df.lr._lrs = lrs
@@ -993,7 +1029,8 @@ class LRS_Accessor(object):
 
     def clear_lrs(self, inplace=False) -> None:
         """
-        Clear the LRS object from the DataFrame.
+        Clear the LRS object from the DataFrame. Applies a new empty LRS object
+        equivalent to LRS().
 
         Parameters
         ----------
@@ -1002,7 +1039,7 @@ class LRS_Accessor(object):
         """
         # Clear LRS object
         df = self.df if inplace else self.df.copy()
-        df.lr._lrs = None
+        df.lr._lrs = LRS()
         return None if inplace else df
 
     def build_geom_m(self) -> np.ndarray:
@@ -1043,7 +1080,7 @@ class LRS_Accessor(object):
         # Cast linear geometries to LineStringM
         geoms_m = self.build_geom_m()
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[name] = geoms_m
         # Update LRS if needed
         if self.lrs.geom_m_col != name:
@@ -1128,7 +1165,7 @@ class LRS_Accessor(object):
         """
         Clear the default LRS objects from the LRS_Accessor class.
         """
-        cls._default_lrs = None
+        cls._default_lrs = LRS()
 
     def sort_standard(self, return_inverse=False, inplace=False) -> pd.DataFrame | tuple[pd.DataFrame, np.ndarray] | None:
         """
@@ -1244,7 +1281,7 @@ class LRS_Accessor(object):
                 f"Column name '{name}' is already in use in the DataFrame."
             )
         # Prepare chain data
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         if name in df.lr.key_col:
             new_lrs = df.lr.lrs
             chains = df.lr.remove_key(name, inplace=False).lr.get_chains(name=name)
@@ -1313,7 +1350,7 @@ class LRS_Accessor(object):
                     "DataFrame."
                 )
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         locs = df[self.loc_col].values
         df[beg_col] = locs
         df[end_col] = locs
@@ -1439,7 +1476,7 @@ class LRS_Accessor(object):
         
         # Concatenate results and apply to DataFrame
         index = np.concatenate(index)
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[beg_col] = pd.Series(np.concatenate(begs), index=index)
         df[end_col] = pd.Series(np.concatenate(ends), index=index)
         if add_chain:
@@ -1745,14 +1782,14 @@ class LRS_Accessor(object):
             end_name=self.end_col,
         )
         df_right = self.df[self.other_cols]
-        df = pd.merge(df_left, df_right, left_index=True, right_index=True).lr.lrs_like(self)
+        df = pd.merge(df_left, df_right, left_index=True, right_index=True)
         # Reset index and add inverse index
         if inverse_col is None:
             if self._df.index.name is None:
                 inverse_col = 'segment_index'
             else:
                 inverse_col = self._df.index.name
-        df = df.reset_index(drop=False, names=inverse_col)
+        df = df.reset_index(drop=False, names=inverse_col).lr.lrs_like(self)
         # Prepare relation object as needed
         if return_relation or cut_geom:
             relation = df.lr.relate(self)
@@ -1786,7 +1823,7 @@ class LRS_Accessor(object):
         sort: bool = True, 
         inverse_index: bool = True, 
         inverse_col: str = 'dissolved_index', 
-        merge_geom: bool = True,
+        merge_geom: bool = None,
         return_relation: bool = False,
     ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
@@ -1804,9 +1841,11 @@ class LRS_Accessor(object):
             Whether to append an inverse index to the dissolved events dataframe.
         inverse_col : str, default 'dissolved_index'
             The label for the inverse index column.
-        merge_geom : bool, default True
+        merge_geom : bool | None, default None
             Whether to merge the geometries of the dissolved events if present
-            in the dataframe.
+            in the dataframe. If None, geometries will be merged if present in
+            the dataframe. If True, an error will be raised if no geometry 
+            column is present in the dataframe.
         return_relation : bool, default False
             Whether to return an EventsRelation object which describes the
             relationship between the dissolved (left) and original (right) 
@@ -1815,6 +1854,15 @@ class LRS_Accessor(object):
         # Validate input parameters
         if not isinstance(retain, list):
             raise ValueError("Input `retain` must be a list of valid dataframe column labels.")
+        if merge_geom is None:
+            merge_geom = self.is_spatial or self.is_spatial_m
+        # Validate retain columns
+        if not isinstance(retain, list):
+            raise ValueError("Input `retain` must be a list of valid dataframe column labels.")
+        else:
+            missing_cols = set(retain) - set(self.df.columns)
+            if len(missing_cols) > 0:
+                raise KeyError(f"Retain columns not found in the dataframe: {missing_cols}")
         # Define key values to retain during dissolve
         if self.is_grouped:
             key_col = self.key_col + retain
@@ -2007,7 +2055,7 @@ class LRS_Accessor(object):
         cut_geoms_m = relation.cut(axis=1, multiple=multiple)
         cut_geoms = np.array([geom_m.geom for geom_m in cut_geoms_m])
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[geom_col] = cut_geoms
         df[geom_m_col] = cut_geoms_m
         # Update LRS if needed
@@ -2083,7 +2131,7 @@ class LRS_Accessor(object):
         # Interpolate geometries
         interp_geoms = relation.interpolate(axis=1, multiple=multiple)
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[geom_col] = interp_geoms
         # Update LRS if needed
         if self.lrs.geom_col != geom_col:
@@ -2168,7 +2216,7 @@ class LRS_Accessor(object):
         params['squeeze'] = False
         distributed = relation.distribute(**params)
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         if columns is None:
             df['distributed'] = distributed
         else:
@@ -2203,8 +2251,13 @@ class LRS_Accessor(object):
                 geom_m_col = self.lrs.geom_m_col
 
         # Parse WKT
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[geom_m_col] = df[geom_m_col].apply(geometry.parse_linestring_m_wkt)
+        # Update LRS if needed
+        if self.lrs.geom_m_col != geom_m_col:
+            new_lrs = self.lrs.copy(deep=True)
+            new_lrs.geom_m_col = geom_m_col
+            df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
     def extract_m_values(
@@ -2252,7 +2305,7 @@ class LRS_Accessor(object):
                     "DataFrame."
                 )
         # Apply changes to the DataFrame
-        df = self.df if inplace else self.df.copy()
+        df = self.df if inplace else self.copy_df()
         df[beg_col] = [geom.beg_m for geom in self.geoms_m]
         df[end_col] = [geom.end_m for geom in self.geoms_m]
 
@@ -2523,20 +2576,27 @@ def test_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
     # Validate LRS compatibility
     primary_df = dfs[0]
     for i, df in enumerate(dfs[1:]):
+        # Is grouped
+        if primary_df.lr.is_grouped != df.lr.is_grouped:
+            raise LRSCompatibilityError(
+                f"LRS of dataframe at index {i + 1} has a different "
+                "grouped state than the dataframe at index 0."
+            )
         # Number of key columns
-        if len(primary_df.lr.key_col) != len(df.lr.key_col):
-            raise LRSCompatibilityError(
-                f"LRS of dataframe at index {i + 1} has a different number "
-                "of key columns than the dataframe at index 0. Received "
-                f"{len(df.lr.key_col)} columns, but expected "
-                f"{len(primary_df.lr.key_col)}."
-            )
-        # Key column data types
-        if primary_df.lr.events.groups.dtype != df.lr.events.groups.dtype:
-            raise LRSCompatibilityError(
-                f"LRS of dataframe at index {i + 1} has different key column "
-                "data types than the dataframe at index 0."
-            )
+        if primary_df.lr.is_grouped:
+            if len(primary_df.lr.key_col) != len(df.lr.key_col):
+                raise LRSCompatibilityError(
+                    f"LRS of dataframe at index {i + 1} has a different number "
+                    "of key columns than the dataframe at index 0. Received "
+                    f"{len(df.lr.key_col)} columns, but expected "
+                    f"{len(primary_df.lr.key_col)}."
+                )
+            # Key column data types
+            if primary_df.lr.events.groups.dtype != df.lr.events.groups.dtype:
+                raise LRSCompatibilityError(
+                    f"LRS of dataframe at index {i + 1} has different key column "
+                    "data types than the dataframe at index 0."
+                )
     return dfs
 
 def integrate(
