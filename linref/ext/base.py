@@ -267,7 +267,7 @@ class LRS_Accessor(object):
         # Log dataframe
         self.df = df
         # Initialize LRS
-        self._lrs = self._default_lrs.copy()
+        self._lrs = self._default_lrs.copy() if self._default_lrs is not None else None
         # Set geometry synchronization behavior
         self._geometry_sync = self._default_geometry_sync
 
@@ -1475,11 +1475,11 @@ class LRS_Accessor(object):
         Parameters
         ----------
         extend_begs : float, default 0
-            The amount to extend the begin locations. Can be negative to
-            shorten the begin locations.
+            The amount to extend the begin locations to the left. Negative
+            values shift the begin locations to the right.
         extend_ends : float, default 0
-            The amount to extend the end locations. Can be negative to
-            shorten the end locations.
+            The amount to extend the end locations to the right. Negative
+            values shift the end locations to the left.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
 
@@ -2490,7 +2490,7 @@ class LRS_Accessor(object):
 
 # Helper functions for event operations
 
-def test_compatibility(dfs: list[pd.DataFrame]) -> None:
+def test_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
     """
     Validate that all dataframes have compatible LRS objects assigned, 
     raising various errors for incompatible LRS configurations.
