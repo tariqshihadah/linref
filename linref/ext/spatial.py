@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
-from shapely.ops import nearest_points
+from shapely import hausdorff_distance
+from itertools import starmap
+from shapely.ops import nearest_points, substring
 from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
@@ -16,7 +18,8 @@ def parallel_project_hausdorff(
     buffer: float = 0,
     max_distance: float = None,
     match: int = 1,
-    densify: float = None
+    densify: float = None,
+    replace: bool = False,
 ):
     """
     Experimental class for performing projections of linear geometries onto
@@ -49,7 +52,8 @@ def parallel_project_hausdorff(
     target : gpd.GeoDataFrame
         The target GeoDataFrame with m-enabled geometries to project onto.
     projected : gpd.GeoDataFrame
-        The GeoDataFrame containing geometries to be projected.
+        The GeoDataFrame containing geometries to be projected. These
+        geometries must be singlepart.
     buffer : float, default 0
         The buffer distance (in the units of the CRS) to use when identifying
         candidate target geometries.
@@ -68,6 +72,14 @@ def parallel_project_hausdorff(
     densify : float, optional
         A value between 0 and 1 indicating the fraction of each geometry's
         length to use for densification when computing the Hausdorff distance.
+        Densification adds additional vertices along the geometry to improve
+        the accuracy of the distance calculation. If not specified, no
+        densification is applied.
+    replace : bool, default False
+        If True, will replace any existing linear referencing columns in the
+        projected GeoDataFrame with the newly computed values. If False, will
+        raise an error if the projected GeoDataFrame already contains linear
+        referencing columns from the target's system.
 
     Returns
     -------
@@ -85,12 +97,38 @@ def parallel_project_hausdorff(
         raise TypeError(
             "Input projected data must be valid gpd.GeoDataFrame instance."
         )
+    # Ensure that target data has a valid LRS configuration
+    if not target.lr.is_linear:
+        raise LRSConfigurationError(
+            "Input projection target GeoDataFrame must have a valid "
+            "linear referencing configuration."
+        )
     # Ensure that target data has m-enabled geometries
     if not target.lr.is_spatial_m:
         raise LRSConfigurationError(
             "Input projection target GeoDataFrame must have "
             "m-enabled geometries."
         )
+    # Ensure that the target data has singlepart geometries
+    if not all(target.geometry.count_geometries() == 1):
+        raise GeometryTopologyError(
+            "Input target GeoDataFrame must have singlepart geometries."
+        )
+    # Ensure that the projected data has singlepart geometries
+    if not all(projected.geometry.count_geometries() == 1):
+        raise GeometryTopologyError(
+            "Input projected GeoDataFrame must have singlepart "
+            "geometries."
+        )
+    # Check for existing linear referencing columns in projected data
+    target_cols = target.lr.key_col + [target.lr.beg_col, target.lr.end_col]
+    if not replace:
+        if len(set(target_cols) & set(projected.columns)) > 0:
+            raise LRSCompatibilityError(
+                "Input projected GeoDataFrame already contains linear "
+                "referencing columns from the target's system. To "
+                "overwrite these columns, set replace=True."
+            )
     # Validate additional parameters
     try:
         buffer = float(buffer)
@@ -126,7 +164,112 @@ def parallel_project_hausdorff(
             )
         
     # Create buffered target geometries for candidate selection
-    buffered = target.geometry.buffer(buffer).to_frame(name='__target_geom__')
+    buffered = target.geometry.buffer(buffer).to_frame(name='__target_buffered__')
+    buffered = buffered.rename_axis('__target_index__')
+
+    # Create multipoint geometries for projected geometry endpoints
+    boundaries = projected.geometry.boundary.to_frame(name='__projected_boundary__')
+    boundaries = boundaries.rename_axis('__projected_index__')
+
+    # Identify candidate target geometries within buffer distance
+    joined = gpd.sjoin(boundaries, buffered, how='inner', predicate='within').reset_index(drop=False)
+
+    # Merge original geometries back into joined dataframe
+    # FUTURE: Optimize to avoid multiple merges
+    joined = pd.merge(
+        joined,
+        target.geometry.to_frame(name='__target_geometry__'),
+        left_on='__target_index__',
+        right_index=True
+    )
+    joined = pd.merge(
+        joined,
+        target[target.lr.geom_m_col].to_frame(name='__target_geometry_m__'),
+        left_on='__target_index__',
+        right_index=True
+    )    
+    joined = pd.merge(
+        joined,
+        projected.geometry.to_frame(name='__projected_geometry__'),
+        left_on='__projected_index__',
+        right_index=True
+    )
+
+    # Create substrings of the target geometries for accurate distance 
+    # computation
+    def _create_substring(target, boundary):
+        try:
+            # Project boundary points onto target geometry
+            beg_dist, end_dist = (
+                target.project(boundary.geoms[0], normalized=False),
+                target.project(boundary.geoms[-1], normalized=False)
+            )
+            # Create substring geometry
+            return substring(
+                target, beg_dist, end_dist, normalized=False
+            )
+        except (AttributeError, IndexError, GeometryTypeError):
+            return None
+    joined['__target_substring__'] = list(starmap(
+        _create_substring,
+        zip(joined['__target_geometry__'], joined['__projected_boundary__'])
+    ))
+
+    # Compute Hausdorff distances for candidate matches
+    joined['__hausdorff_distance__'] = list(starmap(
+        lambda a, b: hausdorff_distance(a, b, densify=densify),
+        zip(joined['__target_substring__'], joined['__projected_geometry__'])
+    ))
+
+    # Filter candidates based on max distance
+    joined = joined[joined['__hausdorff_distance__'] <= max_distance]
+    # Select best matches based on Hausdorff distance if needed
+    if match == 1:
+        idx = joined.groupby('__projected_index__')['__hausdorff_distance__'].idxmin()
+        joined = joined.loc[idx]
+    elif match > 1:
+        joined = joined.sort_values(
+            by=['__projected_index__', '__hausdorff_distance__'],
+            ascending=[True, True]
+        )
+        joined = joined.groupby('__projected_index__').head(match)
+
+    # Retrieve linear referencing keys from target data
+    joined = pd.merge(
+        joined,
+        target[target.lr.key_col],
+        left_on='__target_index__',
+        right_index=True
+    )
+
+    # Project projected geometry endpoints onto matched target geometries
+    def _project_onto_target(linestring_m, boundary):
+        try:
+            # Project bounds onto target linestring_m
+            beg_loc, end_loc = (
+                linestring_m.project(boundary.geoms[0], m=True),
+                linestring_m.project(boundary.geoms[-1], m=True)
+            )
+            return beg_loc, end_loc
+        except (AttributeError, IndexError):
+            return np.nan, np.nan
+    joined[[target.lr.beg_col, target.lr.end_col]] = pd.DataFrame(list(starmap(
+        _project_onto_target,
+        zip(joined['__target_geometry_m__'], joined['__projected_boundary__'])
+    )), index=joined.index)
+
+    # Construct final projected dataframe
+    joined = pd.merge(
+        projected.drop(columns=target_cols, errors='ignore'),
+        joined[target_cols + ['__projected_index__']],
+        left_index=True,
+        right_on='__projected_index__',
+        how='outer',
+
+    )
+    joined.index = joined['__projected_index__'].values
+    joined = joined.drop(columns=['__projected_index__'])
+    return joined
 
 
 class ParallelProjector(object):
