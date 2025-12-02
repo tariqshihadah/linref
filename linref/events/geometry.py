@@ -76,6 +76,24 @@ class LineStringM:
         self._m = m
 
     @property
+    def beg_m(self):
+        """
+        Return the beginning M value of the LineStringM object.
+        """
+        if self.m is None:
+            return None
+        return self.m[0]
+    
+    @property
+    def end_m(self):
+        """
+        Return the ending M value of the LineStringM object.
+        """
+        if self.m is None:
+            return None
+        return self.m[-1]
+
+    @property
     def coords(self):
         """
         Return the coordinates of the LineString as an array, interwoven

@@ -2206,6 +2206,63 @@ class LRS_Accessor(object):
         df = self.df if inplace else self.df.copy()
         df[geom_m_col] = df[geom_m_col].apply(geometry.parse_linestring_m_wkt)
         return None if inplace else df
+    
+    def extract_m_values(
+        self,
+        beg_col: str | None = None,
+        end_col: str | None = None,
+        replace: bool = False,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Extract the M values from the geometry_m column, applying them to the
+        begin and end location columns.
+
+        Parameters
+        ----------
+        beg_col : str, optional
+            The name of the begin location column to add. If None, uses the
+            existing begin column name in the LRS, or 'beg' if no begin column
+            is defined.
+        end_col : str, optional
+            The name of the end location column to add. If None, uses the
+            existing end column name in the LRS, or 'end' if no end column is
+            defined.
+        replace : bool, default False
+            Whether to replace existing begin or end columns in the dataframe. 
+            If False, an error will be raised if the columns already exist.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Validate column names
+        if beg_col is None:
+            if self.beg_col is not None:
+                beg_col = self.beg_col
+            else:
+                beg_col = 'beg'
+        if end_col is None:
+            if self.end_col is not None:
+                end_col = self.end_col
+            else:
+                end_col = 'end'
+        for col_name in [beg_col, end_col]:
+            if col_name in self.df and not replace:
+                raise ValueError(
+                    f"Column name '{col_name}' is already in use in the "
+                    "DataFrame."
+                )
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.df.copy()
+        df[beg_col] = [geom.beg_m for geom in self.geoms_m]
+        df[end_col] = [geom.end_m for geom in self.geoms_m]
+
+        # Update LRS if needed
+        if beg_col != self.beg_col or end_col != self.end_col:
+            new_lrs = df.lr.lrs.copy(deep=True)
+            new_lrs.beg_col = beg_col
+            new_lrs.end_col = end_col
+            df.lr.set_lrs(new_lrs, inplace=True)
+        return None if inplace else df
 
     def relate(
         self,
