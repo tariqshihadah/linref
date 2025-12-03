@@ -951,7 +951,7 @@ class LRS_Accessor(object):
         df.lr.set_lrs(other.lrs, inplace=True)
         return None if inplace else df
 
-    def set_lrs(self, lrs=None, append=False, activate=False, inplace=False, **kwargs) -> pd.DataFrame | None:
+    def set_lrs(self, lrs=None, inplace=False, **kwargs) -> pd.DataFrame | None:
         """
         Set the LRS object for the DataFrame.
 
@@ -1095,7 +1095,7 @@ class LRS_Accessor(object):
         if self.lrs.geom_m_col != name:
             new_lrs = self.lrs.copy(deep=True)
             new_lrs.geom_m_col = name
-            df.lr.set_lrs(new_lrs, activate=True)
+            df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
 
     @_method_require(is_grouped=True)
@@ -1824,7 +1824,7 @@ class LRS_Accessor(object):
                 df[self.geom_m_col] = relation.cut()
                 df[self.geom_col] = np.array([geom_m.geom for geom_m in df[self.geom_m_col]])
                 df = gpd.GeoDataFrame(
-                    df, geometry=self.geom_col, crs=self.df.crs
+                    df, geometry=self.geom_col, crs=getattr(self.df, 'crs', None)
                 ).lr.lrs_like(self)
             except:
                 raise ValueError(
@@ -1948,7 +1948,7 @@ class LRS_Accessor(object):
         if merge_geom:
             try:
                 df = gpd.GeoDataFrame(
-                    df, geometry=self.geom_col, crs=self.df.crs
+                    df, geometry=self.geom_col, crs=getattr(self.df, 'crs', None)
                 ).lr.lrs_like(self)
             except:
                 raise ValueError(
@@ -2089,7 +2089,7 @@ class LRS_Accessor(object):
         else:
             update_lrs = False
         # Upgrade to GeoDataFrame
-        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=other.crs)
+        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=getattr(other, 'crs', None))
         if update_lrs:
             df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
@@ -2164,7 +2164,7 @@ class LRS_Accessor(object):
         else:
             update_lrs = False
         # Upgrade to GeoDataFrame
-        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=other.crs)
+        df = gpd.GeoDataFrame(df, geometry=geom_col, crs=getattr(other, 'crs', None))
         if update_lrs:
             df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
@@ -2542,7 +2542,7 @@ class LRS_Accessor(object):
             left_geoms = joined.geometry
             right_geoms = gpd.GeoSeries(
                 joined[index_right_name].replace(self.df[self.geom_col]),
-                crs=self.df.crs,
+                crs=getattr(self.df, 'crs', None),
             )
             joined[distance_col] = left_geoms.distance(right_geoms)
         

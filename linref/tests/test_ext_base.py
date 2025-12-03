@@ -510,8 +510,15 @@ class TestEventOperations(unittest.TestCase):
             'route': ['A', 'A', 'A', 'B', 'B'],
             'beg': [0.0, 1.0, 2.0, 0.0, 2.0],
             'end': [1.0, 2.0, 3.0, 2.0, 4.0],
-            'attr': ['x', 'x', 'y', 'z', 'z']
-        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+            'attr': ['x', 'x', 'y', 'z', 'z'],
+            'geometry': [
+                LineString([(0, 0), (1, 0)]),
+                LineString([(1, 0), (2, 0)]),
+                LineString([(2, 0), (3, 0)]),
+                LineString([(0, 0), (2, 0)]),
+                LineString([(2, 0), (4, 0)]),
+            ]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', geom_col='geometry', closed='right')
 
     def test_extend(self):
         """Test extending event bounds."""
@@ -574,9 +581,19 @@ class TestEventOperations(unittest.TestCase):
         self.assertEqual(df_dissolved.iloc[0]['beg'], 0.0)
         self.assertEqual(df_dissolved.iloc[0]['end'], 2.0)
 
+    def test_dissolve_geometry(self):
+        """Test dissolving events with geometry."""
+        df_dissolved = self.df.lr.dissolve(retain=['attr'], merge_geom=True)
+        
+        # Check that geometry was dissolved correctly
+        route_a = df_dissolved[df_dissolved['route'] == 'A']
+        self.assertTrue(route_a.iloc[0]['geometry'].equals(
+            LineString([(0, 0), (1, 0), (2, 0)])
+        ))
+
     def test_resegment(self):
         """Test resegmenting events."""
-        df_resegmented = self.df.lr.resegment(length=0.5, fill='cut')
+        df_resegmented = self.df.lr.resegment(length=0.5, fill='cut', cut_geom=False)
         
         # Should have more rows after resegmenting
         self.assertGreater(len(df_resegmented), len(self.df))
@@ -584,6 +601,16 @@ class TestEventOperations(unittest.TestCase):
         # Check that events are approximately the target length
         lengths = df_resegmented.lr.event_lengths
         self.assertTrue(all(lengths <= 0.5))
+
+    def test_resegment_geometry(self):
+        """Test resegmenting events with geometry cutting."""
+        df_resegmented = self.df.lr.add_geom_m().lr.resegment(length=0.5, fill='cut', cut_geom=True)
+        
+        # Check that geometries were cut correctly
+        for idx, row in df_resegmented.iterrows():
+            event_length = row['end'] - row['beg']
+            geom_length = row['geometry'].length
+            self.assertAlmostEqual(event_length, geom_length)
 
 
 class TestCompatibilityFunctions(unittest.TestCase):
