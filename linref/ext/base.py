@@ -1127,6 +1127,7 @@ class LRS_Accessor(object):
         
         # Set default LRS object
         cls._default_lrs = lrs
+        return lrs
 
     @classmethod
     def set_default_geometry_sync(cls, behavior: str) -> None:
