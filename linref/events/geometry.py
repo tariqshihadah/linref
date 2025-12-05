@@ -13,7 +13,9 @@ class LineStringM:
 
     def __init__(self, geom, m=None):
         self.geom = geom
-        self.m = m
+        # Check that M values haven't already been set from geometry
+        if not self.has_m:
+            self.m = m
 
     def __str__(self):
         return self.wkt
@@ -40,16 +42,18 @@ class LineStringM:
     def geom(self, geom):
         if not isinstance(geom, shapely.geometry.LineString):
             raise ValueError('LineStringM geom must be a shapely LineString')
+        self._geom = geom
         try:
             if geom.has_z:
                 raise ValueError('LineStringM geom must not have z values')
             if geom.has_m:
-                raise ValueError(
-                    "LineStringM geom must not have m values. Future versions "
-                    "will transition to native LineString with M support.")
+                # If the geometry has M values, extract them
+                # FUTURE: Future versions of shapely may provide better support
+                # for M values; update this section accordingly when that happens
+                m = np.array([coord[2] for coord in geom.coords])
+                self.m = m
         except AttributeError:
             pass
-        self._geom = geom
 
     @property
     def m(self):
@@ -136,7 +140,10 @@ class LineStringM:
     
     @property
     def has_m(self):
-        return self.m is not None
+        try:
+            return self.m is not None
+        except AttributeError:
+            return False
     
     @classmethod
     def from_coords(cls, coords):
@@ -162,6 +169,22 @@ class LineStringM:
             geom = LineString(coords[:, :2])
             m = coords[:, 2]
         return cls(geom, m)
+    
+    @classmethod
+    def from_shapely(cls, geom, m=None):
+        """
+        Create a LineStringM object from a shapely LineString object which
+        may or may not have M values.
+
+        Parameters
+        ----------
+        geom : shapely.LineString
+            The shapely LineString object to convert.
+        m : array-like, optional
+            The M values associated with the LineString, if any. If the input
+            shapely LineString already has M values, this parameter is ignored.
+        """
+        return cls(geom, m=m)
     
     @classmethod
     def from_wkt(cls, wkt):

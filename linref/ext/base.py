@@ -2253,7 +2253,7 @@ class LRS_Accessor(object):
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
-        Parse the WKT representation of the geometry_m column into a
+        Parse the WKT representation of the M-enabled geometry data into a
         LineStringM object.
 
         Parameters
@@ -2277,6 +2277,47 @@ class LRS_Accessor(object):
         # Parse WKT
         df = self.df if inplace else self.copy_df()
         df[geom_m_col] = df[geom_m_col].apply(geometry.parse_linestring_m_wkt)
+        # Update LRS if needed
+        if self.lrs.geom_m_col != geom_m_col:
+            new_lrs = self.lrs.copy(deep=True)
+            new_lrs.geom_m_col = geom_m_col
+            df.lr.set_lrs(new_lrs, inplace=True)
+        return None if inplace else df
+    
+    def parse_geom_m_shapely(
+        self,
+        geom_m_col: str | None = None,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Parse the Shapely geometry representation of the M-enabled geometry
+        data into a LineStringM object.
+
+        NOTE: This method requires Shapely version 2.1 or higher. This process
+        will become deprecated in future versions in favor of direct support
+        for M-enabled geometries in Shapely.
+
+        Parameters
+        ----------
+        geom_m_col : str, optional
+            The name of the geometry_m column to parse. If None, use the
+            geometry_m column name from the LRS if present.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Define geometry column name
+        if geom_m_col is None:
+            if not self.lrs.is_spatial_m:
+                raise ValueError(
+                    "No geometry_m column defined in the LRS. "
+                    "Please provide a geometry_m_col parameter."
+                )
+            else:
+                geom_m_col = self.lrs.geom_m_col
+
+        # Parse Shapely geometries
+        df = self.df if inplace else self.copy_df()
+        df[geom_m_col] = df[geom_m_col].apply(geometry.LineStringM.from_shapely)
         # Update LRS if needed
         if self.lrs.geom_m_col != geom_m_col:
             new_lrs = self.lrs.copy(deep=True)
