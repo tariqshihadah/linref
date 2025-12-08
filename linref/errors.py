@@ -18,3 +18,6 @@ class GeometrySyncError(LinrefError):
 
 class GeometrySyncWarning(Warning):
     """Warning raised for potential issues in geometry synchronization."""
+
+class GeometryMeasureError(LinrefError):
+    """Exception raised for errors related to M-enabled geometries."""

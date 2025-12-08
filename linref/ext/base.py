@@ -13,7 +13,7 @@ from linref.events.common import closed_all, default_closed
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, geometry, integration
-from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
 from linref.ext.validation import _method_deprecates_geometry
 
 
@@ -776,6 +776,7 @@ class LRS_Accessor(object):
             valid &= self._df[self.beg_col].notna() & self._df[self.end_col].notna()
         return valid
     
+    @property
     def invalid_events(self) -> pd.Series:
         """
         Return a boolean Series indicating which events in the dataframe are
@@ -783,6 +784,30 @@ class LRS_Accessor(object):
         or event bounds.
         """
         return ~self.valid_events
+    
+    def drop_invalid_events(self, inplace=False) -> pd.DataFrame | None:
+        """
+        Drop invalid events from the dataframe according to the active LRS.
+        Invalid events are those with missing data in key columns or event 
+        bounds.
+
+        Parameters
+        ----------
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame
+            A copy of the DataFrame with invalid events removed.
+        """
+        # Identify valid events
+        valid = self.valid_events
+        if inplace:
+            self._df = self._df[valid].copy()
+            return None
+        else:
+            return self._df[valid].copy()
 
     def study(self) -> dict:
         """
@@ -2748,7 +2773,7 @@ def parse_geoms_m_wkt(geoms: pd.Series) -> pd.Series:
     # Parse WKT geometries
     return geoms.apply(geometry.parse_linestring_m_wkt)
 
-def parse_geoms_m_shapely(geoms: pd.Series) -> pd.Series:
+def parse_geoms_m_shapely(geoms: pd.Series, reverse=False) -> pd.Series:
     """
     Parse the Shapely geometry representations of M-enabled geometries
     into a series of LineStringM object.
@@ -2762,9 +2787,34 @@ def parse_geoms_m_shapely(geoms: pd.Series) -> pd.Series:
     geoms : pd.Series
         A pandas Series containing Shapely geometry representations of
         M-enabled geometries.
+    reverse : bool, default False
+        Whether to attempt reversing the geometries in case of decreasing
+        M values. If False, an error will be raised if decreasing M values
+        are detected.
     """
     # Validate input
     if not isinstance(geoms, pd.Series):
         raise TypeError("Input `geoms` must be a pandas Series.")
     # Parse Shapely geometries
-    return geoms.apply(geometry.LineStringM.from_shapely)
+    def parse_geom(geom):
+        try:
+            parsed = geometry.LineStringM.from_shapely(geom)
+        except GeometryMeasureError:
+            if not reverse:
+                raise GeometryMeasureError(
+                    "Failed to parse M-enabled geometry from Shapely object. "
+                    "Ensure that the geometry contains valid, monotonic, "
+                    "increasing M values. Set `reverse=True` to attempt reversing "
+                    "the geometry in case of decreasing M values."
+                )
+            try:
+                # Try reversing the geometries in case of decreasing M values
+                parsed = geometry.LineStringM.from_shapely(shapely.reverse(geom))
+            except GeometryMeasureError:
+                raise GeometryMeasureError(
+                    "Failed to parse M-enabled geometry from Shapely object. "
+                    "Ensure that the geometry contains valid, monotonic, "
+                    "increasing M values."
+                )
+        return parsed
+    return geoms.apply(parse_geom)

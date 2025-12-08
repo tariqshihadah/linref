@@ -76,7 +76,9 @@ class LineStringM:
                 )
             # Enforce monotonic increase
             if not np.all(np.diff(m) >= 0):
-                raise ValueError("LineStringM m must be monotonic and increasing.")
+                raise GeometryMeasureError(
+                    "LineStringM m must be monotonic and increasing."
+                )
         self._m = m
 
     @property
