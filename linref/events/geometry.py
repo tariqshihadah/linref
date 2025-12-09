@@ -42,7 +42,7 @@ class LineStringM:
     def geom(self, geom):
         if not isinstance(geom, shapely.geometry.LineString):
             raise ValueError('LineStringM geom must be a shapely LineString')
-        self._geom = geom
+        
         try:
             if geom.has_z:
                 raise ValueError('LineStringM geom must not have z values')
@@ -51,9 +51,12 @@ class LineStringM:
                 # FUTURE: Future versions of shapely may provide better support
                 # for M values; update this section accordingly when that happens
                 m = np.array([coord[2] for coord in geom.coords])
+                self._geom = shapely.force_2d(geom)
                 self.m = m
+            else:
+                self._geom = shapely.force_2d(geom)
         except AttributeError:
-            pass
+            self._geom = shapely.force_2d(geom)
 
     @property
     def m(self):
@@ -507,11 +510,13 @@ class LineStringM:
             raise ValueError('normalized and m cannot both be True')
         # Check input snapping and transform if needed
         if m:
+            # - Convert M to distance
             beg_m = self._check_snapping(beg, normalized=normalized, m=True, snap=snap)[0]
             end_m = self._check_snapping(end, normalized=normalized, m=True, snap=snap)[0]
             beg = self.m_to_distance(beg, snap=snap)
             end = self.m_to_distance(end, snap=snap)
         else:
+            # - Convert distance to M
             beg = self._check_snapping(beg, normalized=normalized, m=False, snap=snap)[0]
             end = self._check_snapping(end, normalized=normalized, m=False, snap=snap)[0]
             beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
@@ -528,9 +533,14 @@ class LineStringM:
         
         # Compute the M values for the substring
         if self.m is not None:
-            m = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
-            m = np.insert(m, 0, beg_m)
-            m = np.append(m, end_m)
+            # NOTE: Because conversions between distance and M are based on 
+            # the index of the first match, we need to account for cases of 
+            # duplicate M values at the start of the cut geometry. This 
+            # should not be needed for the end of the cut geometry.
+            middle = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
+            front = np.repeat(beg_m, max(1, np.sum(self.m == beg_m)))
+            back  = np.array([end_m])
+            m = np.concatenate([front, middle, back])
         else:
             m = None
         # Identify and address cases where number of M values does not match
@@ -543,6 +553,10 @@ class LineStringM:
                     "M values length does not match number of vertices in cut "
                     "geometry; adjusting M values to match", RuntimeWarning)
                 # Recompute M values based on proportional lengths
+                # NOTE: Removing the first vertex may not be appropriate given 
+                # the assembly of M values above, which accounts for duplicate M
+                # values at the start of the cut geometry. This may still be 
+                # needed for ends. If an error brings this up again, revisit.
                 chord_lengths = get_chord_lengths(new_geom, normalized=False)
                 if chord_lengths[0] == 0:
                     new_geom = LineString(new_geom.coords[1:])

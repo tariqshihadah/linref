@@ -773,7 +773,8 @@ class LRS_Accessor(object):
         if self.is_located:
             valid &= self._df[self.loc_col].notna()
         if self.is_linear:
-            valid &= self._df[self.beg_col].notna() & self._df[self.end_col].notna()
+            valid &= self._df[self.beg_col].notna()
+            valid &= self._df[self.end_col].notna()
         return valid
     
     @property
@@ -785,16 +786,11 @@ class LRS_Accessor(object):
         """
         return ~self.valid_events
     
-    def drop_invalid_events(self, inplace=False) -> pd.DataFrame | None:
+    def drop_invalid_events(self) -> pd.DataFrame | None:
         """
         Drop invalid events from the dataframe according to the active LRS.
         Invalid events are those with missing data in key columns or event 
         bounds.
-
-        Parameters
-        ----------
-        inplace : bool, default False
-            Whether to apply changes to the DataFrame in place.
 
         Returns
         -------
@@ -803,11 +799,7 @@ class LRS_Accessor(object):
         """
         # Identify valid events
         valid = self.valid_events
-        if inplace:
-            self._df = self._df[valid].copy()
-            return None
-        else:
-            return self._df[valid].copy()
+        return self._df[valid].copy()
 
     def study(self) -> dict:
         """

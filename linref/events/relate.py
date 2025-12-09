@@ -1510,6 +1510,7 @@ class EventsRelation(object):
             )
         
         # Check for cached data
+        kwargs['enforce_edges'] = False # Edges not needed for cutting
         arr = self._get_intersect_data(**kwargs)
         arr = arr if axis == 1 else arr.T
 
@@ -1597,6 +1598,7 @@ class EventsRelation(object):
             of the events in the opposite dataframe.
         """
         # Check for cached data
+        kwargs['enforce_edges'] = False # Edges not needed for merging
         arr = self._get_intersect_data(**kwargs)
         arr = arr if axis == 1 else arr.T
 
