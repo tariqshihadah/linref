@@ -372,11 +372,12 @@ class LineStringM:
         # Compute the proportional distance between the two nearest M values
         prop = (m - self.m[index - 1]) / (self.m[index] - self.m[index - 1])
         # Get length up to the indexed vertice
+        coords = shapely.get_coordinates(self.geom)
         if index == 1:
             distance = 0
         else:
-            distance = LineString(self.geom.coords[:index]).length
-        distance += LineString(self.geom.coords[index - 1: index + 1]).length * prop
+            distance = np.sqrt(np.sum(np.power(np.diff(coords[:index], axis=0), 2), axis=1)).sum() # LineString(coords[:index]).length
+        distance += np.sqrt(np.sum(np.power(np.diff(coords[index - 1: index + 1], axis=0), 2))) * prop # LineString(coords[index - 1: index + 1]).length * prop
         return distance
     
     def m_to_norm_distance(self, m, snap=False):
@@ -422,21 +423,23 @@ class LineStringM:
         substring = shapely.ops.substring(
             self.geom, 0, distance, normalized=normalized)
         # Determine which endpoint to use
-        if substring.coords[-1] in self.geom.coords:
-            endpoint = substring.coords[-1]
-            index = list(self.geom.coords).index(endpoint)
+        substring_coords = shapely.get_coordinates(substring)
+        geom_coords = shapely.get_coordinates(self.geom)
+        if substring_coords[-1] in geom_coords:
+            endpoint = substring_coords[-1]
+            index = list(geom_coords).index(endpoint)
             return self.m[index]
         else:
-            endpoint = substring.coords[-2]
-            index = list(self.geom.coords).index(endpoint)
+            endpoint = substring_coords[-2]
+            index = list(geom_coords).index(endpoint)
 
         # Compute the M value for the substring and remaining distance
         if index == 0:
             distance_to_vertice = 0
         else:
-            distance_to_vertice = LineString(self.geom.coords[: index + 1]).length
+            distance_to_vertice = np.sqrt(np.sum(np.power(np.diff(geom_coords[: index + 1], axis=0), 2), axis=1)).sum() # LineString(geom_coords[: index + 1]).length
         prop = (distance - distance_to_vertice) / \
-            LineString(self.geom.coords[index: index + 2]).length
+            np.sqrt(np.sum(np.power(np.diff(geom_coords[index: index + 2], axis=0), 2))) # LineString(geom_coords[index: index + 2]).length
         return self.m[index] + (self.m[index + 1] - self.m[index]) * prop
     
     def project(self, point, normalized=False, m=False):
