@@ -1813,7 +1813,11 @@ class LRS_Accessor(object):
             A copy of the current DataFrame with the events resegmented.
         """
         # Resegment events
-        events = self.events.resegment(length=length, fill=fill)
+        events, relation = self.events.resegment(
+            length=length,
+            fill=fill,
+            return_relation=True
+        )
         # Apply changes to the DataFrame
         df_left = events.to_frame(
             index_name=self._df.index.name,
@@ -1833,7 +1837,7 @@ class LRS_Accessor(object):
         df = df.reset_index(drop=False, names=inverse_col).lr.lrs_like(self)
         # Prepare relation object as needed
         if return_relation or cut_geom:
-            relation = df.lr.relate(self)
+            # relation = df.lr.relate(self)
             relation.left_df = df
             relation.right_df = self.df
         # Cut new geometries if needed

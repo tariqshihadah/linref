@@ -88,7 +88,7 @@ def dissolve(events, sort=False, return_index=False, return_relation=False):
         )
         col_index = np.concatenate(indices_generic)
         arr = sp.csr_array(
-            (np.ones(len(row_index)), (row_index, col_index)), 
+            (np.ones(len(row_index), dtype=bool), (row_index, col_index)), 
             shape=(len(indices_generic), events.num_events)
         )
         # Prepare relation object
@@ -402,11 +402,11 @@ def resegment(events, length=1, fill='cut', return_relation=False):
         if fill_i == 'left':
             new_begs[-1] = orig_end - length
         # Append to lists
+        repeats = max(num_segment, 1)
         begs.extend(new_begs)
         ends.extend(new_ends)
-        index.extend(np.repeat(orig_index, max(num_segment, 1)))
-        groups.extend(np.repeat(orig_group, max(num_segment, 1)))
-
+        index.extend(np.repeat(orig_index, repeats))
+        groups.extend(np.repeat(orig_group, repeats))
     # Create new events object
     new_events = events.from_similar(
         index=index,
@@ -421,6 +421,10 @@ def resegment(events, length=1, fill='cut', return_relation=False):
     outputs = [new_events]
     if return_relation:
         relation = relate.EventsRelation(new_events, events, cache=True)
+        relation._intersect_data = _indices_to_sparse_many_to_one(
+            index, events.index_data
+        )
+        relation._intersect_kwargs = {}
         outputs.append(relation)
     return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
@@ -527,3 +531,38 @@ def separate(events, by='centers', inplace=False):
 #        if drop_short:
 #            rc.drop_short(length=0, inplace=True)
 #        return rc
+
+def _indices_to_sparse_many_to_one(idx_left, idx_right):
+    """
+    Create a sparse matrix which represents the many to one relationship between two 
+    sets of indices. The matrix will have shape (len(idx_left), len(idx_right)), where
+    each entry (i, j) is 1 if idx_left[i] == idx_right[j] and is empty otherwise. This
+    assumes that each entry in idx_left maps to exactly one entry in idx_right, but
+    that multiple entries in idx_left may map to the same entry in idx_right.
+
+    Parameters
+    ----------
+    idx_left : array-like
+        1D array of indices for the left set.
+    idx_right : array-like
+        1D array of indices for the right set.
+    """
+    # Analyze unique values
+    left_unique, left_inverse = np.unique(idx_left, return_inverse=True)
+    right_unique, right_indices = np.unique(idx_right, return_index=True)
+    # Validate that all left unique values are in right unique values
+    if not np.array_equal(left_unique, right_unique):
+        raise ValueError(
+            "All values must be consistent between idx_left and idx_right."
+        )
+    # Create data for intersections
+    data = np.ones(len(idx_left))
+    # Create row and column parameters for COO instantiation
+    row = np.arange(len(idx_left))
+    col = right_indices[left_inverse]
+    # Create sparse matrix
+    arr = sp.csr_array(
+        (data, (row, col)),
+        shape=(len(idx_left), len(idx_right))
+    )
+    return arr

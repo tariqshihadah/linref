@@ -526,7 +526,13 @@ class LineStringM:
             end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
 
         # Compute the substring of the LineString
-        new_geom_coords = substring_coords(shapely.get_coordinates(self.geom), beg, end, normalized=normalized)
+        new_geom_coords, new_geom_m = substring_m_coords(
+            shapely.get_coordinates(self.geom),
+            self.m,
+            beg,
+            end,
+            normalized=normalized
+        )
         new_geom = LineString(new_geom_coords)
 
         # new_geom = shapely.ops.substring(self.geom, beg, end, normalized=normalized)
@@ -538,24 +544,26 @@ class LineStringM:
             warnings.warn('Zero-length geometry created', RuntimeWarning)
             new_geom = LineString([new_geom_coords[0], new_geom_coords[0]])
         
-        # Compute the M values for the substring
-        if self.m is not None:
-            # NOTE: Because conversions between distance and M are based on 
-            # the index of the first match, we need to account for cases of 
-            # duplicate M values at the start of the cut geometry. This 
-            # should not be needed for the end of the cut geometry.
-            middle = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
-            front = np.repeat(beg_m, max(1, np.sum(self.m == beg_m)))
-            print(f'Front: {front}; based on {np.sum(self.m == beg_m)}')
-            back  = np.array([end_m])
-            m = np.concatenate([front, middle, back])
+        # # Compute the M values for the substring
+        # if self.m is not None:
+        #     # NOTE: Because conversions between distance and M are based on 
+        #     # the index of the first match, we need to account for cases of 
+        #     # duplicate M values at the start of the cut geometry. This 
+        #     # should not be needed for the end of the cut geometry.
+        #     # middle = self.m[np.logical_and(self.m > beg_m, self.m < end_m)]
+        #     # front = np.repeat(beg_m, max(1, np.sum(self.m == beg_m)))
+        #     # print(f'Front: {front}; based on {np.sum(self.m == beg_m)}')
+        #     # back  = np.array([end_m])
+        #     # new_geom_m = np.concatenate([front, middle, back])
+        #     new_geom_m = np.concatenate([beg_m, self.m[np.logical_and(self.m >= beg_m, self.m <= end_m)], end_m])
+
         else:
-            m = None
+            new_geom_m = None
         # Identify and address cases where number of M values does not match
         # number of vertices (due to the substring operation producing zero-
         # length chords)
-        if m is not None:
-            if len(m) < len(new_geom_coords):
+        if new_geom_m is not None:
+            if len(new_geom_m) < len(new_geom_coords):
                 # Warn for now
                 warnings.warn(
                     "M values length does not match number of vertices in cut "
@@ -571,12 +579,12 @@ class LineStringM:
                 elif chord_lengths[-1] == 0:
                     new_geom = LineString(new_geom_coords[:-1])
                 else:
-                    display(shapely.get_coordinates(self.geom), self.m, new_geom_coords, m, beg, beg_m, end, end_m, chord_lengths)
+                    display(shapely.get_coordinates(self.geom), self.m, new_geom_coords, new_geom_m, beg, beg_m, end, end_m, chord_lengths)
                     raise ValueError(
-                        f"M values length of {len(m)} does not match number "
+                        f"M values length of {len(new_geom_m)} does not match number "
                         f"of vertices in cut geometry of {len(new_geom_coords)}."
                     )
-        return LineStringM(new_geom, m=m)
+        return LineStringM(new_geom, m=new_geom_m)
 
 
 #
@@ -855,7 +863,7 @@ def line_merge_m(
             # Iterate through all unassigned lines to find contiguous lines
             for line_index in indices:
                 # Get coordinates of the current line
-                coords = shapely.get_coordinates(lines_prepared[line_index])
+                coords = lines_prepared[line_index].coords
                 if beg_coords is None:
                     # If starting a new merged geometry, set beg and end 
                     # coordinates
@@ -1018,7 +1026,7 @@ def parse_linestring_m_wkt(wkt):
     else:
         return LineStringM.from_wkt(wkt)
     
-def substring_coords(coords, start, end, normalized=False, ftol=1e-08):
+def substring_m_coords(coords, m, start, end, normalized=False):
     """
     Extract a substring of set of coordinates given start and end fractions.
     Intended to provide similar functionality to shapely's substring, but working
@@ -1030,6 +1038,8 @@ def substring_coords(coords, start, end, normalized=False, ftol=1e-08):
         An NxM array of coordinates representing the linestring, where N indicates
         the number of points and M indicates the dimensionality (e.g., 2 for 2D, 
         3 for 3D).
+    m : np.ndarray
+        An array of M values corresponding to each coordinate in the coords array.
     start : float
         The starting distance along the linestring where the substring should begin.
     end : float
@@ -1037,10 +1047,6 @@ def substring_coords(coords, start, end, normalized=False, ftol=1e-08):
     normalized : bool, optional
         If True, the start and end values are treated as fractions of the total
         length of the linestring (ranging from 0 to 1). Default is False.
-    ftol : float, default 1e-08
-        A floating-point tolerance used to determine if the computed fractional
-        position is very close to an existing vertex. If so, the function will snap
-        to that vertex to avoid precision issues.
     """
     # Validate input parameters
     if start > end:
@@ -1051,45 +1057,47 @@ def substring_coords(coords, start, end, normalized=False, ftol=1e-08):
     # Normalize cumulative distances if required
     if normalized:
         cumdist = cumdist / cumdist[-1]
+        cumdist_m = cumdist_m / cumdist_m[-1]
     # Compute start and end coordinates
-    if start > cumdist[-1]:
-        return np.array([coords[-1], coords[-1]])
+    if start >= cumdist[-1]:
+        return np.array([coords[-1], coords[-1]]), np.array([m[-1], m[-1]])
     elif start == 0:
         start_index = 0
         start_coord = coords[0]
+        start_m = m[0]
     else:
         start_index = np.argmax(cumdist >= start) - 1
         start_frac = (start - cumdist[start_index]) / (cumdist[start_index+1] - cumdist[start_index])
-        # If the end coordinate is very close to the previous point, snap to it
-        test_tolerance = np.isclose(start_frac, [0, 1], rtol=0, atol=ftol)
-        if test_tolerance[0]:
-            start_coord = coords[start_index]
-        elif test_tolerance[1]:
-            start_index += 1
-            start_coord = coords[start_index]
-        else:
-            start_coord = coords[start_index+1] * start_frac + coords[start_index] * (1 - start_frac)
-    if end < 0:
-        return np.array([coords[0], coords[0]])
+        start_coord = coords[start_index+1] * start_frac + coords[start_index] * (1 - start_frac)
+        start_m = m[start_index+1] * start_frac + m[start_index] * (1 - start_frac)
+    if end <= 0:
+        return np.array([coords[0], coords[0]]), np.array([m[0], m[0]])
     elif end == cumdist[-1]:
         end_index = len(cumdist) - 1
         end_coord = coords[-1]
+        end_m = m[-1]
     else:
         end_index = np.argmax(cumdist >= end)
         end_frac = (end - cumdist[end_index-1]) / (cumdist[end_index] - cumdist[end_index-1])
-        # If the end coordinate is very close to the previous point, snap to it
-        test_tolerance = np.isclose(end_frac, [0, 1], rtol=0, atol=ftol)
-        if test_tolerance[0]:
-            end_index -= 1
-            end_coord = coords[end_index]
-        elif test_tolerance[1]:
-            end_coord = coords[end_index]
-        else:
-            end_coord = coords[end_index] * end_frac + coords[end_index-1] * (1 - end_frac)
-    
+        end_coord = coords[end_index] * end_frac + coords[end_index-1] * (1 - end_frac)
+        end_m = m[end_index] * end_frac + m[end_index-1] * (1 - end_frac)
     # Construct the substring coordinate sequence
     substring_coords = [start_coord]
+    substring_m = [start_m]
     if end_index > start_index:
         substring_coords.extend(coords[start_index+1:end_index])
+        substring_m.extend(m[start_index+1:end_index])
     substring_coords.append(end_coord)
-    return np.array(substring_coords)
+    substring_m.append(end_m)
+    # Check for repeated coordinates at the ends and adjust if necessary
+    if (np.array_equal(substring_coords[0], substring_coords[1]) and
+         substring_m[0] == substring_m[1]):
+        # Equivalent start coordinates - remove the first
+        substring_coords = substring_coords[1:]
+        substring_m = substring_m[1:]
+    if (np.array_equal(substring_coords[-1], substring_coords[-2]) and\
+         substring_m[-1] == substring_m[-2]):
+        # Equivalent end coordinates - remove the last
+        substring_coords = substring_coords[:-1]
+        substring_m = substring_m[:-1]
+    return np.array(substring_coords), np.array(substring_m)
