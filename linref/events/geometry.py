@@ -579,7 +579,6 @@ class LineStringM:
                 elif chord_lengths[-1] == 0:
                     new_geom = LineString(new_geom_coords[:-1])
                 else:
-                    display(shapely.get_coordinates(self.geom), self.m, new_geom_coords, new_geom_m, beg, beg_m, end, end_m, chord_lengths)
                     raise ValueError(
                         f"M values length of {len(new_geom_m)} does not match number "
                         f"of vertices in cut geometry of {len(new_geom_coords)}."
