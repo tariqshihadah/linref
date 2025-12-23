@@ -1034,7 +1034,7 @@ class LRS_Accessor(object):
         df.lr._lrs = lrs
         return None if inplace else df
 
-    def remove_key(self, key_col, inplace=False) -> None:
+    def remove_key(self, key_col, errors='raise', inplace=False) -> None:
         """
         Remove one or more key columns from an existing LRS object in the DataFrame.
 
@@ -1042,13 +1042,15 @@ class LRS_Accessor(object):
         ----------
         key_col : label or array-like
             The key column or array-like of key columns to remove.
+        errors : {'ignore', 'raise'}, default 'raise'
+            Whether to raise an error or ignore missing keys.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
         # Add key columns
         df = self.df if inplace else self.df.copy()
         lrs = self.lrs.copy(deep=True)
-        lrs.remove_key(key_col, inplace=True)
+        lrs.remove_key(key_col, errors=errors, inplace=True)
         # Set the modified LRS
         df.lr._lrs = lrs
         return None if inplace else df
@@ -1416,7 +1418,7 @@ class LRS_Accessor(object):
         add_geom_m: bool = True,
         scale: float = 1.0,
         decimals: int | None = None,
-        allow_disjoint: bool = False,
+        allow_disjoint: bool = True,
         inplace: bool = False,
         replace: bool = False
     ) -> pd.DataFrame | None:
@@ -1424,6 +1426,43 @@ class LRS_Accessor(object):
         Add begin and end location columns to the dataframe based on the 
         lengths of contiguous linear geometries within each group, adding new
         columns to the dataframe for begin and end locations.
+
+        Parameters
+        ----------
+        beg_col : str, optional
+            The name of the begin location column to add. If None, uses the
+            existing begin column name in the LRS, or 'beg' if no begin column
+            is defined.
+        end_col : str, optional
+            The name of the end location column to add. If None, uses the
+            existing end column name in the LRS, or 'end' if no end column is
+            defined.
+        chain_col : str, optional
+            The name of the chain index column to add. If None, uses 'chain'.
+            Only used if `add_chain` is True.
+        geom_m_col : str, optional
+            The name of the M-enabled geometry column to add. If None, uses the
+            existing geometry_m column name in the LRS, or 'geometry_m' if no
+            geometry_m column is defined. Only used if `add_geom_m` is True.
+        add_chain : bool, default True
+            Whether to add a chain index column to the dataframe.
+        add_geom_m : bool, default True
+            Whether to add an M-enabled geometry column to the dataframe.
+        scale : float, default 1.0
+            A scale factor to apply to computed lengths when generating begin
+            and end locations. This can be used to convert units from the 
+            dataframe's CRS units to desired linear units, e.g., from feet to
+            miles using a scale factor of 1/5280.
+        decimals : int, optional
+            The number of decimal places to round computed lengths to when
+            generating begin and end locations. If None, no rounding is applied.
+        allow_disjoint : bool, default True
+            Whether to allow disjoint geometries within each group when
+            generating begin and end locations. If False, an error will be
+            raised if geometries within a group are not contiguous. If True,
+            disjoint geometries will be treated as separate chains.
+        inplace : bool, default False
+            Whether to apply changes to the dataframe in place.
         """
         # Validate column names
         if beg_col is None:
@@ -1470,7 +1509,7 @@ class LRS_Accessor(object):
         chains = []
         begs   = []
         ends   = []
-        for group, df in self.remove_key(chain_col).lr.iter_groups():
+        for group, df in self.remove_key(chain_col, errors='ignore').lr.iter_groups():
             # Get group geometries
             geoms = df[self.geom_col].values
             # Get chain indices
