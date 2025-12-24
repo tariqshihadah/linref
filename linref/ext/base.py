@@ -1883,7 +1883,10 @@ class LRS_Accessor(object):
         if cut_geom and self.is_spatial_m:
             try:
                 df[self.geom_m_col] = relation.cut()
-                df[self.geom_col] = np.array([geom_m.geom for geom_m in df[self.geom_m_col]])
+                df[self.geom_col] = np.array([
+                    geom_m.geom if geom_m is not None else None \
+                    for geom_m in df[self.geom_m_col]
+                ])
                 df = gpd.GeoDataFrame(
                     df, geometry=self.geom_col, crs=getattr(self.df, 'crs', None)
                 ).lr.lrs_like(self)
