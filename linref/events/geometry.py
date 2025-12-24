@@ -535,6 +535,8 @@ class LineStringM:
         )
         new_geom = LineString(new_geom_coords)
 
+        # Replaced with custom substring function to handle M values with 
+        # improved performance
         # new_geom = shapely.ops.substring(self.geom, beg, end, normalized=normalized)
         # new_geom_coords = shapely.get_coordinates(new_geom)
 
@@ -557,8 +559,8 @@ class LineStringM:
         #     # new_geom_m = np.concatenate([front, middle, back])
         #     new_geom_m = np.concatenate([beg_m, self.m[np.logical_and(self.m >= beg_m, self.m <= end_m)], end_m])
 
-        else:
-            new_geom_m = None
+        # else:
+        #     new_geom_m = None
         # Identify and address cases where number of M values does not match
         # number of vertices (due to the substring operation producing zero-
         # length chords)
