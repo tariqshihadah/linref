@@ -1027,7 +1027,7 @@ def parse_linestring_m_wkt(wkt):
     else:
         return LineStringM.from_wkt(wkt)
     
-def substring_m_coords(coords, m, start, end, normalized=False):
+def substring_m_coords(coords, m, start, end, normalized=False, tolerance=1e-10):
     """
     Extract a substring of set of coordinates given start and end fractions.
     Intended to provide similar functionality to shapely's substring, but working
@@ -1048,7 +1048,37 @@ def substring_m_coords(coords, m, start, end, normalized=False):
     normalized : bool, optional
         If True, the start and end values are treated as fractions of the total
         length of the linestring (ranging from 0 to 1). Default is False.
+    tolerance : float, optional
+        Tolerance for detecting duplicate coordinates and handling floating point
+        precision errors. Default is 1e-10.
     """
+    
+    def _interpolate_point(coords, m, cumdist, distance):
+        """
+        Helper function to interpolate coordinates and M values at a specific distance.
+        Uses consistent interpolation logic to ensure reproducible results for the
+        same distance value (critical for adjacent substrings sharing boundaries).
+        
+        Returns (index, coord, m_value) where index is the segment index before the point.
+        """
+        if distance <= 0:
+            return 0, coords[0].copy(), m[0]
+        elif distance >= cumdist[-1]:
+            return len(cumdist) - 1, coords[-1].copy(), m[-1]
+        else:
+            # Find the segment containing this distance
+            idx = np.argmax(cumdist >= distance)
+            # Use consistent interpolation formula: lerp(a, b, t) = a + t * (b - a)
+            # This is more numerically stable than: a * (1 - t) + b * t
+            segment_start = cumdist[idx - 1]
+            segment_end = cumdist[idx]
+            t = (distance - segment_start) / (segment_end - segment_start)
+            
+            coord = coords[idx - 1] + t * (coords[idx] - coords[idx - 1])
+            m_val = m[idx - 1] + t * (m[idx] - m[idx - 1])
+            
+            return idx, coord, m_val
+    
     # Validate input parameters
     if start > end:
         raise ValueError("Start value must be less than or equal to end value.")
@@ -1058,47 +1088,49 @@ def substring_m_coords(coords, m, start, end, normalized=False):
     # Normalize cumulative distances if required
     if normalized:
         cumdist = cumdist / cumdist[-1]
-        cumdist_m = cumdist_m / cumdist_m[-1]
-    # Compute start and end coordinates
-    if start >= cumdist[-1]:
-        return np.array([coords[-1], coords[-1]]), np.array([m[-1], m[-1]])
-    elif start == 0:
-        start_index = 0
-        start_coord = coords[0]
-        start_m = m[0]
-    else:
-        start_index = np.argmax(cumdist >= start) - 1
-        start_frac = (start - cumdist[start_index]) / (cumdist[start_index+1] - cumdist[start_index])
-        start_coord = coords[start_index+1] * start_frac + coords[start_index] * (1 - start_frac)
-        start_m = m[start_index+1] * start_frac + m[start_index] * (1 - start_frac)
-    if end <= 0:
-        return np.array([coords[0], coords[0]]), np.array([m[0], m[0]])
-    elif end == cumdist[-1]:
-        end_index = len(cumdist) - 1
-        end_coord = coords[-1]
-        end_m = m[-1]
-    else:
-        end_index = np.argmax(cumdist >= end)
-        end_frac = (end - cumdist[end_index-1]) / (cumdist[end_index] - cumdist[end_index-1])
-        end_coord = coords[end_index] * end_frac + coords[end_index-1] * (1 - end_frac)
-        end_m = m[end_index] * end_frac + m[end_index-1] * (1 - end_frac)
+    
+    # Compute start and end coordinates using consistent interpolation
+    start_index, start_coord, start_m = _interpolate_point(coords, m, cumdist, start)
+    end_index, end_coord, end_m = _interpolate_point(coords, m, cumdist, end)
+    
     # Construct the substring coordinate sequence
     substring_coords = [start_coord]
     substring_m = [start_m]
+    
+    # Add intermediate coordinates between start and end indices
     if end_index > start_index:
-        substring_coords.extend(coords[start_index+1:end_index])
-        substring_m.extend(m[start_index+1:end_index])
+        substring_coords.extend(coords[start_index:end_index])
+        substring_m.extend(m[start_index:end_index])
+    
     substring_coords.append(end_coord)
     substring_m.append(end_m)
-    # Check for repeated coordinates at the ends and adjust if necessary
-    if (np.array_equal(substring_coords[0], substring_coords[1]) and
-         substring_m[0] == substring_m[1]):
-        # Equivalent start coordinates - remove the first
-        substring_coords = substring_coords[1:]
-        substring_m = substring_m[1:]
-    if (np.array_equal(substring_coords[-1], substring_coords[-2]) and\
-         substring_m[-1] == substring_m[-2]):
-        # Equivalent end coordinates - remove the last
-        substring_coords = substring_coords[:-1]
-        substring_m = substring_m[:-1]
-    return np.array(substring_coords), np.array(substring_m)
+    
+    # Convert to numpy arrays
+    substring_coords = np.array(substring_coords)
+    substring_m = np.array(substring_m)
+    
+    # Check for and remove duplicate coordinates within floating point tolerance
+    # This handles cases where interpolated points coincide with existing vertices
+    coords_to_keep = [0]  # Always keep the first coordinate
+    
+    for i in range(1, len(substring_coords)):
+        # Check if current coordinate is effectively different from the last kept coordinate
+        coord_dist = np.linalg.norm(substring_coords[i] - substring_coords[coords_to_keep[-1]])
+        m_diff = abs(substring_m[i] - substring_m[coords_to_keep[-1]])
+        
+        if coord_dist > tolerance or m_diff > tolerance:
+            # Different coordinate or M value - keep it
+            coords_to_keep.append(i)
+        # If they're the same within tolerance, skip this coordinate
+    
+    substring_coords = substring_coords[coords_to_keep]
+    substring_m = substring_m[coords_to_keep]
+    
+    # Final check: ensure M values are monotonically non-decreasing
+    # This handles any residual floating point errors
+    for i in range(1, len(substring_m)):
+        if substring_m[i] < substring_m[i-1]:
+            # Due to floating point error, ensure monotonicity
+            substring_m[i] = substring_m[i-1]
+    
+    return substring_coords, substring_m
