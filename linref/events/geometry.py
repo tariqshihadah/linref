@@ -372,7 +372,7 @@ class LineStringM:
         # Update the M values
         return self.set_m_from_array(m, inplace=inplace)
     
-    def m_to_distance(self, m, snap=False):
+    def m_to_distance(self, m, snap=False, _skip_validation=False):
         """
         Return the distance along the LineString for the specified M value.
 
@@ -384,11 +384,15 @@ class LineStringM:
             Whether to snap the M value to the nearest vertex if it is out of 
             range. If False, a ValueError will be raised if the M value is out
             of range.
+        _skip_validation : bool, default False
+            Internal parameter to skip validation when already performed by caller.
+            Not intended for public use.
         """
         # Check input snapping
-        m, snapped = self._check_snapping(m, m=True, snap=snap)
-        if snapped != 0:
-            return 0 if snapped == 1 else self.geom.length
+        if not _skip_validation:
+            m, snapped = self._check_snapping(m, m=True, snap=snap)
+            if snapped != 0:
+                return 0 if snapped == 1 else self.geom.length
         # Find the nearest M value
         index = np.searchsorted(self.m, m)
         if index == 0:
@@ -419,7 +423,7 @@ class LineStringM:
         """
         return self.m_to_distance(m, snap) / self.geom.length
     
-    def distance_to_m(self, distance, normalized=False, snap=False):
+    def distance_to_m(self, distance, normalized=False, snap=False, _skip_validation=False):
         """
         Return the M value for the specified distance along the LineString.
         
@@ -433,14 +437,18 @@ class LineStringM:
             Whether to snap the distance to the nearest vertex if it is out of
             range. If False, a ValueError will be raised if the distance is out
             of range.
+        _skip_validation : bool, default False
+            Internal parameter to skip validation when already performed by caller.
+            Not intended for public use.
         """
         # Check if M values are defined
         if self.m is None:
             raise ValueError("Cannot convert distance to M value: M values are not defined")
         # Check input snapping
-        distance, snapped = self._check_snapping(distance, normalized=normalized, m=False, snap=snap)
-        if snapped != 0:
-            return self.m[0] if snapped == 1 else self.m[-1]
+        if not _skip_validation:
+            distance, snapped = self._check_snapping(distance, normalized=normalized, m=False, snap=snap)
+            if snapped != 0:
+                return self.m[0] if snapped == 1 else self.m[-1]
         
         # Convert normalized distance to absolute if needed
         if normalized:
@@ -537,19 +545,30 @@ class LineStringM:
         # Validate input parameters
         if normalized and m:
             raise ValueError('normalized and m cannot both be True')
-        # Check input snapping and transform if needed
+        
+        # Validate and snap inputs once, then convert efficiently
+        # Key optimization: validate once with _check_snapping, then skip validation in conversion methods
         if m:
-            # - Convert M to distance
-            beg_m = self._check_snapping(beg, normalized=normalized, m=True, snap=snap)[0]
-            end_m = self._check_snapping(end, normalized=normalized, m=True, snap=snap)[0]
-            beg = self.m_to_distance(beg, snap=snap)
-            end = self.m_to_distance(end, snap=snap)
+            # Input is in M values - validate once, then convert to distance
+            beg_m = self._check_snapping(beg, normalized=False, m=True, snap=snap)[0]
+            end_m = self._check_snapping(end, normalized=False, m=True, snap=snap)[0]
+            # Convert M to distance (skip validation since already done)
+            beg = self.m_to_distance(beg_m, _skip_validation=True)
+            end = self.m_to_distance(end_m, _skip_validation=True)
         else:
-            # - Convert distance to M
+            # Input is in distance - validate once, then convert to M
             beg = self._check_snapping(beg, normalized=normalized, m=False, snap=snap)[0]
             end = self._check_snapping(end, normalized=normalized, m=False, snap=snap)[0]
-            beg_m = self.distance_to_m(beg, normalized=normalized, snap=snap)
-            end_m = self.distance_to_m(end, normalized=normalized, snap=snap)
+            # Convert distance to M (skip validation since already done)
+            # For normalized distances, convert to absolute first
+            if normalized:
+                beg_dist = beg * self.geom.length
+                end_dist = end * self.geom.length
+            else:
+                beg_dist = beg
+                end_dist = end
+            beg_m = self.distance_to_m(beg_dist, normalized=False, _skip_validation=True)
+            end_m = self.distance_to_m(end_dist, normalized=False, _skip_validation=True)
 
         # Compute the substring of the LineString
         new_geom_coords, new_geom_m = substring_m_coords(
