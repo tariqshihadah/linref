@@ -1109,28 +1109,32 @@ def substring_m_coords(coords, m, start, end, normalized=False, tolerance=1e-10)
     substring_coords = np.array(substring_coords)
     substring_m = np.array(substring_m)
     
-    # Check for and remove duplicate coordinates within floating point tolerance
-    # This handles cases where interpolated points coincide with existing vertices
-    coords_to_keep = [0]  # Always keep the first coordinate
+    # Check for and remove duplicate coordinates at the ENDS only within floating point tolerance
+    # The interpolated start/end points may coincide with existing vertices
+    # Intermediate coordinates from the original line should be preserved exactly
     
-    for i in range(1, len(substring_coords)):
-        # Check if current coordinate is effectively different from the last kept coordinate
-        coord_dist = np.linalg.norm(substring_coords[i] - substring_coords[coords_to_keep[-1]])
-        m_diff = abs(substring_m[i] - substring_m[coords_to_keep[-1]])
-        
-        if coord_dist > tolerance or m_diff > tolerance:
-            # Different coordinate or M value - keep it
-            coords_to_keep.append(i)
-        # If they're the same within tolerance, skip this coordinate
+    # Check if the interpolated start point duplicates the first intermediate point
+    if len(substring_coords) > 2:
+        coord_dist = np.linalg.norm(substring_coords[0] - substring_coords[1])
+        m_diff = abs(substring_m[0] - substring_m[1])
+        if coord_dist <= tolerance and m_diff <= tolerance:
+            # Remove the interpolated start point, keep the original vertex
+            substring_coords = substring_coords[1:]
+            substring_m = substring_m[1:]
     
-    substring_coords = substring_coords[coords_to_keep]
-    substring_m = substring_m[coords_to_keep]
+    # Check if the interpolated end point duplicates the last intermediate point
+    if len(substring_coords) > 2:
+        coord_dist = np.linalg.norm(substring_coords[-1] - substring_coords[-2])
+        m_diff = abs(substring_m[-1] - substring_m[-2])
+        if coord_dist <= tolerance and m_diff <= tolerance:
+            # Remove the interpolated end point, keep the original vertex
+            substring_coords = substring_coords[:-1]
+            substring_m = substring_m[:-1]
     
-    # Final check: ensure M values are monotonically non-decreasing
-    # This handles any residual floating point errors
-    for i in range(1, len(substring_m)):
-        if substring_m[i] < substring_m[i-1]:
-            # Due to floating point error, ensure monotonicity
-            substring_m[i] = substring_m[i-1]
+    # Special case: if start equals end (zero-length substring), ensure we have 2 points
+    if len(substring_coords) < 2:
+        # Duplicate the single point to create a valid LineString
+        substring_coords = np.array([substring_coords[0], substring_coords[0]])
+        substring_m = np.array([substring_m[0], substring_m[0]])
     
     return substring_coords, substring_m

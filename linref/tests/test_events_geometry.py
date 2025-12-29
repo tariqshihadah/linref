@@ -155,20 +155,22 @@ class TestSubstringMCoords(unittest.TestCase):
         coords, m = substring_m_coords(
             self.coords_simple, self.m_simple, 3.0, 3.0
         )
-        # Should return a single point (duplicates are removed)
-        self.assertEqual(len(coords), 1)
+        # Should return 2 identical points (valid for LineString creation)
+        self.assertEqual(len(coords), 2)
+        np.testing.assert_array_almost_equal(coords[0], coords[1])
         np.testing.assert_array_almost_equal(coords[0], self.coords_simple[-1])
-        self.assertEqual(m[0], self.m_simple[-1])
+        self.assertEqual(m[0], m[1])
 
     def test_end_at_start_point(self):
         """Test substring ending at the start of the linestring."""
         coords, m = substring_m_coords(
             self.coords_simple, self.m_simple, 0.0, 0.0
         )
-        # Should return a single point (duplicates are removed)
-        self.assertEqual(len(coords), 1)
+        # Should return 2 identical points (valid for LineString creation)
+        self.assertEqual(len(coords), 2)
+        np.testing.assert_array_almost_equal(coords[0], coords[1])
         np.testing.assert_array_almost_equal(coords[0], self.coords_simple[0])
-        self.assertEqual(m[0], self.m_simple[0])
+        self.assertEqual(m[0], m[1])
 
     def test_start_before_beginning(self):
         """Test substring with start < 0."""
@@ -275,6 +277,32 @@ class TestSubstringMCoords(unittest.TestCase):
                     f"Non-monotonic M values for start={start}, end={end}: {m}"
                 )
 
+    def test_result_always_valid_for_linestring(self):
+        """Test that results always have at least 2 coordinates for valid LineString."""
+        test_cases = [
+            (0.0, 0.0),  # Start at beginning
+            (1.5, 1.5),  # Middle point
+            (3.0, 3.0),  # End point
+            (0.0, 3.0),  # Full extent
+            (0.5, 2.5),  # Partial
+        ]
+        
+        for start, end in test_cases:
+            coords, m = substring_m_coords(
+                self.coords_simple, self.m_simple, start, end
+            )
+            # Must have at least 2 coordinates for valid LineString
+            self.assertGreaterEqual(
+                len(coords), 2, 
+                f"Result for substring({start}, {end}) has only {len(coords)} coordinates"
+            )
+            # Verify we can create a LineString from the result
+            try:
+                line = LineString(coords)
+                self.assertIsInstance(line, LineString)
+            except Exception as e:
+                self.fail(f"Failed to create LineString from substring({start}, {end}): {e}")
+
 
 class TestSubstringMCoordsEdgeCases(unittest.TestCase):
     """Test edge cases and special scenarios for substring_m_coords."""
@@ -312,10 +340,12 @@ class TestSubstringMCoordsEdgeCases(unittest.TestCase):
         
         result_coords, result_m = substring_m_coords(coords, m, 0.5, 0.5)
         
-        # Should return a single point (duplicates are removed)
-        self.assertEqual(len(result_coords), 1)
+        # Should return 2 identical points (valid for LineString creation)
+        self.assertEqual(len(result_coords), 2)
+        np.testing.assert_array_almost_equal(result_coords[0], result_coords[1])
         self.assertAlmostEqual(result_coords[0][0], 0.5)
         self.assertAlmostEqual(result_m[0], 5.0)
+        self.assertAlmostEqual(result_m[0], result_m[1])
 
     def test_boundary_at_vertex_exact(self):
         """Test that boundaries at exact vertices produce consistent results."""
