@@ -1757,6 +1757,11 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
     if not left.is_monotonic or not right.is_monotonic:
         raise ValueError("Input events must be monotonic.")
 
+    # Early exit for completely disjoint event collections
+    if left.begs.min() >= right.ends.max() or right.begs.min() >= left.ends.max():
+        # No possible overlaps - return zero matrix
+        return np.zeros((left.num_events, right.num_events))
+
     # Compute overlap lengths
     lefts = left.ends.reshape(-1, 1) - right.begs.reshape(1, -1)
     rights = right.ends.reshape(1, -1) - left.begs.reshape(-1, 1)
@@ -1769,6 +1774,12 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
     )
     np.minimum(overlap, lengths, out=overlap)
     np.clip(overlap, 0, None, out=overlap)
+
+    # Apply group masking if necessary
+    if left.is_grouped:
+        # Identify matching groups
+        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
+        np.multiply(overlap, mask, out=overlap)
 
     # Normalize if necessary
     if normalize:
@@ -1784,12 +1795,6 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
         # Normalize
         denom = np.where(denom==0, np.inf, denom)
         np.divide(overlap, denom, out=overlap)
-
-    # Apply group masking if necessary
-    if left.is_grouped:
-        # Identify matching groups
-        mask = left.groups.reshape(-1, 1) == right.groups.reshape(1, -1)
-        np.multiply(overlap, mask, out=overlap)
     
     return overlap
 
@@ -1906,6 +1911,11 @@ def intersect_linear_linear(left, right, enforce_edges=True, chunksize=None) -> 
         raise TypeError("Input objects must be EventsData class instances.")
     if left.is_grouped != right.is_grouped:
         raise ValueError("Input objects must have the same grouping status.")
+
+    # Early exit for completely disjoint event collections
+    if left.begs.min() >= right.ends.max() or right.begs.min() >= left.ends.max():
+        # No possible intersections - return zero matrix
+        return np.zeros((left.num_events, right.num_events), dtype=bool)
 
     # Reshape arrays for broadcasting
     left_begs = left.begs.reshape(-1, 1)
