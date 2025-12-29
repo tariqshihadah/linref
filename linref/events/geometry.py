@@ -1082,9 +1082,15 @@ def substring_m_coords(coords, m, start, end, normalized=False, tolerance=1e-10)
     # Validate input parameters
     if start > end:
         raise ValueError("Start value must be less than or equal to end value.")
+    
     # Calculate cumulative distances along the coordinate list
-    cumdist = np.sqrt(np.sum(np.power(np.diff(coords, axis=0), 2), axis=1)).cumsum()
-    cumdist = np.insert(cumdist, 0, 0)
+    # Use vectorized operations for better performance
+    diff = np.diff(coords, axis=0)
+    segment_lengths = np.sqrt(np.sum(diff * diff, axis=1))
+    cumdist = np.empty(len(coords), dtype=np.float64)
+    cumdist[0] = 0.0
+    np.cumsum(segment_lengths, out=cumdist[1:])
+    
     # Normalize cumulative distances if required
     if normalized:
         cumdist = cumdist / cumdist[-1]
@@ -1093,40 +1099,48 @@ def substring_m_coords(coords, m, start, end, normalized=False, tolerance=1e-10)
     start_index, start_coord, start_m = _interpolate_point(coords, m, cumdist, start)
     end_index, end_coord, end_m = _interpolate_point(coords, m, cumdist, end)
     
-    # Construct the substring coordinate sequence
-    substring_coords = [start_coord]
-    substring_m = [start_m]
+    # Construct the substring coordinate sequence directly as numpy arrays for better performance
+    # Calculate the size needed
+    n_intermediate = max(0, end_index - start_index)
+    n_total = 2 + n_intermediate  # start + intermediate + end
     
-    # Add intermediate coordinates between start and end indices
-    if end_index > start_index:
-        substring_coords.extend(coords[start_index:end_index])
-        substring_m.extend(m[start_index:end_index])
+    # Pre-allocate arrays
+    substring_coords = np.empty((n_total, coords.shape[1]), dtype=coords.dtype)
+    substring_m = np.empty(n_total, dtype=m.dtype)
     
-    substring_coords.append(end_coord)
-    substring_m.append(end_m)
+    # Fill in the values
+    substring_coords[0] = start_coord
+    substring_m[0] = start_m
     
-    # Convert to numpy arrays
-    substring_coords = np.array(substring_coords)
-    substring_m = np.array(substring_m)
+    if n_intermediate > 0:
+        substring_coords[1:1+n_intermediate] = coords[start_index:end_index]
+        substring_m[1:1+n_intermediate] = m[start_index:end_index]
+    
+    substring_coords[-1] = end_coord
+    substring_m[-1] = end_m
     
     # Check for and remove duplicate coordinates at the ENDS only within floating point tolerance
     # The interpolated start/end points may coincide with existing vertices
     # Intermediate coordinates from the original line should be preserved exactly
+    # Use squared distance to avoid expensive sqrt operation
+    tolerance_sq = tolerance * tolerance
     
     # Check if the interpolated start point duplicates the first intermediate point
     if len(substring_coords) > 2:
-        coord_dist = np.linalg.norm(substring_coords[0] - substring_coords[1])
+        coord_diff = substring_coords[0] - substring_coords[1]
+        coord_dist_sq = np.dot(coord_diff, coord_diff)
         m_diff = abs(substring_m[0] - substring_m[1])
-        if coord_dist <= tolerance and m_diff <= tolerance:
+        if coord_dist_sq <= tolerance_sq and m_diff <= tolerance:
             # Remove the interpolated start point, keep the original vertex
             substring_coords = substring_coords[1:]
             substring_m = substring_m[1:]
     
     # Check if the interpolated end point duplicates the last intermediate point
     if len(substring_coords) > 2:
-        coord_dist = np.linalg.norm(substring_coords[-1] - substring_coords[-2])
+        coord_diff = substring_coords[-1] - substring_coords[-2]
+        coord_dist_sq = np.dot(coord_diff, coord_diff)
         m_diff = abs(substring_m[-1] - substring_m[-2])
-        if coord_dist <= tolerance and m_diff <= tolerance:
+        if coord_dist_sq <= tolerance_sq and m_diff <= tolerance:
             # Remove the interpolated end point, keep the original vertex
             substring_coords = substring_coords[:-1]
             substring_m = substring_m[:-1]
