@@ -1117,10 +1117,46 @@ class TestValueCounts(unittest.TestCase):
         self.test_data = np.array(['A', 'B', 'C'])
     
     def test_value_counts_basic(self):
-        """Test basic value_counts aggregation - skip due to sparse matrix iteration issue."""
-        # This test is skipped because value_counts has issues with COO matrix iteration
-        # This would need to be fixed in the relate module first
-        self.skipTest("value_counts has sparse matrix iteration issues")
+        """Test basic value_counts aggregation."""
+        # Test value counts aggregation (aggregate right onto left)
+        # Left events: [0-10], [10-20], [20-30], [30-40]
+        # Right events: [5-15] with 'A', [15-25] with 'B', [25-35] with 'C'
+        # Expected intersections:
+        #   Left[0]: intersects right[0] -> 'A'
+        #   Left[1]: intersects right[0,1] -> 'A', 'B'
+        #   Left[2]: intersects right[1,2] -> 'B', 'C'
+        #   Left[3]: intersects right[2] -> 'C'
+        result = self.relation.value_counts(data=self.test_data)
+        
+        # Verify result is a DataFrame with expected structure
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), self.left.num_events)
+        
+        # Check that expected columns exist
+        self.assertIn('A', result.columns)
+        self.assertIn('B', result.columns)
+        self.assertIn('C', result.columns)
+        
+        # Verify counts for each left event
+        # Left[0] intersects only right[0] ('A')
+        self.assertEqual(result.loc[0, 'A'], 1)
+        self.assertEqual(result.loc[0, 'B'], 0)
+        self.assertEqual(result.loc[0, 'C'], 0)
+        
+        # Left[1] intersects right[0,1] ('A', 'B')
+        self.assertEqual(result.loc[1, 'A'], 1)
+        self.assertEqual(result.loc[1, 'B'], 1)
+        self.assertEqual(result.loc[1, 'C'], 0)
+        
+        # Left[2] intersects right[1,2] ('B', 'C')
+        self.assertEqual(result.loc[2, 'A'], 0)
+        self.assertEqual(result.loc[2, 'B'], 1)
+        self.assertEqual(result.loc[2, 'C'], 1)
+        
+        # Left[3] intersects only right[2] ('C')
+        self.assertEqual(result.loc[3, 'A'], 0)
+        self.assertEqual(result.loc[3, 'B'], 0)
+        self.assertEqual(result.loc[3, 'C'], 1)
 
 
 if __name__ == '__main__':

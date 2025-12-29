@@ -969,6 +969,9 @@ class EventsRelation(object):
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
         arr = arr if axis == 1 else arr.T
+        
+        # Convert to CSR format for efficient row iteration
+        arr = arr.tocsr()
 
         # Iterate over sparse rows
         output = []
