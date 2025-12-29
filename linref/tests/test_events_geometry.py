@@ -57,6 +57,230 @@ class TestLineStringM(unittest.TestCase):
         self.assertEqual(lsm.beg_m, 0.0)
         self.assertEqual(lsm.end_m, 10.0)
 
+    def test_m_to_distance(self):
+        """Test m_to_distance method and caching."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test exact M values at vertices
+        self.assertAlmostEqual(lsm.m_to_distance(0.0), 0.0)
+        self.assertAlmostEqual(lsm.m_to_distance(10.0), 1.0)
+        self.assertAlmostEqual(lsm.m_to_distance(20.0), 2.0)
+        self.assertAlmostEqual(lsm.m_to_distance(30.0), 3.0)
+        
+        # Test interpolated M values
+        self.assertAlmostEqual(lsm.m_to_distance(5.0), 0.5)
+        self.assertAlmostEqual(lsm.m_to_distance(15.0), 1.5)
+        self.assertAlmostEqual(lsm.m_to_distance(25.0), 2.5)
+        
+        # Test that cache is created
+        self.assertTrue(hasattr(lsm, '_cached_cumdist'))
+        
+        # Test that cache is invalidated when geometry changes
+        new_geom = LineString([(0, 0), (2, 0)])
+        lsm.geom = new_geom
+        self.assertFalse(hasattr(lsm, '_cached_cumdist'))
+
+    def test_distance_to_m(self):
+        """Test distance_to_m method."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test exact distances at vertices
+        self.assertAlmostEqual(lsm.distance_to_m(0.0), 0.0)
+        self.assertAlmostEqual(lsm.distance_to_m(1.0), 10.0)
+        self.assertAlmostEqual(lsm.distance_to_m(2.0), 20.0)
+        self.assertAlmostEqual(lsm.distance_to_m(3.0), 30.0)
+        
+        # Test interpolated distances
+        self.assertAlmostEqual(lsm.distance_to_m(0.5), 5.0)
+        self.assertAlmostEqual(lsm.distance_to_m(1.5), 15.0)
+        self.assertAlmostEqual(lsm.distance_to_m(2.5), 25.0)
+
+    def test_m_to_distance_roundtrip(self):
+        """Test round-trip conversion: M -> distance -> M."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)])
+        m = np.array([0.0, 5.0, 15.0, 25.0, 40.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test round-trip at various M values
+        test_m_values = [0.0, 2.5, 5.0, 10.0, 15.0, 20.0, 25.0, 32.5, 40.0]
+        for m_val in test_m_values:
+            distance = lsm.m_to_distance(m_val)
+            m_back = lsm.distance_to_m(distance)
+            self.assertAlmostEqual(m_val, m_back, places=10,
+                msg=f"Round-trip failed for M={m_val}: got {m_back}")
+
+    def test_distance_to_m_roundtrip(self):
+        """Test round-trip conversion: distance -> M -> distance."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)])
+        m = np.array([0.0, 5.0, 15.0, 25.0, 40.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test round-trip at various distances
+        test_distances = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+        for dist in test_distances:
+            m_val = lsm.distance_to_m(dist)
+            dist_back = lsm.m_to_distance(m_val)
+            self.assertAlmostEqual(dist, dist_back, places=10,
+                msg=f"Round-trip failed for distance={dist}: got {dist_back}")
+
+    def test_m_to_distance_nonuniform(self):
+        """Test m_to_distance with non-uniform M values."""
+        geom = LineString([(0, 0), (1, 0), (2, 0)])
+        m = np.array([0.0, 5.0, 25.0])  # Non-uniform spacing
+        lsm = LineStringM(geom, m)
+        
+        # Test interpolation in first segment
+        self.assertAlmostEqual(lsm.m_to_distance(2.5), 0.5)
+        # Test interpolation in second segment
+        self.assertAlmostEqual(lsm.m_to_distance(15.0), 1.5)
+
+    def test_distance_to_m_nonuniform(self):
+        """Test distance_to_m with non-uniform M values."""
+        geom = LineString([(0, 0), (1, 0), (2, 0)])
+        m = np.array([0.0, 5.0, 25.0])  # Non-uniform spacing
+        lsm = LineStringM(geom, m)
+        
+        # Test interpolation in first segment (M changes by 5 over distance 1)
+        self.assertAlmostEqual(lsm.distance_to_m(0.5), 2.5)
+        # Test interpolation in second segment (M changes by 20 over distance 1)
+        self.assertAlmostEqual(lsm.distance_to_m(1.5), 15.0)
+
+    def test_m_to_distance_normalized(self):
+        """Test m_to_norm_distance method."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test normalized distances
+        self.assertAlmostEqual(lsm.m_to_norm_distance(0.0), 0.0)
+        self.assertAlmostEqual(lsm.m_to_norm_distance(15.0), 0.5)
+        self.assertAlmostEqual(lsm.m_to_norm_distance(30.0), 1.0)
+
+    def test_distance_to_m_normalized(self):
+        """Test distance_to_m with normalized distances."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test normalized distances
+        self.assertAlmostEqual(lsm.distance_to_m(0.0, normalized=True), 0.0)
+        self.assertAlmostEqual(lsm.distance_to_m(0.5, normalized=True), 15.0)
+        self.assertAlmostEqual(lsm.distance_to_m(1.0, normalized=True), 30.0)
+
+    def test_m_to_distance_snapping(self):
+        """Test m_to_distance with snapping enabled."""
+        geom = LineString([(0, 0), (1, 0), (2, 0)])
+        m = np.array([10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test snapping to beginning
+        self.assertAlmostEqual(lsm.m_to_distance(5.0, snap=True), 0.0)
+        # Test snapping to end
+        self.assertAlmostEqual(lsm.m_to_distance(35.0, snap=True), 2.0)
+        # Test error without snapping
+        with self.assertRaises(ValueError):
+            lsm.m_to_distance(5.0, snap=False)
+        with self.assertRaises(ValueError):
+            lsm.m_to_distance(35.0, snap=False)
+
+    def test_distance_to_m_snapping(self):
+        """Test distance_to_m with snapping enabled."""
+        geom = LineString([(0, 0), (1, 0), (2, 0)])
+        m = np.array([10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test snapping to beginning
+        self.assertAlmostEqual(lsm.distance_to_m(-0.5, snap=True), 10.0)
+        # Test snapping to end
+        self.assertAlmostEqual(lsm.distance_to_m(2.5, snap=True), 30.0)
+        # Test error without snapping
+        with self.assertRaises(ValueError):
+            lsm.distance_to_m(-0.5, snap=False)
+        with self.assertRaises(ValueError):
+            lsm.distance_to_m(2.5, snap=False)
+
+    def test_m_to_distance_diagonal_line(self):
+        """Test m_to_distance on a diagonal line."""
+        geom = LineString([(0, 0), (1, 1), (2, 2)])
+        m = np.array([0.0, 10.0, 20.0])
+        lsm = LineStringM(geom, m)
+        
+        # Distance should be sqrt(2) per segment
+        expected_segment_length = np.sqrt(2)
+        
+        self.assertAlmostEqual(lsm.m_to_distance(0.0), 0.0)
+        self.assertAlmostEqual(lsm.m_to_distance(10.0), expected_segment_length)
+        self.assertAlmostEqual(lsm.m_to_distance(20.0), 2 * expected_segment_length)
+        self.assertAlmostEqual(lsm.m_to_distance(5.0), expected_segment_length / 2)
+
+    def test_distance_to_m_diagonal_line(self):
+        """Test distance_to_m on a diagonal line."""
+        geom = LineString([(0, 0), (1, 1), (2, 2)])
+        m = np.array([0.0, 10.0, 20.0])
+        lsm = LineStringM(geom, m)
+        
+        expected_segment_length = np.sqrt(2)
+        
+        self.assertAlmostEqual(lsm.distance_to_m(0.0), 0.0)
+        self.assertAlmostEqual(lsm.distance_to_m(expected_segment_length), 10.0)
+        self.assertAlmostEqual(lsm.distance_to_m(2 * expected_segment_length), 20.0)
+        self.assertAlmostEqual(lsm.distance_to_m(expected_segment_length / 2), 5.0)
+
+    def test_m_to_distance_errors(self):
+        """Test error handling in m_to_distance."""
+        geom = LineString([(0, 0), (1, 0)])
+        
+        # Test with undefined M values
+        lsm_no_m = LineStringM(geom)
+        with self.assertRaises(ValueError):
+            lsm_no_m.m_to_distance(5.0)
+
+    def test_distance_to_m_errors(self):
+        """Test error handling in distance_to_m."""
+        geom = LineString([(0, 0), (1, 0)])
+        
+        # Test with undefined M values
+        lsm_no_m = LineStringM(geom)
+        with self.assertRaises(ValueError):
+            lsm_no_m.distance_to_m(0.5)
+
+    def test_conversion_precision(self):
+        """Test that conversions maintain high precision."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # Test many values for precision
+        for i in range(100):
+            m_val = i * 0.3
+            if m_val <= 30.0:
+                distance = lsm.m_to_distance(m_val)
+                m_back = lsm.distance_to_m(distance)
+                self.assertAlmostEqual(m_val, m_back, places=10)
+
+    def test_conversion_performance_consistency(self):
+        """Test that conversions produce consistent results with caching."""
+        geom = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        m = np.array([0.0, 10.0, 20.0, 30.0])
+        lsm = LineStringM(geom, m)
+        
+        # First call creates cache
+        dist1 = lsm.m_to_distance(15.0)
+        # Second call uses cache
+        dist2 = lsm.m_to_distance(15.0)
+        
+        self.assertEqual(dist1, dist2)
+        
+        # Test distance_to_m as well
+        m1 = lsm.distance_to_m(1.5)
+        m2 = lsm.distance_to_m(1.5)
+        
+        self.assertEqual(m1, m2)
+
 
 class TestSubstringMCoords(unittest.TestCase):
     """Test substring_m_coords function including edge cases."""

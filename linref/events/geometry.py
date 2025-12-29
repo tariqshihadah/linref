@@ -34,6 +34,11 @@ class LineStringM:
             return False
         return np.array_equal(self.m, other.m)
 
+    def _reset_cache(self):
+        """Reset all cached properties when geometry or M values change."""
+        if hasattr(self, '_cached_cumdist'):
+            delattr(self, '_cached_cumdist')
+
     @property
     def geom(self):
         return self._geom
@@ -42,6 +47,9 @@ class LineStringM:
     def geom(self, geom):
         if not isinstance(geom, shapely.geometry.LineString):
             raise ValueError('LineStringM geom must be a shapely LineString')
+        
+        # Invalidate cached properties when geometry changes
+        self._reset_cache()
         
         try:
             if geom.has_z:
@@ -82,6 +90,8 @@ class LineStringM:
                 raise GeometryMeasureError(
                     "LineStringM m must be monotonic and increasing."
                 )
+        # Invalidate cached properties when M values change
+        self._reset_cache()
         self._m = m
 
     @property
@@ -130,6 +140,22 @@ class LineStringM:
         proportion of the total length of the LineString.
         """
         return get_chord_lengths(self.geom, normalized=True)
+    
+    @property
+    def _cumulative_distances(self):
+        """
+        Return the cumulative distances along the LineString at each vertex.
+        Cached for performance optimization.
+        """
+        if not hasattr(self, '_cached_cumdist'):
+            coords = shapely.get_coordinates(self.geom)
+            diff = np.diff(coords, axis=0)
+            segment_lengths = np.sqrt(np.sum(diff * diff, axis=1))
+            cumdist = np.empty(len(coords), dtype=np.float64)
+            cumdist[0] = 0.0
+            np.cumsum(segment_lengths, out=cumdist[1:])
+            self._cached_cumdist = cumdist
+        return self._cached_cumdist
     
     @property
     def wkt(self):
@@ -371,13 +397,10 @@ class LineStringM:
             return self.geom.length
         # Compute the proportional distance between the two nearest M values
         prop = (m - self.m[index - 1]) / (self.m[index] - self.m[index - 1])
-        # Get length up to the indexed vertice
-        coords = shapely.get_coordinates(self.geom)
-        if index == 1:
-            distance = 0
-        else:
-            distance = np.sqrt(np.sum(np.power(np.diff(coords[:index], axis=0), 2), axis=1)).sum() # LineString(coords[:index]).length
-        distance += np.sqrt(np.sum(np.power(np.diff(coords[index - 1: index + 1], axis=0), 2))) * prop # LineString(coords[index - 1: index + 1]).length * prop
+        # Use cached cumulative distances for better performance
+        cumdist = self._cumulative_distances
+        distance = cumdist[index - 1]
+        distance += (cumdist[index] - cumdist[index - 1]) * prop
         return distance
     
     def m_to_norm_distance(self, m, snap=False):
@@ -419,28 +442,31 @@ class LineStringM:
         if snapped != 0:
             return self.m[0] if snapped == 1 else self.m[-1]
         
-        # Get the nearest vertice index to the left of the specified distance
-        substring = shapely.ops.substring(
-            self.geom, 0, distance, normalized=normalized)
-        # Determine which endpoint to use
-        substring_coords = shapely.get_coordinates(substring)
-        geom_coords = shapely.get_coordinates(self.geom)
-        if substring_coords[-1] in geom_coords:
-            endpoint = substring_coords[-1]
-            index = list(geom_coords).index(endpoint)
-            return self.m[index]
-        else:
-            endpoint = substring_coords[-2]
-            index = list(geom_coords).index(endpoint)
-
-        # Compute the M value for the substring and remaining distance
+        # Convert normalized distance to absolute if needed
+        if normalized:
+            distance = distance * self.geom.length
+        
+        # Use cached cumulative distances for efficient lookup
+        cumdist = self._cumulative_distances
+        
+        # Find the segment containing this distance using binary search
+        index = np.searchsorted(cumdist, distance)
+        
         if index == 0:
-            distance_to_vertice = 0
-        else:
-            distance_to_vertice = np.sqrt(np.sum(np.power(np.diff(geom_coords[: index + 1], axis=0), 2), axis=1)).sum() # LineString(geom_coords[: index + 1]).length
-        prop = (distance - distance_to_vertice) / \
-            np.sqrt(np.sum(np.power(np.diff(geom_coords[index: index + 2], axis=0), 2))) # LineString(geom_coords[index: index + 2]).length
-        return self.m[index] + (self.m[index + 1] - self.m[index]) * prop
+            return self.m[0]
+        elif index >= len(cumdist):
+            return self.m[-1]
+        
+        # Check if distance exactly matches a vertex
+        if np.isclose(cumdist[index], distance):
+            return self.m[index]
+        
+        # Interpolate M value within the segment
+        segment_start_dist = cumdist[index - 1]
+        segment_end_dist = cumdist[index]
+        prop = (distance - segment_start_dist) / (segment_end_dist - segment_start_dist)
+        
+        return self.m[index - 1] + (self.m[index] - self.m[index - 1]) * prop
     
     def project(self, point, normalized=False, m=False):
         """
