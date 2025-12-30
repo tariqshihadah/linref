@@ -116,9 +116,14 @@ def _validate_group_selector(events, group, ignore_missing=True):
             missing_groups = arr[~group_test]
             raise KeyError(
                 f"Groups not found in collection: {missing_groups}")
-        
-    # Identify group indices
-    index = np.isin(events.groups, arr)
+    
+    # Identify group indices - optimized for single group selection
+    if arr.ndim == 0:
+        # Scalar case: direct equality comparison is faster than np.isin
+        index = events.groups == arr
+    else:
+        # Array case: use np.isin for multiple groups
+        index = np.isin(events.groups, arr)
     return index
 
 def _apply_selector(events, selector, inplace=False):
