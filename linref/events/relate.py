@@ -1637,6 +1637,9 @@ class EventsRelation(object):
 def _grouped_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on grouped data.
+    
+    Performance optimization: Uses pre-sorted group iteration instead of 
+    repeated np.isin calls for significant speedup on large datasets.
     """
     def wrapper(left, right, *args, **kwargs):
         # Validate inputs
@@ -1651,19 +1654,42 @@ def _grouped_operation_wrapper(func) -> callable:
             # Return group-less operation
             return func(left, right, *args, **kwargs)
         else:
+            # Create dictionaries mapping group values to data for fast lookup
+            # This is much faster than calling select_group repeatedly with np.isin
+            left_dict = {}
+            for group, events in left.reset_index().iter_groups(ungroup=True):
+                left_dict[group] = events
+            
+            right_dict = {}
+            for group, events in right.reset_index().iter_groups(ungroup=True):
+                right_dict[group] = events
+            
             # Identify all unique groups between both datasets
             unique_groups = np.unique(np.concatenate([left.groups, right.groups]))
+            
             # Iterate over groups
             left_index = []
             right_index = []
             res = []
             for group in unique_groups:
-                # Get left group
-                left_group  = left .reset_index().select_group(
-                    group, ungroup=True, ignore_missing=True, inplace=False)
-                # Get right group
-                right_group = right.reset_index().select_group(
-                    group, ungroup=True, ignore_missing=True, inplace=False)
+                # Get left and right groups from pre-built dictionaries
+                left_group = left_dict.get(group)
+                right_group = right_dict.get(group)
+                
+                # Handle missing groups (create empty EventsData)
+                if left_group is None:
+                    left_group = base.EventsData(
+                        begs=np.array([]) if left.is_linear else None,
+                        ends=np.array([]) if left.is_linear else None,
+                        locs=np.array([]) if left.is_point else None
+                    )
+                if right_group is None:
+                    right_group = base.EventsData(
+                        begs=np.array([]) if right.is_linear else None,
+                        ends=np.array([]) if right.is_linear else None,
+                        locs=np.array([]) if right.is_point else None
+                    )
+                
                 # Log indices in all cases
                 left_index.append(left_group.index)
                 right_index.append(right_group.index)
