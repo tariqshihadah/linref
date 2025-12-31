@@ -1102,10 +1102,12 @@ class EventsRelation(object):
             column = column.reshape(-1, 1) if axis == 0 else column.reshape(1, -1)
             numerator = arr.multiply(column).sum(axis=axis)
             denominator = arr.sum(axis=axis)
+            # Use np.nan for division by zero (no matches) instead of 0
+            result = np.full_like(numerator, np.nan, dtype=float)
             aggregated.append(np.divide(
                 numerator,
                 denominator,
-                out=np.zeros_like(numerator),
+                out=result,
                 where=denominator!=0
             ))
         
@@ -1178,19 +1180,50 @@ class EventsRelation(object):
                 )
             unique, splitter = np.unique(column[sorter], return_index=True)
             splitter = np.append(splitter, len(column))
-            # Sort weights data before splitting
-            arr_sorted = arr[sorter]
             # Compute weighted scores for each unique value
-            scores = []
-            for i, j in zip(splitter[:-1], splitter[1:]):
-                scores.append(arr_sorted[i:j].sum(axis=0))
-            scores = np.vstack(scores)
-            # Find mode using the highest score for each record
-            mode = np.where(
-                scores.sum(axis=0) > 0,
-                unique[np.argmax(scores, axis=0)],
-                np.nan
+            # Use grouping matrix approach to avoid memory spike from fancy indexing.
+            # The original approach arr[sorter] causes scipy to create large temporary
+            # allocations. Instead, we build a sparse grouping matrix G where G[i,j]=1
+            # if row i belongs to group j, then compute G.T @ arr to sum rows by group.
+            # NOTE: If scipy adds more performant support for sparse fancy indexing, 
+            # this can be simplified.
+            n_unique = len(unique)
+            n_rows = arr.shape[0]
+            
+            # Create mapping: which group does each row belong to?
+            row_to_group = np.empty(n_rows, dtype=np.int32)
+            for idx, (i, j) in enumerate(zip(splitter[:-1], splitter[1:])):
+                row_to_group[sorter[i:j]] = idx
+            
+            # Build sparse grouping matrix: G[row, group] = 1 if row belongs to group
+            row_indices = np.arange(n_rows)
+            group_matrix = sp.csr_matrix(
+                (np.ones(n_rows), (row_indices, row_to_group)),
+                shape=(n_rows, n_unique)
             )
+            
+            # Vectorized computation: sum rows by group (G.T @ arr)
+            # Keep result sparse to avoid memory issues with large column counts
+            scores_sparse = group_matrix.T @ arr
+            
+            # Compute mode efficiently from sparse matrix
+            # Get row sums to check which columns have data
+            scores_sum = np.asarray(scores_sparse.sum(axis=0)).ravel()
+            
+            # Convert to CSC for efficient column access and find mode per column
+            scores_csc = scores_sparse.tocsc()
+            mode = np.full(scores_sparse.shape[1], np.nan)
+            
+            # Process only non-empty columns
+            non_empty = scores_sum > 0
+            for col_idx in np.where(non_empty)[0]:
+                col_start = scores_csc.indptr[col_idx]
+                col_end = scores_csc.indptr[col_idx + 1]
+                if col_end > col_start:
+                    # Find row with max value in this column
+                    max_idx = np.argmax(scores_csc.data[col_start:col_end])
+                    mode_row = scores_csc.indices[col_start + max_idx]
+                    mode[col_idx] = unique[mode_row]
             aggregated.append(mode)
 
         # Concatenate results
@@ -1638,8 +1671,8 @@ def _grouped_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on grouped data.
     
-    Performance optimization: Uses pre-sorted group iteration instead of 
-    repeated np.isin calls for significant speedup on large datasets.
+    Performance optimization: Uses sorted group iteration with boundary lookups
+    instead of repeated np.isin calls for significant speedup without memory overhead.
     """
     def wrapper(left, right, *args, **kwargs):
         # Validate inputs
@@ -1654,45 +1687,63 @@ def _grouped_operation_wrapper(func) -> callable:
             # Return group-less operation
             return func(left, right, *args, **kwargs)
         else:
-            # Create dictionaries mapping group values to data for fast lookup
-            # This is much faster than calling select_group repeatedly with np.isin
-            left_dict = {}
-            for group, events in left.reset_index().iter_groups(ungroup=True):
-                left_dict[group] = events
+            # Sort both datasets and get group boundaries
+            # This avoids repeated np.isin calls while keeping memory usage low
+            left_sorted = left.reset_index().sort_standard(inplace=False)
+            right_sorted = right.reset_index().sort_standard(inplace=False)
             
-            right_dict = {}
-            for group, events in right.reset_index().iter_groups(ungroup=True):
-                right_dict[group] = events
+            # Get unique groups and their boundaries for both datasets
+            left_unique, left_splits = np.unique(left_sorted.groups, return_index=True)
+            right_unique, right_splits = np.unique(right_sorted.groups, return_index=True)
             
-            # Identify all unique groups between both datasets
+            # Append end positions for slicing
+            left_splits = np.append(left_splits, len(left_sorted.groups))
+            right_splits = np.append(right_splits, len(right_sorted.groups))
+            
+            # Get all unique groups across both datasets
             unique_groups = np.unique(np.concatenate([left.groups, right.groups]))
+            
+            # Create searchsorted-based lookup for O(log n) group boundary access
+            # This avoids dictionary key hashing issues with structured dtypes
+            left_positions = np.searchsorted(left_unique, unique_groups)
+            right_positions = np.searchsorted(right_unique, unique_groups)
             
             # Iterate over groups
             left_index = []
             right_index = []
             res = []
-            for group in unique_groups:
-                # Get left and right groups from pre-built dictionaries
-                left_group = left_dict.get(group)
-                right_group = right_dict.get(group)
-                
-                # Handle missing groups (create empty EventsData)
-                if left_group is None:
+            
+            for i, group in enumerate(unique_groups):
+                # Check if group exists in left using searchsorted result
+                left_pos = left_positions[i]
+                if left_pos < len(left_unique) and np.array_equal(left_unique[left_pos], group):
+                    left_slice = slice(left_splits[left_pos], left_splits[left_pos + 1])
+                    left_group = left_sorted.select(left_slice, inplace=False)
+                    left_group.ungroup(inplace=True)
+                else:
                     left_group = base.EventsData(
                         begs=np.array([]) if left.is_linear else None,
                         ends=np.array([]) if left.is_linear else None,
                         locs=np.array([]) if left.is_point else None
                     )
-                if right_group is None:
+                
+                # Check if group exists in right using searchsorted result
+                right_pos = right_positions[i]
+                if right_pos < len(right_unique) and np.array_equal(right_unique[right_pos], group):
+                    right_slice = slice(right_splits[right_pos], right_splits[right_pos + 1])
+                    right_group = right_sorted.select(right_slice, inplace=False)
+                    right_group.ungroup(inplace=True)
+                else:
                     right_group = base.EventsData(
                         begs=np.array([]) if right.is_linear else None,
                         ends=np.array([]) if right.is_linear else None,
                         locs=np.array([]) if right.is_point else None
                     )
                 
-                # Log indices in all cases
+                # Log indices
                 left_index.append(left_group.index)
                 right_index.append(right_group.index)
+                
                 # Don't compute if either group is empty, instead set empty array
                 if left_group.num_events == 0:
                     group_res = np.array([]).reshape(0, right_group.num_events)
@@ -1701,8 +1752,10 @@ def _grouped_operation_wrapper(func) -> callable:
                 # Compute operation on group
                 else:
                     group_res = func(left_group, right_group, *args, **kwargs)
+                
                 # Log resulting array and indices
                 res.append(group_res)
+            
             # Concatenate results
             res = sp.block_diag(res, format='coo')
             left_index = np.concatenate(left_index, axis=0)
