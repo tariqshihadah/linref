@@ -1069,6 +1069,30 @@ class LRS_Accessor(object):
         df = self.df if inplace else self.df.copy()
         df.lr._lrs = LRS()
         return None if inplace else df
+    
+    @_method_require(is_linear=True)
+    def set_monotonic(self, inplace=False) -> pd.DataFrame | None:
+        """
+        Ensure that linear events in the DataFrame are monotonic according to
+        the set LRS, reordering begin and end values as needed. This only 
+        effects the begin and end values in the DataFrame, not the geometries.
+
+        Parameters
+        ----------
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Create events object and enforce monotonicity
+        events = self.get_events(allow_undefined_events=True)
+        events.set_monotonic(inplace=True)
+        # Apply changes to the DataFrame
+        df = self.df if inplace else self.copy_df()
+        if self.is_located:
+            df[self.loc_col] = events.locs
+        if self.is_linear:
+            df[self.beg_col] = events.begs
+            df[self.end_col] = events.ends
+        return None if inplace else df
 
     def build_geom_m(self) -> np.ndarray:
         """
