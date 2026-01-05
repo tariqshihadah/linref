@@ -91,8 +91,9 @@ def dissolve(events, sort=False, return_index=False, return_relation=False):
             (np.ones(len(row_index), dtype=bool), (row_index, col_index)), 
             shape=(len(indices_generic), events.num_events)
         )
-        # Prepare relation object
-        relation = relate.EventsRelation(dissolved, events, cache=True)
+        # Prepare relation object using original events if sorted
+        events_for_relation = events_original if sort else events
+        relation = relate.EventsRelation(dissolved, events_for_relation, cache=True)
         relation._intersect_data = arr
         relation._intersect_kwargs = {}
         outputs.append(relation)
