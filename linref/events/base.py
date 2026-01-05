@@ -44,6 +44,9 @@ class EventsData:
     
     def __getitem__(self, index):
         return self.select(index, ignore=False, inplace=False)
+    
+    def __len__(self):
+        return self.num_events
 
     @property
     def index(self):
@@ -402,9 +405,34 @@ class EventsData:
             self.reset_index(inplace=True)
         return
 
-    def to_frame(self, index_name=None, group_name=None, loc_name='loc', beg_name='beg', end_name='end'):
+    def to_frame(
+        self,
+        index_name=None,
+        group_name=None,
+        loc_name='loc',
+        beg_name='beg',
+        end_name='end'
+        ) -> pd.DataFrame:
         """
         Convert the collection to a pandas DataFrame.
+
+        Parameters
+        ----------
+        index_name : str, optional
+            Name for the index column in the DataFrame.
+        group_name : str, optional
+            Name for the group column in the DataFrame.
+        loc_name : str, default 'loc'
+            Name for the location column in the DataFrame.
+        beg_name : str, default 'beg'
+            Name for the begin position column in the DataFrame.
+        end_name : str, default 'end'
+            Name for the end position column in the DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame representation of the events.
         """
         # Define frame data
         data = []
@@ -426,10 +454,33 @@ class EventsData:
             frame.index.name = index_name
         return frame
     
-    def from_similar(self, index=None, groups=None, locs=None, begs=None, ends=None, **kwargs):
+    def from_similar(
+        self,
+        index: np.ndarray = None,
+        groups: np.ndarray = None,
+        locs: np.ndarray = None,
+        begs: np.ndarray = None,
+        ends: np.ndarray = None,
+        **kwargs
+        ):
         """
         Create a new instance of the class with similar properties to the 
         current instance.
+
+        Parameters
+        ----------
+        index : np.ndarray, optional
+            Event index for the new instance.
+        groups : np.ndarray, optional
+            Event groups for the new instance.
+        locs : np.ndarray, optional
+            Event locations for the new instance.
+        begs : np.ndarray, optional
+            Event begin positions for the new instance.
+        ends : np.ndarray, optional
+            Event end positions for the new instance.
+        **kwargs : 
+            Additional keyword arguments to pass to the new instance.
         """
         # Populate kwargs
         kwargs = {
@@ -440,6 +491,14 @@ class EventsData:
         # Create new instance
         return self.__class__(
             index=index, groups=groups, locs=locs, begs=begs, ends=ends, **kwargs)
+    
+    @utility._method_require(is_grouped=True)
+    def group_counts(self) -> dict:
+        """
+        Return a pair of lists containing unique group labels and their 
+        corresponding counts.
+        """
+        return np.unique(self.groups, return_counts=True)
 
     def copy(self, deep=False):
         """
@@ -821,7 +880,20 @@ class EventsData:
     @utility._method_require(is_grouped=True)
     def iter_groups(self, ungroup=True):
         """
-        Iterate over the groups in the collection.
+        Iterate over the groups in the collection, yielding the group label
+        and the corresponding EventsData for each group.
+
+        Parameters
+        ----------
+        ungroup : bool, default True
+            Whether to ungroup the selected events for each group, returning
+            an ungrouped EventsData instance.
+
+        Yields
+        ------
+        tuple
+            A tuple of (group label, EventsData) for each group in the 
+            collection.
         """
         # Get group indices with groupby routine
         sorted_events = self.sort_standard(inplace=False)

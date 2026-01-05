@@ -1,0 +1,15 @@
+route,beg,end,condition_rating,surface_type
+US-101,0.0,2.5,82,Asphalt
+US-101,2.5,3.8,88,Asphalt
+US-101,3.8,5.0,86,Asphalt
+US-101,5.0,7.8,91,Asphalt
+US-101,7.8,9.2,91,Asphalt
+US-101,9.2,10.5,89,Asphalt
+SR-1,0.0,1.6,79,Concrete
+SR-1,1.6,3.2,73,Concrete
+SR-1,3.2,6.5,88,Asphalt
+SR-1,6.5,9.8,89,Asphalt
+I-5,0.0,4.1,84,Asphalt
+I-5,4.1,6.2,77,Concrete
+I-5,6.2,8.3,83,Asphalt
+I-5,8.3,12.0,82,Concrete

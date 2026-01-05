@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"name": "roadways",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "route": "US-101", "beg": 0.0, "end": 2.5, "traffic_volume": 15000, "speed_limit": 45 }, "geometry": { "type": "LineString", "coordinates": [ [ 0.0, 0.0 ], [ 2.5, 0.5 ] ] } },
+{ "type": "Feature", "properties": { "route": "US-101", "beg": 2.5, "end": 5.0, "traffic_volume": 22000, "speed_limit": 55 }, "geometry": { "type": "LineString", "coordinates": [ [ 2.5, 0.5 ], [ 5.0, 1.2 ] ] } },
+{ "type": "Feature", "properties": { "route": "US-101", "beg": 5.0, "end": 7.8, "traffic_volume": 18500, "speed_limit": 55 }, "geometry": { "type": "LineString", "coordinates": [ [ 5.0, 1.2 ], [ 7.8, 2.0 ] ] } },
+{ "type": "Feature", "properties": { "route": "US-101", "beg": 7.8, "end": 10.5, "traffic_volume": 12000, "speed_limit": 45 }, "geometry": { "type": "LineString", "coordinates": [ [ 7.8, 2.0 ], [ 10.5, 3.1 ] ] } },
+{ "type": "Feature", "properties": { "route": "SR-1", "beg": 0.0, "end": 3.2, "traffic_volume": 8500, "speed_limit": 35 }, "geometry": { "type": "LineString", "coordinates": [ [ 0.0, 5.0 ], [ 3.2, 5.8 ] ] } },
+{ "type": "Feature", "properties": { "route": "SR-1", "beg": 3.2, "end": 6.5, "traffic_volume": 11000, "speed_limit": 45 }, "geometry": { "type": "LineString", "coordinates": [ [ 3.2, 5.8 ], [ 6.5, 6.5 ] ] } },
+{ "type": "Feature", "properties": { "route": "SR-1", "beg": 6.5, "end": 9.8, "traffic_volume": 9200, "speed_limit": 55 }, "geometry": { "type": "LineString", "coordinates": [ [ 6.5, 6.5 ], [ 9.8, 7.3 ] ] } },
+{ "type": "Feature", "properties": { "route": "I-5", "beg": 0.0, "end": 4.1, "traffic_volume": 45000, "speed_limit": 65 }, "geometry": { "type": "LineString", "coordinates": [ [ 0.0, 10.0 ], [ 4.1, 11.0 ] ] } },
+{ "type": "Feature", "properties": { "route": "I-5", "beg": 4.1, "end": 8.3, "traffic_volume": 52000, "speed_limit": 65 }, "geometry": { "type": "LineString", "coordinates": [ [ 4.1, 11.0 ], [ 8.3, 12.5 ] ] } },
+{ "type": "Feature", "properties": { "route": "I-5", "beg": 8.3, "end": 12.0, "traffic_volume": 38000, "speed_limit": 65 }, "geometry": { "type": "LineString", "coordinates": [ [ 8.3, 12.5 ], [ 12.0, 14.2 ] ] } }
+]
+}

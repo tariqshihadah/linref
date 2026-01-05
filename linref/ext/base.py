@@ -1146,9 +1146,24 @@ class LRS_Accessor(object):
         """
         Iterate over unique event groups in the dataframe based on the 
         LRS key columns.
+
+        Yields
+        ------
+        tuple
+            A tuple containing the group value and a DataFrame of events
+            corresponding to that group.
         """
         for group, index in self.events.iter_group_indices():
             yield group, self.df.loc[index]
+
+    @_method_require(is_grouped=True)
+    def group_counts(self) -> pd.Series:
+        """
+        Return a Series of counts of events per group in the dataframe based
+        on the LRS key columns.
+        """
+        groups, counts = self.events.group_counts()
+        return pd.Series(data=counts, index=groups)
 
     @classmethod
     def set_default_lrs(cls, lrs=None, **kwargs) -> None:

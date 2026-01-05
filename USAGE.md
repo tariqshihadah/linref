@@ -43,12 +43,12 @@ print(dissolved)
 
 The LRS defines your data's schema:
 
-- **Key columns** (`key_col`) - Route identifiers (e.g., `['route']`, `['route', 'direction']`)
+- **Key columns** (`key_col`) - Route identifiers (e.g., `['route']`, `['route', 'county']`)
 - **Location columns** - Point events (`loc_col`) or linear events (`beg_col`, `end_col`)
 - **Geometry columns** - Spatial data (`geom_col`, `geom_m_col` for M-enabled geometries)
 - **Closure type** (`closed`) - How range endpoints are handled: `'left'`, `'right'`, `'both'`, `'neither'`, `'left_mod'`, `'right_mod'`
 
-### Setting Up LRS
+### Setting Up an Existing LRS
 
 **Method 1: Set LRS per DataFrame**
 

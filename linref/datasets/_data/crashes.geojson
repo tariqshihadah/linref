@@ -1,0 +1,27 @@
+{
+"type": "FeatureCollection",
+"name": "crashes",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "crash_id": 1, "route": "US-101", "loc": 2.56, "severity": "Injury", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 2.56, 0.52 ] } },
+{ "type": "Feature", "properties": { "crash_id": 2, "route": "US-101", "loc": 8.18, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 8.18, 2.15 ] } },
+{ "type": "Feature", "properties": { "crash_id": 3, "route": "I-5", "loc": 4.47, "severity": "Injury", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 4.47, 11.13 ] } },
+{ "type": "Feature", "properties": { "crash_id": 4, "route": "US-101", "loc": 0.23, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 0.23, 0.05 ] } },
+{ "type": "Feature", "properties": { "crash_id": 5, "route": "I-5", "loc": 8.4, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 8.4, 12.55 ] } },
+{ "type": "Feature", "properties": { "crash_id": 6, "route": "I-5", "loc": 5.86, "severity": "Injury", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 5.86, 11.63 ] } },
+{ "type": "Feature", "properties": { "crash_id": 7, "route": "SR-1", "loc": 2.59, "severity": "Fatal", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 2.59, 5.65 ] } },
+{ "type": "Feature", "properties": { "crash_id": 8, "route": "SR-1", "loc": 7.62, "severity": "Fatal", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 7.62, 6.77 ] } },
+{ "type": "Feature", "properties": { "crash_id": 9, "route": "SR-1", "loc": 3.54, "severity": "Injury", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 3.54, 5.87 ] } },
+{ "type": "Feature", "properties": { "crash_id": 10, "route": "SR-1", "loc": 6.0, "severity": "Property Damage Only", "mode": "Pedestrian" }, "geometry": { "type": "Point", "coordinates": [ 6.0, 6.39 ] } },
+{ "type": "Feature", "properties": { "crash_id": 11, "route": "US-101", "loc": 1.82, "severity": "Property Damage Only", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 1.82, 0.36 ] } },
+{ "type": "Feature", "properties": { "crash_id": 12, "route": "SR-1", "loc": 6.76, "severity": "Injury", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 6.76, 6.56 ] } },
+{ "type": "Feature", "properties": { "crash_id": 13, "route": "I-5", "loc": 11.58, "severity": "Injury", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 11.58, 14.01 ] } },
+{ "type": "Feature", "properties": { "crash_id": 14, "route": "US-101", "loc": 9.7, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 9.7, 2.77 ] } },
+{ "type": "Feature", "properties": { "crash_id": 15, "route": "US-101", "loc": 9.89, "severity": "Fatal", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 9.89, 2.85 ] } },
+{ "type": "Feature", "properties": { "crash_id": 16, "route": "US-101", "loc": 3.45, "severity": "Injury", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 3.45, 0.77 ] } },
+{ "type": "Feature", "properties": { "crash_id": 17, "route": "SR-1", "loc": 3.74, "severity": "Injury", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 3.74, 5.91 ] } },
+{ "type": "Feature", "properties": { "crash_id": 18, "route": "SR-1", "loc": 2.25, "severity": "Property Damage Only", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 2.25, 5.56 ] } },
+{ "type": "Feature", "properties": { "crash_id": 19, "route": "US-101", "loc": 4.02, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 4.02, 0.93 ] } },
+{ "type": "Feature", "properties": { "crash_id": 20, "route": "US-101", "loc": 8.24, "severity": "Injury", "mode": "Pedestrian" }, "geometry": { "type": "Point", "coordinates": [ 8.24, 2.18 ] } }
+]
+}
