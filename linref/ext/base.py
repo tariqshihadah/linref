@@ -2563,6 +2563,7 @@ class LRS_Accessor(object):
         buffer: float = 100,
         nearest: bool = True,
         distance_col: str = 'project_distance',
+        replace: bool = False,
         dropna: bool = True
     ) -> gpd.GeoDataFrame:
         """
@@ -2583,6 +2584,10 @@ class LRS_Accessor(object):
             equidistant points exist, choose the first result that appears.
         dist_label : str, default 'project_distance'
             The label for the distance column in the returned DataFrame.
+        replace : bool, default False
+            Whether to replace the existing key and location columns in the 
+            dataframe. If False, an error will be raised if the columns 
+            already exist.
         dropna : bool, default True
             Whether to drop rows from the returned DataFrame where no matching
             linear event was found within the defined buffer. Events with no
@@ -2610,23 +2615,25 @@ class LRS_Accessor(object):
             except AttributeError:
                 raise AttributeError(
                     "No geometry data set in other geodataframe.")
-        # Check for presence of LRS columns already in the other dataframe
-        protected_cols = set(self.key_col + [self.loc_col, distance_col])
-        overlapping_cols = protected_cols.intersection(set(other.columns))
-        if len(overlapping_cols) > 0:
-            raise ValueError(
-                f"Other geodataframe contains protected column names: "
-                f"{', '.join(overlapping_cols)}"
-            )
-
         # Log dataframe index name
         index_right_name = (
             self.df.index.name if self.df.index.name is not None else 'index_right'
         )
+        # Check for presence of LRS columns already in the other dataframe
+        protected_cols = set(self.key_col + [self.loc_col, distance_col, index_right_name])
+        if not replace:
+            overlapping_cols = protected_cols.intersection(set(other.columns))
+            if len(overlapping_cols) > 0:
+                raise ValueError(
+                    f"Other geodataframe contains protected column names: "
+                    f"{', '.join(overlapping_cols)}"
+                )
+
         # Spatial join points to lines
         select_cols = self.key_col + [self.geom_col, self.geom_m_col]
         if nearest:
-            joined = other.sjoin_nearest(
+            joined = other.drop(columns=protected_cols, errors='ignore') \
+                .sjoin_nearest(
                 self.df[select_cols],
                 how='left',
                 max_distance=buffer,
