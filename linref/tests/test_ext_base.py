@@ -753,6 +753,156 @@ class TestStudyMethod(unittest.TestCase):
         self.assertIn('end', study['linear']['missing'])
 
 
+class TestProjectMethod(unittest.TestCase):
+    """Test the project method for projecting point events onto linear events."""
+
+    def setUp(self):
+        """Set up test data with M-enabled geometries."""
+        from linref.events.geometry import LineStringM
+        
+        # Create linear events (roads) with M-enabled geometries
+        roads_data = pd.DataFrame({
+            'route': ['US-101', 'US-101', 'SR-1'],
+            'beg': [0.0, 10.0, 0.0],
+            'end': [10.0, 20.0, 15.0]
+        })
+        
+        # Add 2D geometries
+        roads_data['geometry'] = [
+            LineString([(0, 0), (10, 0)]),
+            LineString([(10, 0), (20, 0)]),  
+            LineString([(0, 10), (15, 10)])
+        ]
+        
+        # Add M-enabled geometries using LineStringM
+        roads_data['geometry_m'] = [
+            LineStringM(LineString([(0, 0), (10, 0)]), m=[0.0, 10.0]),
+            LineStringM(LineString([(10, 0), (20, 0)]), m=[10.0, 20.0]),
+            LineStringM(LineString([(0, 10), (15, 10)]), m=[0.0, 15.0])
+        ]
+        
+        self.roads = gpd.GeoDataFrame(roads_data, geometry='geometry', crs='EPSG:4326')
+        self.roads = self.roads.lr.set_lrs(
+            key_col=['route'],
+            loc_col='milepost',
+            beg_col='beg',
+            end_col='end',
+            geom_col='geometry',
+            geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        
+        # Create point events to project
+        self.points = gpd.GeoDataFrame({
+            'event_id': [1, 2, 3],
+            'severity': ['High', 'Low', 'Medium'],
+            'geometry': [
+                Point(5, 0.05),      # Near US-101, MP ~5
+                Point(15, 0.02),     # Near US-101, MP ~15
+                Point(7, 10.1)       # Near SR-1, MP ~7
+            ]
+        }, crs='EPSG:4326')
+
+    def test_project_basic(self):
+        """Test basic projection of points onto lines."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)  # Ignore geographic CRS warning
+            projected = self.roads.lr.project(self.points, buffer=1.0)
+        
+        # Check that all points were projected
+        self.assertEqual(len(projected), 3)
+        
+        # Check that LRS columns were added
+        self.assertIn('route', projected.columns)
+        self.assertIn('milepost', projected.columns)
+        self.assertIn('project_distance', projected.columns)
+        
+        # Check that original columns are preserved
+        self.assertIn('event_id', projected.columns)
+        self.assertIn('severity', projected.columns)
+        
+        # Check approximate milepost values
+        self.assertAlmostEqual(projected.iloc[0]['milepost'], 5.0, places=0)
+        self.assertAlmostEqual(projected.iloc[1]['milepost'], 15.0, places=0)
+        self.assertAlmostEqual(projected.iloc[2]['milepost'], 7.0, places=0)
+
+    def test_project_replace_false(self):
+        """Test that replace=False raises error when columns exist."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            projected = self.roads.lr.project(self.points, buffer=1.0, replace=False)
+        
+        # Try to project again with replace=False (should fail)
+        with self.assertRaises(ValueError) as context:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                self.roads.lr.project(projected, buffer=1.0, replace=False)
+        
+        # Check that error mentions protected columns
+        error_msg = str(context.exception)
+        self.assertIn('route', error_msg)
+        self.assertIn('milepost', error_msg)
+
+    def test_project_replace_true(self):
+        """Test that replace=True successfully replaces existing columns."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            projected = self.roads.lr.project(self.points, buffer=1.0)
+            
+            # Modify the projected data
+            projected_modified = projected.copy()
+            projected_modified['route'] = 'FAKE_ROUTE'
+            projected_modified['milepost'] = 999.0
+            
+            # Re-project with replace=True
+            reprojected = self.roads.lr.project(projected_modified, buffer=1.0, replace=True)
+        
+        # Verify columns were replaced
+        self.assertNotIn('FAKE_ROUTE', reprojected['route'].values)
+        self.assertTrue(all(reprojected['milepost'] != 999.0))
+
+    def test_project_dropna_false(self):
+        """Test that dropna=False keeps unmatched points."""
+        # Create points with one far away
+        points_with_far = gpd.GeoDataFrame({
+            'id': [1, 2, 3],
+            'geometry': [
+                Point(5, 0.05),    # Near US-101
+                Point(100, 100),   # Far away - no match
+                Point(7, 10.1)     # Near SR-1
+            ]
+        }, crs='EPSG:4326')
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=False)
+        
+        # Should keep all 3 rows
+        self.assertEqual(len(projected), 3)
+        
+        # The far point should have NaN values
+        self.assertTrue(projected.iloc[1]['route'] is None or pd.isna(projected.iloc[1]['route']))
+
+    def test_project_dropna_true(self):
+        """Test that dropna=True removes unmatched points."""
+        # Create points with one far away
+        points_with_far = gpd.GeoDataFrame({
+            'id': [1, 2, 3],
+            'geometry': [
+                Point(5, 0.05),    # Near US-101
+                Point(100, 100),   # Far away - no match
+                Point(7, 10.1)     # Near SR-1
+            ]
+        }, crs='EPSG:4326')
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=True)
+        
+        # Should only have 2 rows (matched points)
+        self.assertEqual(len(projected), 2)
+
+
 # Run tests
 if __name__ == '__main__':
     unittest.main()
