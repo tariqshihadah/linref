@@ -903,6 +903,264 @@ class TestProjectMethod(unittest.TestCase):
         self.assertEqual(len(projected), 2)
 
 
+class TestIntegrateMethod(unittest.TestCase):
+    """Test the integrate method for combining multiple DataFrames."""
+
+    def setUp(self):
+        """Set up test DataFrames with overlapping and non-overlapping events."""
+        # DataFrame 1: Road pavement conditions
+        self.df1 = pd.DataFrame({
+            'route': ['A', 'A', 'B'],
+            'beg': [0.0, 5.0, 0.0],
+            'end': [5.0, 10.0, 8.0],
+            'condition': ['Good', 'Fair', 'Good']
+        }).lr.set_lrs(
+            key_col=['route'],
+            beg_col='beg',
+            end_col='end',
+            closed='left_mod'
+        )
+        
+        # DataFrame 2: Speed limits (overlapping with df1)
+        self.df2 = pd.DataFrame({
+            'route': ['A', 'A', 'B'],
+            'beg': [0.0, 6.0, 0.0],
+            'end': [6.0, 12.0, 10.0],
+            'speed_limit': [35, 45, 55]
+        }).lr.set_lrs(
+            key_col=['route'],
+            beg_col='beg',
+            end_col='end',
+            closed='left_mod'
+        )
+        
+        # DataFrame 3: Traffic volume (different segmentation)
+        self.df3 = pd.DataFrame({
+            'route': ['A', 'A', 'B'],
+            'beg': [0.0, 7.0, 2.0],
+            'end': [7.0, 11.0, 9.0],
+            'volume': [1000, 1500, 2000]
+        }).lr.set_lrs(
+            key_col=['route'],
+            beg_col='beg',
+            end_col='end',
+            closed='left_mod'
+        )
+
+    def test_integrate_basic_two_dataframes(self):
+        """Test basic integration of two DataFrames."""
+        integrated = self.df1.lr.integrate(self.df2)
+        
+        # Check that result is a DataFrame
+        self.assertIsInstance(integrated, pd.DataFrame)
+        
+        # Check that LRS columns are present
+        self.assertIn('route', integrated.columns)
+        self.assertIn('beg', integrated.columns)
+        self.assertIn('end', integrated.columns)
+        
+        # Check that inverse index columns are present
+        self.assertIn('integrated_index_0', integrated.columns)
+        self.assertIn('integrated_index_1', integrated.columns)
+        
+        # Check that integration created more segments (least common intervals)
+        self.assertGreater(len(integrated), len(self.df1))
+        self.assertGreater(len(integrated), len(self.df2))
+
+    def test_integrate_function_multiple_dataframes(self):
+        """Test integrate function with multiple DataFrames."""
+        integrated = integrate([self.df1, self.df2, self.df3])
+        
+        # Check correct number of inverse index columns
+        self.assertIn('integrated_index_0', integrated.columns)
+        self.assertIn('integrated_index_1', integrated.columns)
+        self.assertIn('integrated_index_2', integrated.columns)
+        
+        # Check that we get even more granular segments
+        self.assertGreater(len(integrated), len(self.df1))
+
+    def test_integrate_custom_inverse_col_string(self):
+        """Test integrate with custom inverse column name (string)."""
+        integrated = self.df1.lr.integrate(self.df2, inverse_col='source_idx')
+        
+        # Check that custom column names are used
+        self.assertIn('source_idx_0', integrated.columns)
+        self.assertIn('source_idx_1', integrated.columns)
+        
+        # Default names should not be present
+        self.assertNotIn('integrated_index_0', integrated.columns)
+
+    def test_integrate_custom_inverse_col_list(self):
+        """Test integrate with custom inverse column names (list)."""
+        integrated = integrate(
+            [self.df1, self.df2, self.df3],
+            inverse_col=['pavement_idx', 'speed_idx', 'volume_idx']
+        )
+        
+        # Check that custom column names are used
+        self.assertIn('pavement_idx', integrated.columns)
+        self.assertIn('speed_idx', integrated.columns)
+        self.assertIn('volume_idx', integrated.columns)
+
+    def test_integrate_inverse_col_list_wrong_length(self):
+        """Test that inverse_col list with wrong length raises error."""
+        with self.assertRaises(ValueError) as context:
+            integrate([self.df1, self.df2, self.df3], inverse_col=['a', 'b'])
+        
+        self.assertIn('length must match', str(context.exception))
+
+    def test_integrate_fill_gaps_false(self):
+        """Test integrate with fill_gaps=False (default)."""
+        # Create DataFrames with gaps
+        df_gap1 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [5.0],
+            'attr': [1]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        df_gap2 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [7.0],
+            'end': [10.0],
+            'attr': [2]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        integrated = df_gap1.lr.integrate(df_gap2, fill_gaps=False)
+        
+        # Should only have segments where there's overlap or original events
+        # Gap between 5.0 and 7.0 should not be filled
+        gap_segments = integrated[(integrated['beg'] >= 5.0) & (integrated['end'] <= 7.0)]
+        # There should be no segment spanning the gap
+        self.assertEqual(len(gap_segments), 0)
+
+    def test_integrate_fill_gaps_true(self):
+        """Test integrate with fill_gaps=True."""
+        # Create DataFrames with gaps
+        df_gap1 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [5.0],
+            'attr': [1]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        df_gap2 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [7.0],
+            'end': [10.0],
+            'attr': [2]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        integrated = df_gap1.lr.integrate(df_gap2, fill_gaps=True)
+        
+        # Should have a segment filling the gap (5.0 to 7.0)
+        # Total extent should be from min beg to max end
+        self.assertAlmostEqual(integrated['beg'].min(), 0.0)
+        self.assertAlmostEqual(integrated['end'].max(), 10.0)
+        
+        # Should have exactly 3 segments (0-5, 5-7 gap, 7-10)
+        self.assertEqual(len(integrated), 3)
+
+    def test_integrate_split_at_locs_false(self):
+        """Test integrate with split_at_locs=False (default)."""
+        # Create a linear and point event dataframe
+        df_linear = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [10.0],
+            'attr': [1]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        df_point = pd.DataFrame({
+            'route': ['A'],
+            'loc': [5.0],
+            'attr': [2]
+        }).lr.set_lrs(key_col=['route'], loc_col='loc')
+        
+        # Without split_at_locs, point events should not cause splits
+        # This should only work with linear events
+        integrated = df_linear.lr.integrate([df_linear], split_at_locs=False)
+        
+        # Result should match the input structure
+        self.assertEqual(len(integrated), 1)
+
+    def test_integrate_incompatible_lrs(self):
+        """Test that incompatible LRS raises error."""
+        df_incompatible = pd.DataFrame({
+            'route': ['A'],
+            'start': [0.0],
+            'finish': [10.0]
+        }).lr.set_lrs(
+            key_col=['route'],
+            beg_col='start',
+            end_col='finish',
+            closed='right'  # Different closed parameter
+        )
+        
+        with self.assertRaises(LRSCompatibilityError):
+            self.df1.lr.integrate(df_incompatible)
+
+    def test_integrate_no_lrs_set(self):
+        """Test that DataFrame without LRS raises error."""
+        df_no_lrs = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [10.0]
+        })
+        
+        with self.assertRaises(LRSCompatibilityError):
+            integrate([self.df1, df_no_lrs])
+
+    def test_integrate_point_events_error(self):
+        """Test that point-only DataFrames raise error."""
+        df_point = pd.DataFrame({
+            'route': ['A'],
+            'loc': [5.0]
+        }).lr.set_lrs(key_col=['route'], loc_col='loc')
+        
+        with self.assertRaises(LRSCompatibilityError):
+            self.df1.lr.integrate(df_point)
+
+    def test_integrate_accessor_with_list(self):
+        """Test accessor integrate method with list of DataFrames."""
+        integrated = self.df1.lr.integrate([self.df2, self.df3])
+        
+        # Should have 3 inverse index columns (df1 + df2 + df3)
+        self.assertIn('integrated_index_0', integrated.columns)
+        self.assertIn('integrated_index_1', integrated.columns)
+        self.assertIn('integrated_index_2', integrated.columns)
+
+    def test_integrate_preserves_index_mapping(self):
+        """Test that inverse index columns correctly map to original indices."""
+        # Use simple DataFrames with known indices
+        df_a = pd.DataFrame({
+            'route': ['X'],
+            'beg': [0.0],
+            'end': [5.0],
+            'data_a': ['A']
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        df_b = pd.DataFrame({
+            'route': ['X'],
+            'beg': [3.0],
+            'end': [8.0],
+            'data_b': ['B']
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        integrated = integrate([df_a, df_b])
+        
+        # Check that inverse indices are valid (not all NaN)
+        self.assertFalse(integrated['integrated_index_0'].isna().all())
+        self.assertFalse(integrated['integrated_index_1'].isna().all())
+        
+        # There should be segments referencing both dataframes in the overlap
+        overlap_segs = integrated[
+            integrated['integrated_index_0'].notna() & 
+            integrated['integrated_index_1'].notna()
+        ]
+        self.assertGreater(len(overlap_segs), 0)
+
+
 # Run tests
 if __name__ == '__main__':
     unittest.main()
