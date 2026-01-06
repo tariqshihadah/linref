@@ -226,7 +226,7 @@ class LRS(object):
             Whether to apply changes to the LRS in place.
         """
         obj = self if inplace else self.copy(deep=True)
-        for key in label_list_or_none(key_col):
+        for key in label_list_or_none(key_col, if_none=[]):
             try:
                 obj.key_col.remove(key)
             except ValueError:
