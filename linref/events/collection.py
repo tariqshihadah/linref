@@ -2505,8 +2505,7 @@ class EventsCollection(EventsFrame):
             except KeyError:
                 # For single-key groupby, pandas < 2.1 expects scalar
                 # while pandas >= 3.0 expects tuple — try unwrapped scalar
-                if self.num_keys == 1 and isinstance(keys, tuple) \
-                        and len(keys) == 1:
+                if self.num_keys == 1:
                     try:
                         group = self._build_group(self._groups.get_group(keys[0]))
                         self.log[keys] = group
