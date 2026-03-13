@@ -2062,7 +2062,9 @@ class EventsCollection(EventsFrame):
                     "No keys defined in the collection to be queried.")
         elif self.num_keys == 1:
             if isinstance(keys, list) or isinstance(keys, tuple):
-                keys = keys[0]
+                keys = tuple(keys)  # keep as tuple, don't unwrap
+            else:
+                keys = (keys,)
         elif self.num_keys > 1:
             if not isinstance(keys, list) and not isinstance(keys, tuple):
                 raise TypeError("Input keys information must be provided as a "
@@ -2500,8 +2502,17 @@ class EventsCollection(EventsFrame):
                 # Build and add group to log
                 group = self._build_group(self._groups.get_group(keys))
                 self.log[keys] = group
-            # Invalid group keys (i.e., empty group)
             except KeyError:
+                # For single-key groupby, pandas < 2.1 expects scalar
+                # while pandas >= 3.0 expects tuple — try unwrapped scalar
+                if self.num_keys == 1 and isinstance(keys, tuple) \
+                        and len(keys) == 1:
+                    try:
+                        group = self._build_group(self._groups.get_group(keys[0]))
+                        self.log[keys] = group
+                        return group
+                    except KeyError:
+                        pass
                 # Deal with empty group
                 if empty:
                     group = self._build_empty()
