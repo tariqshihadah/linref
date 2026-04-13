@@ -92,6 +92,47 @@ Current branches reflect the old development history:
 For the v1.0 transition, `redesign` should become a temporary staging branch,
 not a permanent long-lived branch.
 
+### Repo-specific transition outline
+
+The target transition is:
+
+```text
+Before
+
+origin/master ---> master
+        \
+         ---> dev
+redesign -------> v1.0 work
+
+After
+
+origin/master/master ---> maint/0.1   (legacy only)
+
+redesign ---> release/1.0.0 ---> main ---> tag v1.0.0
+                                \
+                                 ---> develop
+```
+
+Important notes:
+- do not rename the current `dev` branch into `develop`
+- create a fresh `develop` from the released v1.0 state instead
+- once `release/1.0.0`, `main`, and `develop` exist, `redesign` should be retired
+- `master` should stop being treated as the future mainline and instead serve as the source for `maint/0.1`
+
+### Transition execution sequence
+
+When we are ready to perform the branch transition, the intended sequence is:
+
+1. Preserve any uncommitted work currently on `redesign`
+2. Create `maint/0.1` from `master` or `v0.1.2`
+3. Create `release/1.0.0` from `redesign`
+4. Freeze `redesign` and do all final v1.0 stabilization on `release/1.0.0`
+5. Create or merge into `main` from the stabilized `release/1.0.0`
+6. Tag `v1.0.0` on `main`
+7. Create a fresh `develop` from `main`
+8. Retire `redesign`
+9. Triage remaining old topic branches and port only what is still relevant
+
 ### Permanent branches after v1.0
 
 | Branch | Purpose |
@@ -148,6 +189,21 @@ not a permanent long-lived branch.
 12. Tag `v1.0.0` on `main`.
 13. Seed `develop` from the released v1.0 state and merge `release/1.0.0` into it.
 14. Retire `redesign` once the release is complete.
+
+### Post-v1.0 steady-state flow
+
+After the transition is complete, normal work should flow like this:
+
+```text
+feature/* ----\
+fix/* ---------> develop ---> release/X.Y.Z ---> main ---> tag vX.Y.Z
+docs/* -------/                  \
+chore/* ----/                    ---> merge back to develop
+
+main ---> hotfix/X.Y.Z-* ---> main ---> tag vX.Y.Z
+                     \
+                      ---> develop
+```
 
 ### Pending remote branches to triage
 
