@@ -22,7 +22,7 @@ def _method_deprecates_geometry(func) -> callable:
         # Check if the dataframe is spatial
         if self.is_spatial or self.is_spatial_m:
             # Check for geometry synchronization preference
-            geometry_sync = kwargs.pop('geometry_sync', self._geometry_sync)
+            geometry_sync = kwargs.pop('geometry_sync', self.geometry_sync)
             # Identify action based on preference
             if geometry_sync == 'error':
                 raise GeometrySyncError(

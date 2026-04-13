@@ -16,6 +16,11 @@ from linref.events import modify, relate, geometry, integration
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
 from linref.ext.validation import _method_deprecates_geometry
 
+# Keys for storing accessor state in DataFrame.attrs, ensuring persistence
+# across accessor re-instantiation (required for pandas >= 3.0 compatibility)
+_LINREF_LRS_KEY = '_linref_lrs'
+_LINREF_GEOMETRY_SYNC_KEY = '_linref_geometry_sync'
+
 
 class LRS(object):
 
@@ -289,10 +294,12 @@ class LRS_Accessor(object):
     def __init__(self, df) -> None:
         # Log dataframe
         self.df = df
-        # Initialize LRS
-        self._lrs = self._default_lrs.copy() if self._default_lrs is not None else None
-        # Set geometry synchronization behavior
-        self._geometry_sync = self._default_geometry_sync
+        # Initialize LRS in attrs only if not already present (preserves
+        # state across accessor re-instantiation in pandas >= 3.0)
+        if _LINREF_LRS_KEY not in self._df.attrs:
+            self.lrs = self._default_lrs.copy() if self._default_lrs is not None else None
+        if _LINREF_GEOMETRY_SYNC_KEY not in self._df.attrs:
+            self.geometry_sync = self._default_geometry_sync
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -387,17 +394,36 @@ class LRS_Accessor(object):
         return cols
 
     @property
+    def geometry_sync(self) -> str:
+        """
+        The geometry synchronization behavior for this DataFrame.
+        State is stored in df.attrs for pandas >= 3.0 compatibility.
+        """
+        return self._df.attrs.get(_LINREF_GEOMETRY_SYNC_KEY, self._default_geometry_sync)
+
+    @geometry_sync.setter
+    def geometry_sync(self, value: str) -> None:
+        valid_behaviors = ['none', 'warn', 'error', 'remove']
+        if value not in valid_behaviors:
+            raise ValueError(
+                f"Invalid geometry synchronization behavior '{value}'. "
+                f"Must be one of {valid_behaviors}."
+            )
+        self._df.attrs[_LINREF_GEOMETRY_SYNC_KEY] = value
+
+    @property
     def lrs(self) -> LRS:
         """
         The LRS object currently set for the DataFrame.
+        State is stored in df.attrs for pandas >= 3.0 compatibility.
         """
-        return self._lrs
+        return self._df.attrs.get(_LINREF_LRS_KEY)
     
     @lrs.setter
     def lrs(self, lrs) -> None:
-        if not isinstance(lrs, LRS):
+        if lrs is not None and not isinstance(lrs, LRS):
             raise ValueError("Input LRS object must be of type `LRS`.")
-        self._lrs = lrs
+        self._df.attrs[_LINREF_LRS_KEY] = lrs
 
     @property
     def is_lrs_set(self) -> bool:
@@ -414,7 +440,7 @@ class LRS_Accessor(object):
         """
         if not self.is_lrs_set:
             return True
-        return self._lrs == LRS()
+        return self.lrs == LRS()
 
     @property
     def key_col(self) -> list[str]:
@@ -989,7 +1015,7 @@ class LRS_Accessor(object):
 
         # Append or replace LRS objects
         df = self.df if inplace else self.df.copy()
-        df.lr._lrs = lrs
+        df.lr.lrs = lrs
         return None if inplace else df
 
     def modify_lrs(self, inplace=False, **kwargs) -> pd.DataFrame | None:
@@ -1012,7 +1038,7 @@ class LRS_Accessor(object):
         lrs = self.lrs.copy(deep=True)
         lrs.set_params(inplace=True, **kwargs)
         # Set the modified LRS
-        df.lr._lrs = lrs
+        df.lr.lrs = lrs
         return None if inplace else df
 
     def add_key(self, key_col, inplace=False) -> pd.DataFrame | None:
@@ -1031,7 +1057,7 @@ class LRS_Accessor(object):
         lrs = self.lrs.copy(deep=True)
         lrs.add_key(key_col, inplace=True)
         # Set the modified LRS
-        df.lr._lrs = lrs
+        df.lr.lrs = lrs
         return None if inplace else df
 
     def remove_key(self, key_col, errors='raise', inplace=False) -> None:
@@ -1052,7 +1078,7 @@ class LRS_Accessor(object):
         lrs = self.lrs.copy(deep=True)
         lrs.remove_key(key_col, errors=errors, inplace=True)
         # Set the modified LRS
-        df.lr._lrs = lrs
+        df.lr.lrs = lrs
         return None if inplace else df
 
     def clear_lrs(self, inplace=False) -> None:
@@ -1067,7 +1093,7 @@ class LRS_Accessor(object):
         """
         # Clear LRS object
         df = self.df if inplace else self.df.copy()
-        df.lr._lrs = LRS()
+        df.lr.lrs = LRS()
         return None if inplace else df
     
     @_method_require(is_linear=True)
@@ -1220,13 +1246,7 @@ class LRS_Accessor(object):
             The geometry synchronization behavior. Must be one of 'none', 
             'warn', 'error', or 'remove'.
         """
-        valid_behaviors = ['none', 'warn', 'error', 'remove']
-        if behavior not in valid_behaviors:
-            raise ValueError(
-                f"Invalid geometry synchronization behavior '{behavior}'. "
-                f"Must be one of {valid_behaviors}."
-            )
-        self._geometry_sync = behavior
+        self.geometry_sync = behavior
 
     @classmethod
     def clear_default_lrs(cls) -> None:
@@ -2676,7 +2696,7 @@ class LRS_Accessor(object):
 
 # Helper functions for event operations
 
-def test_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
+def check_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
     """
     Validate that all dataframes have compatible LRS objects assigned, 
     raising various errors for incompatible LRS configurations.

@@ -19,7 +19,7 @@ from shapely.geometry import LineString, Point
 # Import from main package to ensure accessor registration
 import linref
 from linref import LRS, LRS_Accessor, integrate
-from linref.ext.base import test_compatibility
+from linref.ext.base import check_compatibility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 
 
@@ -616,7 +616,7 @@ class TestEventOperations(unittest.TestCase):
 class TestCompatibilityFunctions(unittest.TestCase):
     """Test compatibility checking functions."""
 
-    def test_test_compatibility_valid(self):
+    def test_check_compatibility_valid(self):
         """Test compatibility check with valid DataFrames."""
         df1 = pd.DataFrame({
             'route': ['A'],
@@ -631,18 +631,18 @@ class TestCompatibilityFunctions(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
         
         # Should not raise
-        result = test_compatibility([df1, df2])
+        result = check_compatibility([df1, df2])
         self.assertEqual(result, [df1, df2])
 
-    def test_test_compatibility_no_lrs(self):
+    def test_check_compatibility_no_lrs(self):
         """Test compatibility check with DataFrame without LRS."""
         df1 = pd.DataFrame({'a': [1]})
         df2 = pd.DataFrame({'b': [2]}).lr.set_lrs(key_col=['b'], beg_col='x', end_col='y')
         
         with self.assertRaises(LRSCompatibilityError):
-            test_compatibility([df1, df2])
+            check_compatibility([df1, df2])
 
-    def test_test_compatibility_different_key_count(self):
+    def test_check_compatibility_different_key_count(self):
         """Test compatibility check with different key column counts."""
         df1 = pd.DataFrame({
             'route': ['A'],
@@ -658,7 +658,7 @@ class TestCompatibilityFunctions(unittest.TestCase):
         }).lr.set_lrs(key_col=['route', 'dir'], beg_col='beg', end_col='end', closed='right')
         
         with self.assertRaises(LRSCompatibilityError):
-            test_compatibility([df1, df2])
+            check_compatibility([df1, df2])
 
 
 class TestDefaultLRS(unittest.TestCase):
@@ -1159,6 +1159,81 @@ class TestIntegrateMethod(unittest.TestCase):
             integrated['integrated_index_1'].notna()
         ]
         self.assertGreater(len(overlap_segs), 0)
+
+
+class TestAccessorStatePersistence(unittest.TestCase):
+    """Test that accessor state persists across re-instantiation (pandas 3.0+)."""
+
+    def setUp(self):
+        self.df = pd.DataFrame({
+            'route': ['A', 'B'],
+            'beg': [0.0, 1.0],
+            'end': [1.0, 2.0],
+        })
+        self.lrs = LRS(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+
+    def test_lrs_survives_reinstantiation(self):
+        """LRS state persists when a new accessor is constructed on the same df."""
+        self.df.lr.set_lrs(self.lrs, inplace=True)
+        # Simulate pandas 3.0: construct a brand-new accessor on the same df
+        new_acc = LRS_Accessor(self.df)
+        self.assertEqual(new_acc.lrs, self.lrs)
+        self.assertEqual(new_acc.lrs.beg_col, 'beg')
+        self.assertTrue(new_acc.is_linear)
+
+    def test_geometry_sync_survives_reinstantiation(self):
+        """Geometry sync state persists across accessor re-construction."""
+        self.df.lr.set_geometry_sync('error')
+        new_acc = LRS_Accessor(self.df)
+        self.assertEqual(new_acc.geometry_sync, 'error')
+
+    def test_lrs_propagates_through_copy(self):
+        """LRS state propagates through df.copy() via attrs."""
+        df = self.df.lr.set_lrs(self.lrs, inplace=False)
+        df_copy = df.copy()
+        self.assertEqual(df_copy.lr.lrs, self.lrs)
+        self.assertTrue(df_copy.lr.is_linear)
+
+    def test_consecutive_lr_accesses_share_state(self):
+        """Multiple df.lr accesses see the same state (the core pandas 3.0 fix)."""
+        self.df.lr.set_lrs(self.lrs, inplace=True)
+        # These are potentially different accessor instances in pandas 3.0
+        lrs1 = self.df.lr.lrs
+        lrs2 = self.df.lr.lrs
+        self.assertEqual(lrs1, lrs2)
+        self.assertEqual(lrs1.beg_col, 'beg')
+
+    def test_set_lrs_then_dissolve(self):
+        """The primary failure scenario from pandas 3.0: set_lrs then use method."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'A'],
+            'beg': [0.0, 1.0, 2.0],
+            'end': [1.0, 2.0, 3.0],
+            'value': [10, 10, 20],
+        })
+        df.lr.set_lrs(self.lrs, inplace=True)
+        # This should work — dissolve sees the LRS even if accessor is re-created
+        result = df.lr.dissolve(retain=['value'])
+        self.assertIsNotNone(result)
+        self.assertTrue(result.lr.is_linear)
+
+    def test_default_lrs_used_for_new_df(self):
+        """Default LRS is still used for DataFrames without stored attrs."""
+        default = LRS(key_col=['x'], beg_col='a', end_col='b')
+        LRS_Accessor.set_default_lrs(default)
+        try:
+            fresh_df = pd.DataFrame({'x': [1], 'a': [0], 'b': [1]})
+            self.assertEqual(fresh_df.lr.lrs, default)
+        finally:
+            LRS_Accessor.clear_default_lrs()
+
+    def test_inplace_false_returns_independent_state(self):
+        """Non-inplace set_lrs returns a df with independent LRS state."""
+        df_with_lrs = self.df.lr.set_lrs(self.lrs, inplace=False)
+        # Original should still be empty
+        self.assertTrue(self.df.lr.is_lrs_empty)
+        # Returned df should have the LRS
+        self.assertEqual(df_with_lrs.lr.lrs, self.lrs)
 
 
 # Run tests
