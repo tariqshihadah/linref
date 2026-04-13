@@ -1,4 +1,7 @@
 sphinx
-geopandas
-rangel
-scipy
+sphinx-rtd-theme
+numpy>=2.1
+scipy>=1.13
+shapely>=2.0
+pandas>=2.0
+geopandas>=1.0

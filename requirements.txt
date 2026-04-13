@@ -2,8 +2,8 @@ numpy>=2.1
 matplotlib
 shapely>=2.0
 pandas>=2.0
-geopandas>=0.14
-scipy>=1.4.1
+geopandas>=1.0
+scipy>=1.13
 build
 twine
 ipython

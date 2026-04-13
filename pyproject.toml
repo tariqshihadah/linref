@@ -4,24 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linref"
-version = "0.1.1"
+version = "1.0.0"
 description = "Linearly referenced data management, manipulation, and operations"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {file = "LICENSE.rst"}
 keywords=["python", "geospatial", "linear", "data", "event", "dissolve", "overlay", "range", "numeric", "interval"]
 authors = [
     {name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}
 ]
 dependencies = [
-    "numpy", 
-    "matplotlib", 
-    "shapely>=1.7", 
-    "pandas>=1.1", 
-    "geopandas>=0.10.2", 
-    "rangel>=0.0.7",
+    "numpy>=2.1",
+    "scipy>=1.13",
+    "shapely>=2.0",
+    "pandas>=2.0",
+    "geopandas>=1.0",
 ]
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -38,6 +37,9 @@ repository = "https://github.com/tariqshihadah/linref"
 [tool.setuptools.packages.find]
 include = ["linref*"]
 exclude = ["linref.tests*"]
+
+[tool.setuptools.package-data]
+"linref.datasets" = ["_data/*"]
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.rst"]}
