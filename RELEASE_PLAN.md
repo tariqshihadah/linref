@@ -1,8 +1,17 @@
 # linref v1.0 Release Plan
 
-## Codebase Status
+## Release Readiness Summary
 
-The redesign is substantially complete. The core deliverable — replacing the old standalone-class API with a pandas accessor pattern (`.lr`) — is functionally done.
+The redesign is substantially complete. The core deliverable — replacing the
+old standalone-class API with a pandas accessor pattern (`.lr`) — is
+functionally done, and the new codebase is large enough and well-tested enough
+to justify moving into release stabilization rather than continued redesign.
+
+At the same time, the release surface is not ready yet. The biggest remaining
+risks are packaging, artifact correctness, docs/build consistency, and branch
+transition. The remaining work is less about core algorithms and more about
+making sure a clean install, published docs, and release workflow all match the
+new v1.0 reality.
 
 **Production code**: ~12,500 lines across a cleanly organized module structure:
 - `linref/ext/base.py` — LRS config object + `LRS_Accessor` (~2,900 lines)
@@ -11,9 +20,16 @@ The redesign is substantially complete. The core deliverable — replacing the o
 - `linref/events/base.py` — `EventsData` computation engine (~1,200 lines)
 - Supporting modules for modification, selection, spatial projection, integration, datasets, errors
 
-**Tests**: ~3,000 lines across 3 test files covering `ext/base`, `events/relate`, and `events/geometry`.
+**Tests**:
+- ~3,000 lines across 3 primary redesign test files covering `ext/base`, `events/relate`, and `events/geometry`
+- Local `unittest` suite currently passes (`173` tests) in the project virtualenv
 
-**Documentation**: `README.rst` updated, `USAGE.md` comprehensive (~600 lines), `CHANGELOG.md` has v1.0 section (undated), `USAGE_examples.ipynb` is a working notebook.
+**Documentation**:
+- `README.rst` updated
+- `USAGE.md` is comprehensive (~600 lines)
+- `CHANGELOG.md` has a v1.0 section, but it is still undated
+- `USAGE_examples.ipynb` is a useful working notebook
+- Sphinx / ReadTheDocs sources still need redesign-era cleanup before release
 
 ---
 
@@ -22,33 +38,67 @@ The redesign is substantially complete. The core deliverable — replacing the o
 ### Must-fix before release
 
 - [ ] Update version from `0.1.1` to `1.0.0` in `pyproject.toml`
-- [ ] Reconcile dependency versions in `pyproject.toml` — currently stale (`shapely>=1.7`, `pandas>=1.1`, `geopandas>=0.10.2`); should reflect actual minimums (`shapely>=2.0`, `pandas>=2.0`, `geopandas>=0.14`, `numpy>=2.1`, `scipy>=1.4.1`) per `requirements.txt`
+- [ ] Reconcile runtime dependency declarations in `pyproject.toml` so they reflect the actual redesign requirements
+- [ ] Add missing runtime dependencies used by the codebase, especially `scipy`
 - [ ] Update Development Status classifier from `1 - Planning` to `4 - Beta` or `5 - Production/Stable`
+- [ ] Ensure only the v1 package is distributed:
+  - exclude `linref_011` and its tests from built artifacts
+  - remove or archive legacy code if we do not intend to ship it
+- [ ] Ensure package data is distributed correctly:
+  - include `linref/datasets/_data/*` in wheel and sdist artifacts
+  - verify `linref.datasets.load()` works from an installed artifact, not just from the repo checkout
+- [ ] Restore artifact validation as part of release readiness:
+  - build wheel and sdist
+  - install into a clean environment
+  - verify `import linref`
+  - verify sample dataset loading
+  - verify at least one basic accessor workflow
+- [ ] Update Sphinx / ReadTheDocs config and source files to reflect the redesign API and current versioning
 - [ ] Add release date to the v1.0 entry in `CHANGELOG.md`
 
-### Should do before release
+### Strongly recommended before release
 
 - [ ] Write a migration guide (v0.1.x → v1.0 side-by-side API comparison)
-- [ ] Complete docstrings for public API methods — gaps in `events/selection.py`, `events/modify.py`, `events/analyze.py`, and several `LRS_Accessor` methods
-- [ ] Remove `linref_011/` directory (dead code from old v0.1 design)
+- [ ] Align secondary docs with actual behavior:
+  - `linref/datasets/README.md`
+  - `linref/tests/README.md`
+  - any usage snippets that assume old defaults or old module layout
+- [ ] Remove or fix stale redesign leftovers such as `linref/ext/default.py`
+- [ ] Restore or add CI workflows for:
+  - unit tests
+  - package build
+  - artifact smoke tests
+  - docs build
 - [ ] Add 5–10 integration tests covering end-to-end workflows (load → set LRS → dissolve → relate → integrate)
 
-### Nice-to-have
+### Good hardening work if time allows
 
+- [ ] Complete docstrings for the most-used public API methods
 - [ ] Type hints on the public API surface (`origin/15_type_hinting` branch was started)
 - [ ] Performance documentation (rough "works well up to N rows" guidance)
-- [ ] Finalize and deploy Sphinx docs to ReadTheDocs
+- [ ] Expand polished API documentation on ReadTheDocs beyond the minimum needed for release correctness
 
 ---
 
 ## Branching Strategy
 
-### Permanent branches
+### Transition from current branches
+
+Current branches reflect the old development history:
+- `master` currently represents the legacy v0.1 line
+- `dev` is a historical integration branch
+- `redesign` contains the v1.0 redevelopment
+
+For the v1.0 transition, `redesign` should become a temporary staging branch,
+not a permanent long-lived branch.
+
+### Permanent branches after v1.0
 
 | Branch | Purpose |
 |---|---|
-| `main` | Always reflects a released, tagged version. Only receives merges from `release/` or `hotfix/` branches. |
-| `develop` | Integration branch. All feature and fix branches target this. Formalize the existing `dev` branch as `develop`. |
+| `main` | Released v1.x line. Protected. Tagged releases live here. |
+| `develop` | Integration branch for upcoming v1.x work. Feature, fix, docs, and chore branches target this branch. |
+| `maint/0.1` | Legacy maintenance branch for v0.1.x if a patch or support update is needed after v1.0 ships. |
 
 ### Short-lived branches (deleted after merge)
 
@@ -56,8 +106,16 @@ The redesign is substantially complete. The core deliverable — replacing the o
 |---|---|---|---|
 | `feature/NNN-short-description` | `develop` | `develop` | New capabilities |
 | `fix/NNN-short-description` | `develop` | `develop` | Non-urgent bug fixes tied to an issue |
-| `hotfix/NNN-short-description` | `main` | `main` + `develop` | Urgent fix to a released version |
+| `docs/NNN-short-description` | `develop` | `develop` | Documentation-only work |
+| `chore/NNN-short-description` | `develop` | `develop` | Tooling, CI, packaging, maintenance tasks |
+| `hotfix/NNN-short-description` | `main` | `main` + `develop` | Urgent fix to a released v1.x version |
 | `release/X.Y.Z` | `develop` | `main` + `develop` | Pre-release stabilization (version bump, changelog, last-minute fixes) |
+
+### Legacy branch policy
+
+- `maint/0.1` receives only critical legacy fixes
+- no new feature work lands on `maint/0.1`
+- if legacy support is no longer desired, `maint/0.1` can remain as a frozen archival branch after v1.0
 
 ### Tagging convention
 
@@ -67,22 +125,44 @@ The redesign is substantially complete. The core deliverable — replacing the o
 
 ## v1.0 Transition Steps
 
-1. Reconcile dependency versions in `pyproject.toml`
-2. Remove `linref_011/` directory
-3. Cut a `release/1.0.0` branch from `redesign` for final stabilization
-4. Write migration guide
-5. Complete docstrings for most-used public methods
-6. Add integration tests
-7. Update version, classifier, and CHANGELOG date
-8. Final test run, build wheel, upload to PyPI
-9. Merge `release/1.0.0` → `main`, tag `v1.0.0`
-10. Merge `release/1.0.0` → `develop` to carry version bump forward
-11. Delete `redesign` branch
+1. Create `maint/0.1` from the current legacy release line (`master` / `v0.1.2`) so the old API has a stable maintenance home.
+2. Cut `release/1.0.0` from `redesign` for final stabilization.
+3. Fix packaging and artifact blockers:
+   - dependency declarations
+   - package discovery
+   - package data inclusion
+   - removal/exclusion of `linref_011`
+4. Restore CI and add artifact smoke tests.
+5. Update Sphinx / ReadTheDocs config and remove stale API references.
+6. Write the v0.1.x → v1.0 migration guide.
+7. Align secondary docs and remove stale code leftovers.
+8. Add end-to-end integration tests for the highest-value workflows.
+9. Update version, classifier, and `CHANGELOG.md` release date.
+10. Run final verification:
+    - unit tests
+    - integration tests
+    - wheel + sdist build
+    - clean install smoke tests
+    - docs build
+11. Create `main` from the stabilized release branch if needed, or merge `release/1.0.0` into the new `main`.
+12. Tag `v1.0.0` on `main`.
+13. Seed `develop` from the released v1.0 state and merge `release/1.0.0` into it.
+14. Retire `redesign` once the release is complete.
 
 ### Pending remote branches to triage
 
-Review and either rebase onto `develop` or close:
+Review and either rebase onto `develop`, cherry-pick selectively, or close:
 - `origin/13_merge_geoseries`
 - `origin/15_type_hinting`
 - `origin/8_project_matching`
 - `origin/29_hardcoded_index`
+
+### Immediate priority order
+
+If time is tight, execute in this order:
+1. Packaging correctness
+2. Artifact smoke tests and CI
+3. Docs / RTD correctness
+4. Migration guide
+5. Integration tests
+6. Secondary docs and cleanup
