@@ -35,8 +35,8 @@ documentation = "https://linref.readthedocs.io/"
 repository = "https://github.com/tariqshihadah/linref"
 
 [tool.setuptools.packages.find]
-include = ["linref*"]
-exclude = ["linref.tests*"]
+include = ["linref", "linref.*"]
+exclude = ["linref.tests", "linref.tests.*"]
 
 [tool.setuptools.package-data]
 "linref.datasets" = ["_data/*"]
