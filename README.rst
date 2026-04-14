@@ -40,8 +40,7 @@ An LRS defines the schema of your linearly referenced data by specifying which c
 Documentation
 =============
 
-* **Usage Guide**: `USAGE.md <USAGE.md>`_ - Comprehensive examples and patterns
-* **API Documentation**: https://linref.readthedocs.io/
-* **Examples**: See the ``examples/`` folder for Jupyter notebooks
+* **Examples**: See the `examples <examples/index.html>`_ section for step-by-step Jupyter notebook tutorials
+* **API Reference**: See the `API reference <api/index.html>`_ for detailed class and method documentation
 * **GitHub**: https://github.com/tariqshihadah/linref
-* **Release Notes**: `CHANGELOG.md <CHANGELOG.md>`_ - Detailed version history
+* **Release Notes**: See the `changelog <changelog.html>`_ for detailed version history
