@@ -59,9 +59,8 @@ new v1.0 reality.
 ### Strongly recommended before release
 
 - [ ] Write a migration guide (v0.1.x → v1.0 side-by-side API comparison)
-- [ ] Align secondary docs with actual behavior:
-  - `linref/datasets/README.md`
-  - `linref/tests/README.md`
+- [x] Align secondary docs with actual behavior:
+  - removed `linref/datasets/README.md` and `linref/tests/README.md` (duplicative of Sphinx docs and docstrings; maintenance burden)
   - any usage snippets that assume old defaults or old module layout
 - [ ] Remove or fix stale redesign leftovers such as `linref/ext/default.py`
 - [ ] Restore or add CI workflows for:
