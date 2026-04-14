@@ -139,6 +139,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# AI assistant configs
+.claude/
+.codex
+
 # Other
 NOTES
 DEBUG/
