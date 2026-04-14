@@ -1,5 +1,8 @@
 sphinx
 sphinx-rtd-theme
+nbsphinx
+myst-parser
+ipykernel
 numpy>=2.1
 scipy>=1.13
 shapely>=2.0
