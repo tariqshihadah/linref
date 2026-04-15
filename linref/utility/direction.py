@@ -1,8 +1,10 @@
+from __future__ import annotations
 import math
 import numpy as np
 import shapely
+from shapely.geometry import LineString, MultiLineString
 
-def extract_direction(line, labels=['E', 'N', 'W', 'S']):
+def extract_direction(line: LineString | MultiLineString, labels: list[str] = ['E', 'N', 'W', 'S']) -> str:
     """
     Approximate the cardinal direction of the line, based on the first and 
     last points in the geometry.
@@ -21,7 +23,7 @@ def extract_direction(line, labels=['E', 'N', 'W', 'S']):
     select = np.digitize(bearing, bins)
     return (labels + [labels[0]])[select]
 
-def extract_bearing(line, positive=True, invert=False, first=0, last=-1):
+def extract_bearing(line: LineString | MultiLineString, positive: bool = True, invert: bool = False, first: int = 0, last: int = -1) -> float:
     """
     Approximate the bearing angle of the line, based on the first and 
     last points in the geometry.

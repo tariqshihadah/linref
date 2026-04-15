@@ -21,8 +21,8 @@ new v1.0 reality.
 - Supporting modules for modification, selection, spatial projection, integration, datasets, errors
 
 **Tests**:
-- ~3,000 lines across 3 primary redesign test files covering `ext/base`, `events/relate`, and `events/geometry`
-- Local `unittest` suite currently passes (`173` tests) in the project virtualenv
+- ~3,000 lines across 4 primary test files covering `ext/base`, `events/relate`, `events/geometry`, and end-to-end integration
+- Local `unittest` suite currently passes (`188` tests) in the project virtualenv
 
 **Documentation**:
 - `README.rst` updated
@@ -37,23 +37,23 @@ new v1.0 reality.
 
 ### Must-fix before release
 
-- [ ] Update version from `0.1.1` to `1.0.0` in `pyproject.toml`
-- [ ] Reconcile runtime dependency declarations in `pyproject.toml` so they reflect the actual redesign requirements
-- [ ] Add missing runtime dependencies used by the codebase, especially `scipy`
-- [ ] Update Development Status classifier from `1 - Planning` to `4 - Beta` or `5 - Production/Stable`
-- [ ] Ensure only the v1 package is distributed:
+- [x] Update version from `0.1.1` to `1.0.0` in `pyproject.toml`
+- [x] Reconcile runtime dependency declarations in `pyproject.toml` so they reflect the actual redesign requirements
+- [x] Add missing runtime dependencies used by the codebase, especially `scipy`
+- [x] Update Development Status classifier from `1 - Planning` to `4 - Beta` or `5 - Production/Stable`
+- [x] Ensure only the v1 package is distributed:
   - exclude `linref_011` and its tests from built artifacts
   - remove or archive legacy code if we do not intend to ship it
-- [ ] Ensure package data is distributed correctly:
+- [x] Ensure package data is distributed correctly:
   - include `linref/datasets/_data/*` in wheel and sdist artifacts
   - verify `linref.datasets.load()` works from an installed artifact, not just from the repo checkout
-- [ ] Restore artifact validation as part of release readiness:
+- [x] Restore artifact validation as part of release readiness:
   - build wheel and sdist
   - install into a clean environment
   - verify `import linref`
   - verify sample dataset loading
   - verify at least one basic accessor workflow
-- [ ] Update Sphinx / ReadTheDocs config and source files to reflect the redesign API and current versioning
+- [x] Update Sphinx / ReadTheDocs config and source files to reflect the redesign API and current versioning
 - [ ] Add release date to the v1.0 entry in `CHANGELOG.md`
 
 ### Strongly recommended before release
@@ -62,13 +62,13 @@ new v1.0 reality.
 - [x] Align secondary docs with actual behavior:
   - removed `linref/datasets/README.md` and `linref/tests/README.md` (duplicative of Sphinx docs and docstrings; maintenance burden)
   - any usage snippets that assume old defaults or old module layout
-- [ ] Remove or fix stale redesign leftovers such as `linref/ext/default.py`
-- [ ] Restore or add CI workflows for:
+- [x] Remove or fix stale redesign leftovers such as `linref/ext/default.py`
+- [x] Restore or add CI workflows for:
   - unit tests
   - package build
   - artifact smoke tests
   - docs build
-- [ ] Add 5–10 integration tests covering end-to-end workflows (load → set LRS → dissolve → relate → integrate)
+- [x] Add 5–10 integration tests covering end-to-end workflows (load → set LRS → dissolve → relate → integrate)
 
 ### Good hardening work if time allows
 
@@ -215,9 +215,11 @@ Review and either rebase onto `develop`, cherry-pick selectively, or close:
 ### Immediate priority order
 
 If time is tight, execute in this order:
-1. Packaging correctness
-2. Artifact smoke tests and CI
-3. Docs / RTD correctness
-4. Migration guide
-5. Integration tests
-6. Secondary docs and cleanup
+1. ~~Packaging correctness~~ — done
+2. ~~Artifact smoke tests and CI~~ — done
+3. ~~Docs / RTD correctness~~ — done
+4. Migration guide (v0.1.x → v1.0)
+5. ~~Integration tests~~ — done (8 tests in `test_integration.py`)
+6. ~~Secondary docs and cleanup~~ — done
+7. Add release date to `CHANGELOG.md` and finalize version bump
+8. Branch transition: `release/1.0.0` → `main` → tag `v1.0.0`

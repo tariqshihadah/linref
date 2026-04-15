@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections.abc import Iterator
 import numpy as np
 import pandas as pd
 import copy, hashlib
@@ -49,21 +50,21 @@ class EventsData:
         return self.num_events
 
     @property
-    def index(self):
+    def index(self) -> np.ndarray:
         """
         Event index.
         """
         return self._index
     
     @property
-    def generic_index(self):
+    def generic_index(self) -> np.ndarray:
         """
         Generic 0-based integer index.
         """
         return np.arange(self.num_events, dtype=int)
     
     @property
-    def index_data(self):
+    def index_data(self) -> np.ndarray:
         """
         Event index data.
         """
@@ -73,14 +74,14 @@ class EventsData:
             return self.generic_index
 
     @property
-    def groups(self):
+    def groups(self) -> np.ndarray | None:
         """
         Event reference groups.
         """
         return self._groups
     
     @property
-    def groups_hashed(self):
+    def groups_hashed(self) -> np.ndarray | None:
         """
         Event reference groups hashed.
         """
@@ -90,7 +91,7 @@ class EventsData:
             return None
         
     @property
-    def groups_data(self):
+    def groups_data(self) -> np.ndarray:
         """
         Event reference groups data.
         """
@@ -100,28 +101,28 @@ class EventsData:
             return np.zeros(self.num_events, dtype=object)
 
     @property
-    def locs(self):
+    def locs(self) -> np.ndarray | None:
         """
         Event reference positions.
         """
         return self._locs
     
     @property
-    def begs(self):
+    def begs(self) -> np.ndarray | None:
         """
         Event begin positions.
         """
         return self._begs
     
     @property
-    def ends(self):
+    def ends(self) -> np.ndarray | None:
         """
         Event end positions.
         """
         return self._ends
     
     @property
-    def lengths(self):
+    def lengths(self) -> np.ndarray | None:
         """
         Event lengths. If the events are points, lengths are zero.
         """
@@ -131,7 +132,7 @@ class EventsData:
             return self._ends - self._begs
         
     @property
-    def centers(self):
+    def centers(self) -> np.ndarray | None:
         """
         Event centers. If the events are points, centers are the locations.
         """
@@ -141,7 +142,7 @@ class EventsData:
             return (self._begs + self._ends) / 2
         
     @property
-    def num_events(self):
+    def num_events(self) -> int:
         """
         Number of events.
         """
@@ -158,28 +159,28 @@ class EventsData:
                 raise ValueError("Cannot determine number of events.")
         
     @property
-    def closed(self):
+    def closed(self) -> str:
         """
         Whether the ranges are closed on left, right, both, or neither side.
         """
         return self._closed
     
     @property
-    def closed_base(self):
+    def closed_base(self) -> str:
         """
         Base closed parameter without the 'mod' suffix.
         """
         return self._closed.replace('_mod','')
     
     @property
-    def closed_mod(self):
+    def closed_mod(self) -> bool:
         """
         Whether the closed parameter has modified edges.
         """
         return self._closed in ['left_mod','right_mod']
     
     @property
-    def arr(self):
+    def arr(self) -> np.ndarray:
         if self.is_point:
             return self._locs.reshape(-1, 1)
         elif self.is_linear and not self.is_located:
@@ -188,7 +189,7 @@ class EventsData:
             return np.stack((self.begs, self.ends, self.locs), axis=1)
 
     @property
-    def is_linear(self):
+    def is_linear(self) -> bool:
         """
         Whether the events are linear.
         """
@@ -196,7 +197,7 @@ class EventsData:
         return self._begs is not None and self._ends is not None
     
     @property
-    def is_point(self):
+    def is_point(self) -> bool:
         """
         Whether the events are points.
         """
@@ -204,7 +205,7 @@ class EventsData:
         return self._begs is None and self._ends is None and self._locs is not None
     
     @property
-    def is_located(self):
+    def is_located(self) -> bool:
         """
         Whether the events are located.
         """
@@ -212,7 +213,7 @@ class EventsData:
         return self._locs is not None
     
     @property
-    def is_grouped(self):
+    def is_grouped(self) -> bool:
         """
         Whether the events are grouped.
         """
@@ -220,7 +221,7 @@ class EventsData:
         return self._groups is not None
     
     @property
-    def is_monotonic(self):
+    def is_monotonic(self) -> bool:
         """
         Whether the events are all monotonic, increasing from begin to end position. 
         If the events are points, they are always monotonic.
@@ -233,14 +234,14 @@ class EventsData:
             return True
         
     @property
-    def is_empty(self):
+    def is_empty(self) -> bool:
         """
         Whether the collection is empty.
         """
         return self.num_events == 0
     
     @property
-    def anchors(self):
+    def anchors(self) -> list[str]:
         """
         Get the anchor references for the events.
         """
@@ -253,7 +254,7 @@ class EventsData:
         return anchors
         
     @property
-    def modified_edges(self):
+    def modified_edges(self) -> np.ndarray:
         """
         Get indexes of ranges with modified edges. Only applicable when 
         self.closed in {'left_mod','right_mod'}.
@@ -283,7 +284,7 @@ class EventsData:
         return edges
 
     @property
-    def unique_groups(self):
+    def unique_groups(self) -> np.ndarray | None:
         """
         Get unique group values.
         """
@@ -407,11 +408,11 @@ class EventsData:
 
     def to_frame(
         self,
-        index_name=None,
-        group_name=None,
-        loc_name='loc',
-        beg_name='beg',
-        end_name='end'
+        index_name: str | None = None,
+        group_name: str | list[str] | None = None,
+        loc_name: str = 'loc',
+        beg_name: str = 'beg',
+        end_name: str = 'end'
         ) -> pd.DataFrame:
         """
         Convert the collection to a pandas DataFrame.
@@ -456,13 +457,13 @@ class EventsData:
     
     def from_similar(
         self,
-        index: np.ndarray = None,
-        groups: np.ndarray = None,
-        locs: np.ndarray = None,
-        begs: np.ndarray = None,
-        ends: np.ndarray = None,
+        index: np.ndarray | None = None,
+        groups: np.ndarray | None = None,
+        locs: np.ndarray | None = None,
+        begs: np.ndarray | None = None,
+        ends: np.ndarray | None = None,
         **kwargs
-        ):
+        ) -> EventsData:
         """
         Create a new instance of the class with similar properties to the 
         current instance.
@@ -500,7 +501,7 @@ class EventsData:
         """
         return np.unique(self.groups, return_counts=True)
 
-    def copy(self, deep=False):
+    def copy(self, deep: bool = False) -> EventsData:
         """
         Create an exact copy of the object instance.
         
@@ -511,7 +512,7 @@ class EventsData:
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
     
-    def reset_index(self, inplace=False):
+    def reset_index(self, inplace: bool = False) -> EventsData | None:
         """
         Reset the index to a generic 0-based index.
         """
@@ -523,7 +524,7 @@ class EventsData:
         return None if inplace else rc
     
     @utility._method_require(is_linear=True)
-    def reset_locs(self, inplace=False):
+    def reset_locs(self, inplace: bool = False) -> EventsData | None:
         """
         Reset the locs to None.
         """
@@ -532,7 +533,7 @@ class EventsData:
         rc._locs = None
         return None if inplace else rc
     
-    def select(self, selector, ignore=False, inplace=False):
+    def select(self, selector: np.ndarray | slice, ignore: bool = False, inplace: bool = False) -> EventsData | None:
         """
         Select events by index, slice, or boolean mask. Use ignore=True to use 
         a generic, 0-based index, ignoring the current index values.
@@ -550,7 +551,7 @@ class EventsData:
         """
         return selection.select(self, selector, ignore=ignore, inplace=inplace)
     
-    def select_slice(self, slice_, inplace=False):
+    def select_slice(self, slice_: slice, inplace: bool = False) -> EventsData | None:
         """
         Select events by slice.
 
@@ -563,7 +564,7 @@ class EventsData:
         """
         return selection.select_slice(self, slice_, inplace=inplace)
 
-    def select_group(self, group, ungroup=None, ignore_missing=True, inplace=False):
+    def select_group(self, group, ungroup: bool | None = None, ignore_missing: bool = True, inplace: bool = False) -> EventsData | None:
         """
         Select events by group.
 
@@ -587,7 +588,7 @@ class EventsData:
         return selection.select_group(
             self, group, ungroup=ungroup, ignore_missing=ignore_missing, inplace=inplace)
     
-    def drop(self, mask, inplace=False):
+    def drop(self, mask: np.ndarray, inplace: bool = False) -> EventsData | None:
         """
         Drop events by boolean mask.
 
@@ -600,7 +601,7 @@ class EventsData:
         """
         return selection.select_mask(self, ~mask, inplace=inplace)
     
-    def drop_group(self, group, inplace=False):
+    def drop_group(self, group, inplace: bool = False) -> EventsData | None:
         """
         Drop events by group.
 
@@ -613,7 +614,7 @@ class EventsData:
         """
         return selection.drop_group(self, group, inplace=inplace)
     
-    def set_closed(self, closed=None, inplace=False):
+    def set_closed(self, closed: str | None = None, inplace: bool = False) -> EventsData | None:
         """
         Change whether ranges are closed on left, right, both, or neither side. 
         
@@ -645,7 +646,7 @@ class EventsData:
         rc._closed_base = closed.replace('_mod','')
         return None if inplace else rc
 
-    def ungroup(self, inplace=False):
+    def ungroup(self, inplace: bool = False) -> EventsData | None:
         """
         Remove group labels from the collection.
         """
@@ -655,7 +656,7 @@ class EventsData:
         return None if inplace else rc
     
     @utility._method_require(is_linear=True)
-    def set_monotonic(self, inplace=False, **kwargs):
+    def set_monotonic(self, inplace: bool = False, **kwargs) -> EventsData | None:
         """
         Arrange begin and end positions so that all ranges are increasing.
 
@@ -672,7 +673,7 @@ class EventsData:
         rc._begs, rc._ends = begs, ends
         return None if inplace else rc
     
-    def argsort(self, by):
+    def argsort(self, by: str | list[str]) -> np.ndarray:
         f"""
         Get the indices which would sort the events by a selected event data
         anchor.
@@ -703,7 +704,7 @@ class EventsData:
         index = np.lexsort(by)
         return index
 
-    def sort(self, by, return_index=False, inplace=False):
+    def sort(self, by: str | list[str], return_index: bool = False, inplace: bool = False) -> EventsData | tuple[EventsData, np.ndarray] | None:
         f"""
         Sort the events by a selected event data anchor.
         
@@ -727,7 +728,7 @@ class EventsData:
         res = res if not return_index else (res, index)
         return None if inplace else res
     
-    def sort_standard(self, return_index=False, inplace=False):
+    def sort_standard(self, return_index: bool = False, inplace: bool = False) -> EventsData | tuple[EventsData, np.ndarray] | None:
         """
         Sort the events by their positional information in the standard order
         of 'groups', 'begs', 'ends' for linear events and 'groups', 'locs' 
@@ -753,7 +754,7 @@ class EventsData:
         # Apply sorting
         return self.sort(by, return_index=return_index, inplace=inplace)
     
-    def duplicated(self, subset=None, keep='first'):
+    def duplicated(self, subset: list[str] | None = None, keep: str = 'first') -> np.ndarray:
         """
         Return a boolean mask of duplicated events in terms of all or a 
         selection of event anchors.
@@ -768,7 +769,7 @@ class EventsData:
         """
         return analyze.duplicated(self, subset=subset, keep=keep)
     
-    def next_same_group(self, all_=True, when_one=True):
+    def next_same_group(self, all_: bool = True, when_one: bool = True) -> bool | np.ndarray:
         """
         Whether all or any ranges have the same group as the next range in the
         collection.
@@ -786,7 +787,7 @@ class EventsData:
         else:
             return res
             
-    def next_overlapping(self, all_=True, when_one=True, enforce_edges=False):
+    def next_overlapping(self, all_: bool = True, when_one: bool = True, enforce_edges: bool = False) -> bool | np.ndarray:
         """
         Whether all or any ranges are overlapping the next range in the 
         collection.
@@ -825,7 +826,7 @@ class EventsData:
             return res
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def next_consecutive(self, all_=True, when_one=True):
+    def next_consecutive(self, all_: bool = True, when_one: bool = True) -> bool | np.ndarray:
         """
         Whether all or any ranges are consecutive with the next range in the 
         collection, i.e. the end of one range is the beginning of the next.
@@ -860,7 +861,7 @@ class EventsData:
         else:
             return res
         
-    def consecutive_strings(self):
+    def consecutive_strings(self) -> np.ndarray:
         """
         Identify strings of consecutive events in the collection, returning 
         an array of integers indicating which consecutive string each event 
@@ -878,7 +879,7 @@ class EventsData:
         return res
 
     @utility._method_require(is_grouped=True)
-    def iter_groups(self, ungroup=True):
+    def iter_groups(self, ungroup: bool = True) -> Iterator[tuple]:
         """
         Iterate over the groups in the collection, yielding the group label
         and the corresponding EventsData for each group.
@@ -909,7 +910,7 @@ class EventsData:
             yield group, events
 
     @utility._method_require(is_grouped=True)
-    def iter_group_indices(self):
+    def iter_group_indices(self) -> Iterator[tuple]:
         """
         Iterate over the group indices in the collection.
         """
@@ -928,7 +929,12 @@ class EventsData:
         pass
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def dissolve(self, sort=False, return_index=False, return_relation=False):
+    def dissolve(
+            self,
+            sort: bool = False,
+            return_index: bool = False,
+            return_relation: bool = False
+        ) -> EventsData | tuple[EventsData, np.ndarray] | tuple[EventsData, relate.EventsRelation] | tuple[EventsData, np.ndarray, relate.EventsRelation]:
         """
         Dissolve consecutive linear events into single events. For best 
         results, input events should be sorted.
@@ -955,7 +961,7 @@ class EventsData:
         )
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def resegment(self, length=1, fill='cut', return_relation=False):
+    def resegment(self, length: float = 1, fill: str = 'cut', return_relation: bool = False):
         """
         Resegment events into smaller segments of equal length, addressing 
         edge cases in a variety of ways using the fill parameter.
@@ -1018,7 +1024,7 @@ class EventsData:
         return modify.resegment(self, length=length, fill=fill, return_relation=return_relation)
 
     @utility._method_require(is_empty=False)
-    def relate(self, other: EventsData, cache=True, **kwargs):
+    def relate(self, other: EventsData, cache: bool = True, **kwargs) -> relate.EventsRelation:
         """
         Create an events data relationship between two collections of events.
 
@@ -1039,7 +1045,7 @@ class EventsData:
         return relate.EventsRelation(self, other, cache=cache, **kwargs)
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def overlay(self, other: EventsData, normalize=False, norm_by='right', chunksize=1000, grouped=True):
+    def overlay(self, other: EventsData, normalize: bool = False, norm_by: str = 'right', chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Compute the overlay of two collections of events.
 
@@ -1076,7 +1082,7 @@ class EventsData:
         )
 
     @utility._method_require(is_empty=False)
-    def intersect(self, other: EventsData, enforce_edges=True, chunksize=1000, grouped=True):
+    def intersect(self, other: EventsData, enforce_edges: bool = True, chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Identify intersections between two collections of events.
 
@@ -1108,7 +1114,7 @@ class EventsData:
             chunksize=chunksize
         )
     
-    def extend(self, extend_begs=0, extend_ends=0, inplace=False):
+    def extend(self, extend_begs: float | np.ndarray = 0, extend_ends: float | np.ndarray = 0, inplace: bool = False) -> EventsData | None:
         """
         Extend the range of events by a specified amount in either or both 
         directions.
@@ -1134,7 +1140,7 @@ class EventsData:
             inplace=inplace
         )
     
-    def shift(self, shift, inplace=False):
+    def shift(self, shift: float | np.ndarray, inplace: bool = False) -> EventsData | None:
         """
         Shift the range of events by a specified amount.
 
@@ -1153,7 +1159,7 @@ class EventsData:
             inplace=inplace
         )
     
-    def round(self, decimals=None, factor=None, inplace=False):
+    def round(self, decimals: int | None = None, factor: float | None = None, inplace: bool = False) -> EventsData | None:
         """
         Round the begin and end positions of the events to a specified number 
         of decimals or to the nearest multiple of a specified factor.

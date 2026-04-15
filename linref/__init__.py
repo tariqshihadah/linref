@@ -12,3 +12,15 @@ from linref import datasets
 # Expose extension settings
 set_default_lrs = LRS_Accessor.set_default_lrs
 set_default_geometry_sync = LRS_Accessor.set_default_geometry_sync
+
+__all__ = [
+    'EventsData',
+    'LRS',
+    'LRS_Accessor',
+    'integrate',
+    'extract_direction',
+    'extract_bearing',
+    'datasets',
+    'set_default_lrs',
+    'set_default_geometry_sync',
+]

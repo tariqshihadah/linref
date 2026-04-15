@@ -191,7 +191,14 @@ class EventsRelation(object):
 
     _valid_relate_agg_methods = {'equal_groups', 'overlay', 'intersect'}
 
-    def __init__(self, left, right, left_df=None, right_df=None, cache=True) -> None:
+    def __init__(
+            self,
+            left: base.EventsData,
+            right: base.EventsData,
+            left_df: pd.DataFrame | None = None,
+            right_df: pd.DataFrame | None = None,
+            cache: bool = True
+        ) -> None:
         # Log input data
         self.cache = cache
         self._left = left # Set directly for order of operations validation
@@ -263,10 +270,11 @@ class EventsRelation(object):
 
     @property
     def cache(self) -> bool:
+        """Whether computed relationship data is cached for reuse."""
         return self._cache
     
     @cache.setter
-    def cache(self, value) -> None:
+    def cache(self, value: bool) -> None:
         if not isinstance(value, bool):
             raise TypeError("The 'cache' parameter must be a boolean.")
         self._cache = value
@@ -275,18 +283,22 @@ class EventsRelation(object):
 
     @property
     def shape(self) -> tuple:
+        """Shape of the relationship matrix as (left_events, right_events)."""
         return self.left.num_events, self.right.num_events
     
     @property
     def equal_groups_data(self) -> sp.csr_matrix | None:
+        """Cached equal-groups boolean matrix, or None if not yet computed."""
         return self._equal_groups_data
     
     @property
     def overlay_data(self) -> sp.csr_matrix | None:
+        """Cached overlay matrix, or None if not yet computed."""
         return self._overlay_data
         
     @property
     def intersect_data(self) -> sp.csr_matrix | None:
+        """Cached intersection matrix, or None if not yet computed."""
         return self._intersect_data
     
     @property
@@ -305,7 +317,7 @@ class EventsRelation(object):
         obj.reset_selector()
         return obj
 
-    def cache_memory_usage(self, unit='MB') -> float:
+    def cache_memory_usage(self, unit: str = 'MB') -> float:
         """
         Get the memory usage of the cached data.
 
@@ -425,7 +437,7 @@ class EventsRelation(object):
                 return self.overlay_data
         return self.overlay(**kwargs)
 
-    def copy(self, deep=False):
+    def copy(self, deep: bool = False) -> EventsRelation:
         """
         Create an exact copy of the object instance.
         
@@ -527,7 +539,7 @@ class EventsRelation(object):
             raise ValueError(
                 "Invalid selector provided. Must be a string, list, or slice.")
         
-    def equal_groups(self, chunksize=1000, grouped=True) -> sp.csr_matrix:
+    def equal_groups(self, chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Compute a boolean matrix indicating whether left and right events
         belong to the same group.
@@ -567,7 +579,7 @@ class EventsRelation(object):
             }
         return arr
 
-    def overlay(self, normalize=True, norm_by='right', chunksize=1000, grouped=True) -> sp.csr_matrix:
+    def overlay(self, normalize: bool = True, norm_by: str = 'right', chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
         
@@ -619,7 +631,7 @@ class EventsRelation(object):
             }
         return arr
     
-    def intersect(self, enforce_edges=True, chunksize=1000, grouped=True) -> sp.csr_matrix:
+    def intersect(self, enforce_edges: bool = True, chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Compute the intersection of the left and right events.
 
@@ -695,7 +707,7 @@ class EventsRelation(object):
     # ----------------------------------------------------------------------- #
 
     @_validate_agg_axis_wrapper
-    def count(self, axis=1, **kwargs) -> np.ndarray:
+    def count(self, axis: int = 1, **kwargs) -> np.ndarray:
         """
         Count the number of intersections along the specified axis.
 
@@ -726,7 +738,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def single(self, index=0, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def single(self, index: int = 0, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning the first value for
@@ -784,7 +796,7 @@ class EventsRelation(object):
         output_array = np.vstack(output)
         return output_array
     
-    def first(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def first(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning the first value for
@@ -815,7 +827,7 @@ class EventsRelation(object):
         """
         return self.single(data=data, index=0, axis=axis, squeeze=squeeze, **kwargs)
     
-    def last(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def last(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning the last value for
@@ -850,7 +862,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def list(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def list(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning a list of all values for
@@ -899,7 +911,7 @@ class EventsRelation(object):
         output_array[:] = output
         return output_array
     
-    def set(self, data=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def set(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning a set of all values for
@@ -938,7 +950,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def value_counts(self, data=None, axis=1, **kwargs) -> pd.DataFrame:
+    def value_counts(self, data: np.ndarray | pd.Series | None = None, axis: int = 1, **kwargs) -> pd.DataFrame:
         """
         Aggregate all input data values along the specified axis of the events
         relation against the other axis, returning pandas DataFrame with
@@ -989,7 +1001,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def sum(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def sum(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, method: str | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Sum the input data along the specified axis of the events relationship,
         multiplying by the overlay or intersection data and summing the result.
@@ -1048,7 +1060,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def mean(self, data=None, method=None, axis=1, squeeze=True, **kwargs) -> np.ndarray:
+    def mean(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, method: str | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Compute the mean of the input data along the specified axis of the events 
         relationship, multiplying by the overlay or intersection data and summing 
@@ -1118,7 +1130,7 @@ class EventsRelation(object):
     @_require_agg_data
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def mode(self, data=None, axis=1, method=None, squeeze=True, **kwargs) -> np.ndarray:
+    def mode(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, axis: int = 1, method: str | None = None, squeeze: bool = True, **kwargs) -> np.ndarray:
         """
         Compute the mode of the input data along the specified axis of the events 
         relationship, multiplying by the overlay or intersection data and summing 
@@ -1408,7 +1420,7 @@ class EventsRelation(object):
     @_get_linestring_m_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def interpolate(self, data=None, axis=1, multiple='first', **kwargs) -> np.ndarray:
+    def interpolate(self, data: np.ndarray | None = None, axis: int = 1, multiple: str = 'first', **kwargs) -> np.ndarray:
         """
         Interpolate new point geometries from intersecting events based on the 
         location of the target events, returning an array of interpolated
@@ -1505,7 +1517,7 @@ class EventsRelation(object):
     @_get_linestring_m_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def cut(self, data=None, axis=1, multiple='first', **kwargs) -> np.ndarray:
+    def cut(self, data: np.ndarray | None = None, axis: int = 1, multiple: str = 'first', **kwargs) -> np.ndarray:
         """
         Cut new linear geometries from intersecting events based on the begin 
         and end bounds of the target events, returning an array of cut 
@@ -1608,7 +1620,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_require_agg_data
     @_validate_agg_1d_data_wrapper
-    def line_merge_m(self, data=None, axis=1, **kwargs) -> pd.Series:
+    def line_merge_m(self, data: np.ndarray | None = None, axis: int = 1, **kwargs) -> pd.Series:
         """
         Aggregate all input data values along the specified axis of the events
         relationship against the other axis, returning a pandas Series with

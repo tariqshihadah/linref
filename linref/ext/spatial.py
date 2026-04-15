@@ -16,11 +16,11 @@ def parallel_project_hausdorff(
     target: gpd.GeoDataFrame,
     projected: gpd.GeoDataFrame,
     buffer: float = 0,
-    max_distance: float = None,
+    max_distance: float | None = None,
     match: int = 1,
-    densify: float = None,
+    densify: float | None = None,
     replace: bool = False,
-):
+) -> gpd.GeoDataFrame:
     """
     Experimental class for performing projections of linear geometries onto
     a primary linearly referenced layer using a series of tests based on the

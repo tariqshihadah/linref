@@ -1,5 +1,6 @@
 from __future__ import annotations
 import warnings
+from collections.abc import Iterator
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -24,7 +25,37 @@ _LINREF_GEOMETRY_SYNC_KEY = '_linref_geometry_sync'
 
 class LRS(object):
 
-    def __init__(self, key_col=None, loc_col=None, beg_col=None, end_col=None, geom_col=None, geom_m_col=None, closed=None) -> None:
+    def __init__(
+        self,
+        key_col: str | list[str] | None = None,
+        loc_col: str | None = None,
+        beg_col: str | None = None,
+        end_col: str | None = None,
+        geom_col: str | None = None,
+        geom_m_col: str | None = None,
+        closed: str | None = None,
+    ) -> None:
+        """
+        Define a linear referencing system (LRS) configuration.
+
+        Parameters
+        ----------
+        key_col : str or list of str, optional
+            Column name(s) identifying one or more unique route identifier 
+            or grouping columns (e.g., 'Route', 'County', etc.).
+        loc_col : str, optional
+            Column name for point event locations.
+        beg_col : str, optional
+            Column name for the begin milepost of linear events.
+        end_col : str, optional
+            Column name for the end milepost of linear events.
+        geom_col : str, optional
+            Column name for the geometry geometry objects.
+        geom_m_col : str, optional
+            Column name for M-enabled geometry objects.
+        closed : {'left', 'right', 'left_mod', 'right_mod', 'both', 'neither'}, optional
+            Interval closure type for linear events. Defaults to 'left_mod'.
+        """
         # Set LRS parameters
         self.set_params(
             key_col=key_col,
@@ -123,7 +154,7 @@ class LRS(object):
             'closed': self.closed
         }
     
-    def copy(self, deep=False) -> LRS:
+    def copy(self, deep: bool = False) -> LRS:
         """
         Create an exact copy of the object instance.
         
@@ -134,7 +165,11 @@ class LRS(object):
         """
         return copy.deepcopy(self) if deep else copy.copy(self)
 
-    def set_closed(self, closed=None, inplace=False) -> LRS | None:
+    def set_closed(
+            self,
+            closed: str | None = None,
+            inplace: bool = False
+        ) -> LRS | None:
         """
         Set LRS closure type.
 
@@ -160,7 +195,7 @@ class LRS(object):
         return None if inplace else obj
 
     
-    def set_params(self, inplace=False, **kwargs) -> LRS | None:
+    def set_params(self, inplace: bool = False, **kwargs) -> LRS | None:
         """
         Set LRS parameters.
 
@@ -202,7 +237,7 @@ class LRS(object):
 
         return None if inplace else obj
     
-    def add_key(self, key_col, inplace=False) -> None:
+    def add_key(self, key_col: str | list[str], inplace: bool = False) -> LRS | None:
         """
         Add one or more key columns to the LRS.
         
@@ -217,7 +252,7 @@ class LRS(object):
         obj.key_col.extend(label_list_or_none(key_col))
         return None if inplace else obj
 
-    def remove_key(self, key_col, errors='raise', inplace=False) -> None:
+    def remove_key(self, key_col: str | list[str], errors: str = 'raise', inplace: bool = False) -> LRS | None:
         """
         Remove one or more key columns from the LRS.
 
@@ -240,7 +275,7 @@ class LRS(object):
                 continue
         return None if inplace else obj
 
-    def study(self, df) -> dict:
+    def study(self, df: pd.DataFrame) -> dict:
         """
         Validate the dataframe for LRS compatibility.
 
@@ -950,7 +985,7 @@ class LRS_Accessor(object):
             allow_undefined_events=allow_undefined_events
         )
     
-    def copy(self, deep=False) -> LRS_Accessor:
+    def copy(self, deep: bool = False) -> LRS_Accessor:
         """
         Create an exact copy of the object instance.
         
@@ -969,7 +1004,7 @@ class LRS_Accessor(object):
         df_copy.lr.set_lrs(self.lrs, inplace=True)
         return df_copy
     
-    def lrs_like(self, other, inplace=False) -> pd.DataFrame | None:
+    def lrs_like(self, other: pd.DataFrame | LRS_Accessor, inplace: bool = False) -> pd.DataFrame | None:
         """
         Assign the LRS settings of another DataFrame to the current DataFrame.
 
@@ -994,7 +1029,7 @@ class LRS_Accessor(object):
         df.lr.set_lrs(other.lrs, inplace=True)
         return None if inplace else df
 
-    def set_lrs(self, lrs=None, inplace=False, **kwargs) -> pd.DataFrame | None:
+    def set_lrs(self, lrs: LRS | None = None, inplace: bool = False, **kwargs) -> pd.DataFrame | None:
         """
         Set the LRS object for the DataFrame.
 
@@ -1018,7 +1053,7 @@ class LRS_Accessor(object):
         df.lr.lrs = lrs
         return None if inplace else df
 
-    def modify_lrs(self, inplace=False, **kwargs) -> pd.DataFrame | None:
+    def modify_lrs(self, inplace: bool = False, **kwargs) -> pd.DataFrame | None:
         """
         Modify the parameters of the existing LRS object in the DataFrame.
 
@@ -1041,7 +1076,7 @@ class LRS_Accessor(object):
         df.lr.lrs = lrs
         return None if inplace else df
 
-    def add_key(self, key_col, inplace=False) -> pd.DataFrame | None:
+    def add_key(self, key_col: str | list[str], inplace: bool = False) -> pd.DataFrame | None:
         """
         Add one or more key columns to an existing LRS object in the DataFrame.
 
@@ -1060,7 +1095,7 @@ class LRS_Accessor(object):
         df.lr.lrs = lrs
         return None if inplace else df
 
-    def remove_key(self, key_col, errors='raise', inplace=False) -> None:
+    def remove_key(self, key_col: str | list[str], errors: str = 'raise', inplace: bool = False) -> None:
         """
         Remove one or more key columns from an existing LRS object in the DataFrame.
 
@@ -1081,7 +1116,7 @@ class LRS_Accessor(object):
         df.lr.lrs = lrs
         return None if inplace else df
 
-    def clear_lrs(self, inplace=False) -> None:
+    def clear_lrs(self, inplace: bool = False) -> None:
         """
         Clear the LRS object from the DataFrame. Applies a new empty LRS object
         equivalent to LRS().
@@ -1097,7 +1132,7 @@ class LRS_Accessor(object):
         return None if inplace else df
     
     @_method_require(is_linear=True)
-    def set_monotonic(self, inplace=False) -> pd.DataFrame | None:
+    def set_monotonic(self, inplace: bool = False) -> pd.DataFrame | None:
         """
         Ensure that linear events in the DataFrame are monotonic according to
         the set LRS, reordering begin and end values as needed. This only 
@@ -1143,7 +1178,7 @@ class LRS_Accessor(object):
         geoms_m = list(map(_upgrade_geom, self.geoms, self.begs, self.ends))
         return np.array(geoms_m)
 
-    def add_geom_m(self, name='geometry_m', inplace=False) -> pd.DataFrame | None:
+    def add_geom_m(self, name: str = 'geometry_m', inplace: bool = False) -> pd.DataFrame | None:
         """
         Add an M-enabled geometry column to the DataFrame based on the begin 
         and end values of the LRS.
@@ -1168,7 +1203,7 @@ class LRS_Accessor(object):
         return None if inplace else df
 
     @_method_require(is_grouped=True)
-    def iter_groups(self):
+    def iter_groups(self) -> Iterator[tuple]:
         """
         Iterate over unique event groups in the dataframe based on the 
         LRS key columns.
@@ -1192,7 +1227,7 @@ class LRS_Accessor(object):
         return pd.Series(data=counts, index=groups)
 
     @classmethod
-    def set_default_lrs(cls, lrs=None, **kwargs) -> None:
+    def set_default_lrs(cls, lrs: LRS | None = None, **kwargs) -> None:
         """
         Set the default LRS object for the LRS_Accessor class. Default LRS
         objects are used when no LRS objects are set for a specific DataFrame.
@@ -1284,7 +1319,7 @@ class LRS_Accessor(object):
             return (df, sorter) if return_index else df
         
     @_method_require(is_grouped=True)
-    def get_group(self, group) -> pd.DataFrame:
+    def get_group(self, group: str | list) -> pd.DataFrame:
         """
         Retrieve a subset of the dataframe corresponding to a specific group
         based on the LRS key columns.
@@ -1308,7 +1343,7 @@ class LRS_Accessor(object):
         return self.df.loc[index]
         
     @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
-    def get_chains(self, name='chain', enforce_m=True) -> pd.Series:
+    def get_chains(self, name: str = 'chain', enforce_m: bool = True) -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
         contiguous linear geometries within each group.
@@ -1355,7 +1390,7 @@ class LRS_Accessor(object):
         return chains.reindex_like(self.df)
     
     @_method_require(is_linear=True, is_spatial=True)
-    def add_chaining(self, name='chain', inplace=False, replace=False, enforce_m=True) -> pd.DataFrame | None:
+    def add_chaining(self, name: str = 'chain', inplace: bool = False, replace: bool = False, enforce_m: bool = True) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
@@ -1837,11 +1872,11 @@ class LRS_Accessor(object):
     @_method_require(is_linear=True)
     def resegment(
         self,
-        length=1,
-        fill='cut',
-        inverse_col=None,
-        return_relation=False,
-        cut_geom=True
+        length: float = 1,
+        fill: str = 'cut',
+        inverse_col: str | None = None,
+        return_relation: bool = False,
+        cut_geom: bool = True
     ) -> pd.DataFrame | None:
         """
         Resegment the events of the LRS to the specified length.
@@ -1965,11 +2000,11 @@ class LRS_Accessor(object):
     @_method_require(is_linear=True)
     def dissolve(
         self, 
-        retain: list = [], 
+        retain: list[str] = [], 
         sort: bool = True, 
         inverse_index: bool = True, 
         inverse_col: str = 'dissolved_index', 
-        merge_geom: bool = None,
+        merge_geom: bool | None = None,
         return_relation: bool = False,
     ) -> pd.DataFrame | tuple[pd.DataFrame, relate.EventsRelation] | None:
         """
@@ -2880,7 +2915,7 @@ def parse_geoms_m_wkt(geoms: pd.Series) -> pd.Series:
     # Parse WKT geometries
     return geoms.apply(geometry.parse_linestring_m_wkt)
 
-def parse_geoms_m_shapely(geoms: pd.Series, reverse=False) -> pd.Series:
+def parse_geoms_m_shapely(geoms: pd.Series, reverse: bool = False) -> pd.Series:
     """
     Parse the Shapely geometry representations of M-enabled geometries
     into a series of LineStringM object.
