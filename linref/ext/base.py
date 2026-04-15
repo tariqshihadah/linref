@@ -2784,6 +2784,12 @@ def integrate(
         the same label with an appended suffix of '_0', '_1', etc. If None,
         default labels of 'integrated_index_0', 'integrated_index_1', etc.
         will be used.
+
+    Notes
+    -----
+    This function operates purely on linear event intervals and does not
+    read, produce, or propagate geometry columns. Geometry columns are
+    ignored when checking LRS compatibility between input DataFrames.
     """
     # Check for dataframe index adjustment
     adj = kwargs.pop('index_adjustment', 0)
@@ -2812,8 +2818,10 @@ def integrate(
             raise LRSCompatibilityError(
                 f"Input DataFrame at index {i - adj} LRS has no linear events."
             )
-        # Validate that all LRS are equivalent
-        if not df.lr.lrs == dfs[0].lr.lrs:
+        # Validate that all LRS have compatible linear referencing params
+        # (geometry columns are not used by integrate and are ignored)
+        if df.lr.lrs.set_params(geom_col=None, geom_m_col=None) != \
+                dfs[0].lr.lrs.set_params(geom_col=None, geom_m_col=None):
             raise LRSCompatibilityError(
                 f"Input DataFrame at index {i - adj} has an incompatible "
                 "linear referencing system."
@@ -2858,6 +2866,9 @@ def integrate(
         )
         # Append indices from each input dataframe
         integrated[inverse_col[i]] = index
+
+    # Set LRS on integrated output from first input
+    integrated = integrated.lr.lrs_like(dfs[0])
 
     return integrated
 
