@@ -256,7 +256,7 @@ def parallel_project_hausdorff(
     joined[[target.lr.beg_col, target.lr.end_col]] = pd.DataFrame(list(starmap(
         _project_onto_target,
         zip(joined['__target_geometry_m__'], joined['__projected_boundary__'])
-    )), index=joined.index)
+    )), index=joined.index, columns=[target.lr.beg_col, target.lr.end_col])
 
     # Construct final projected dataframe
     joined = pd.merge(
