@@ -58,7 +58,7 @@ new v1.0 reality.
 
 ### Strongly recommended before release
 
-- [ ] Write a migration guide (v0.1.x → v1.0 side-by-side API comparison)
+- [x] Write a migration guide (v0.1.x → v1.0 side-by-side API comparison)
 - [x] Align secondary docs with actual behavior:
   - removed `linref/datasets/README.md` and `linref/tests/README.md` (duplicative of Sphinx docs and docstrings; maintenance burden)
   - any usage snippets that assume old defaults or old module layout
@@ -72,8 +72,8 @@ new v1.0 reality.
 
 ### Good hardening work if time allows
 
-- [ ] Complete docstrings for the most-used public API methods
-- [ ] Type hints on the public API surface (`origin/15_type_hinting` branch was started)
+- [x] Complete docstrings for the most-used public API methods
+- [x] Type hints on the public API surface (`origin/15_type_hinting` branch was started)
 - [ ] Performance documentation (rough "works well up to N rows" guidance)
 - [ ] Expand polished API documentation on ReadTheDocs beyond the minimum needed for release correctness
 

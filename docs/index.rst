@@ -11,4 +11,5 @@ Linear Referencing with linref
 
    examples/index
    api/index
+   migration
    changelog
