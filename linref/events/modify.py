@@ -311,45 +311,43 @@ def resegment(events, length=1, fill='cut', return_relation=False):
     fill : {'none','cut','left','right','extend','balance'}, default 'cut'
         How to fill a gap at the end of the input range.
 
-        Options
-        -------
-        none : no range will be generated to fill the gap at the end of the 
-            input range.
-        cut : a truncated range will be created to fill the gap with a 
-            length less than the full range length.
-        left : the final range will be anchored on the end value and will 
-            extend the full range length to the left. 
-        right : the final range will be anchored on the grid defined by the 
-            step value, extending the full range length to the right, 
-            beyond the defined end value.
-        extend : the final range will be anchored on the grid defined by 
-            the step value, extending beyond the step length to the right
-            bound of the range.
-        balance : if the final range is greater than or equal to half the 
-            target range length, perform the cut method; if it is less, 
-            perform the extend method.
+        - ``none`` : no range will be generated to fill the gap at the end of
+          the input range.
+        - ``cut`` : a truncated range will be created to fill the gap with a
+          length less than the full range length.
+        - ``left`` : the final range will be anchored on the end value and
+          will extend the full range length to the left.
+        - ``right`` : the final range will be anchored on the grid defined by
+          the step value, extending the full range length to the right,
+          beyond the defined end value.
+        - ``extend`` : the final range will be anchored on the grid defined
+          by the step value, extending beyond the step length to the right
+          bound of the range.
+        - ``balance`` : if the final range is greater than or equal to half
+          the target range length, perform the cut method; if it is less,
+          perform the extend method.
 
-        Schematics
-        ----------
-        bounds :    [------------------------]
-        none :   
-                    [---------|              ]
-                    [         |---------|    ]
-        cut : 
-                    [---------|              ]
-                    [         |---------|    ]
-                    [                   |----]
-        left :   
-                    [---------|              ]
-                    [         |---------|    ]
-                    [              |---------]
-        right :  
-                    [---------|              ]
-                    [         |---------|    ]
-                    [                   |----]----|
-        extend :
-                    [---------|              ]
-                    [         |--------------]
+        Schematics::
+
+            bounds :    [------------------------]
+            none :
+                        [---------|              ]
+                        [         |---------|    ]
+            cut :
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]
+            left :
+                        [---------|              ]
+                        [         |---------|    ]
+                        [              |---------]
+            right :
+                        [---------|              ]
+                        [         |---------|    ]
+                        [                   |----]----|
+            extend :
+                        [---------|              ]
+                        [         |--------------]
     
     return_relation : bool, default False
         Whether to return an EventsRelation object between the resegmented

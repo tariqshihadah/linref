@@ -13,6 +13,7 @@ linref.events.base
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: EventsData
 
 linref.events.relate
 --------------------

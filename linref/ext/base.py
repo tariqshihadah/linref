@@ -2303,7 +2303,7 @@ class LRS_Accessor(object):
         """
         Distribute attribute data from another dataframe onto the current 
         dataframe based on linear referencing relationships. This is a shortcut
-        for lr.relate(other)[columns].distribute(**params).
+        for ``lr.relate(other)[columns].distribute(**params)``.
 
         Parameters
         ----------
