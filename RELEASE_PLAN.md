@@ -83,10 +83,12 @@ new v1.0 reality.
 
 ### Transition from current branches
 
-Current branches reflect the old development history:
-- `master` currently represents the legacy v0.1 line
-- `dev` is a historical integration branch
-- `redesign` contains the v1.0 redevelopment
+Current branches reflect a partially transitioned state (as of 2026-04-16):
+- `master` — legacy v0.1 line (will become archival once `main` exists)
+- `dev` — historical integration branch (to be triaged)
+- `redesign` — original v1.0 redevelopment branch (frozen, to be retired)
+- `maint/0.1` — **new** legacy maintenance branch, created from `v0.1.2`
+- `release/1.0.0` — **new, active** stabilization branch, created from `redesign`
 
 For the v1.0 transition, `redesign` should become a temporary staging branch,
 not a permanent long-lived branch.
@@ -120,16 +122,19 @@ Important notes:
 
 ### Transition execution sequence
 
-When we are ready to perform the branch transition, the intended sequence is:
+#### Completed (2026-04-16)
 
-1. Preserve any uncommitted work currently on `redesign`
-2. Create `maint/0.1` from `master` or `v0.1.2`
-3. Create `release/1.0.0` from `redesign`
-4. Freeze `redesign` and do all final v1.0 stabilization on `release/1.0.0`
-5. Create or merge into `main` from the stabilized `release/1.0.0`
+1. ~~Preserve any uncommitted work currently on `redesign`~~ — working tree was clean
+2. ~~Create `maint/0.1` from `v0.1.2`~~ — done, pushed to origin
+3. ~~Create `release/1.0.0` from `redesign`~~ — done, pushed to origin
+4. ~~Freeze `redesign` and do all final v1.0 stabilization on `release/1.0.0`~~ — active branch is now `release/1.0.0`
+
+#### Remaining (post-stabilization)
+
+5. Create `main` from the stabilized `release/1.0.0`
 6. Tag `v1.0.0` on `main`
 7. Create a fresh `develop` from `main`
-8. Retire `redesign`
+8. Retire `redesign` (local and `origin/redesign`)
 9. Triage remaining old topic branches and port only what is still relevant
 
 ### Permanent branches after v1.0
@@ -165,8 +170,8 @@ When we are ready to perform the branch transition, the intended sequence is:
 
 ## v1.0 Transition Steps
 
-1. Create `maint/0.1` from the current legacy release line (`master` / `v0.1.2`) so the old API has a stable maintenance home.
-2. Cut `release/1.0.0` from `redesign` for final stabilization.
+1. ~~Create `maint/0.1` from the current legacy release line (`master` / `v0.1.2`)~~ — done (2026-04-16)
+2. ~~Cut `release/1.0.0` from `redesign` for final stabilization~~ — done (2026-04-16), active branch
 3. Fix packaging and artifact blockers:
    - dependency declarations
    - package discovery
@@ -184,10 +189,11 @@ When we are ready to perform the branch transition, the intended sequence is:
     - wheel + sdist build
     - clean install smoke tests
     - docs build
-11. Create `main` from the stabilized release branch if needed, or merge `release/1.0.0` into the new `main`.
+11. Create `main` from the stabilized `release/1.0.0`.
 12. Tag `v1.0.0` on `main`.
-13. Seed `develop` from the released v1.0 state and merge `release/1.0.0` into it.
-14. Retire `redesign` once the release is complete.
+13. Create a fresh `develop` from `main`, merge `release/1.0.0` back into it.
+14. Retire `redesign` (local + `origin/redesign`).
+15. Triage old topic branches: `13_merge_geoseries`, `15_type_hinting`, `8_project_matching`, `29_hardcoded_index`.
 
 ### Post-v1.0 steady-state flow
 
@@ -221,5 +227,7 @@ If time is tight, execute in this order:
 4. Migration guide (v0.1.x → v1.0)
 5. ~~Integration tests~~ — done (8 tests in `test_integration.py`)
 6. ~~Secondary docs and cleanup~~ — done
-7. Add release date to `CHANGELOG.md` and finalize version bump
-8. Branch transition: `release/1.0.0` → `main` → tag `v1.0.0`
+7. ~~Branch transition (phase 1)~~ — done: `maint/0.1`, `release/1.0.0` created and pushed (2026-04-16)
+8. Add release date to `CHANGELOG.md` and finalize version bump
+9. Branch transition (phase 2): `release/1.0.0` → `main` → tag `v1.0.0` → `develop`
+10. Retire `redesign` and triage old topic branches
