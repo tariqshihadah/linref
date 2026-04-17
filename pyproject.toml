@@ -39,6 +39,7 @@ include = ["linref", "linref.*"]
 exclude = ["linref.tests", "linref.tests.*"]
 
 [tool.setuptools.package-data]
+"linref" = ["py.typed"]
 "linref.datasets" = ["_data/*"]
 
 [tool.setuptools.dynamic]

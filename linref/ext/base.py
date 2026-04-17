@@ -1,6 +1,7 @@
 from __future__ import annotations
 import warnings
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -2728,6 +2729,11 @@ class LRS_Accessor(object):
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
+
+# Declare the accessor for static type checkers (Pylance, Pyright, mypy)
+if TYPE_CHECKING:
+    pd.DataFrame.lr: LRS_Accessor  # type: ignore[attr-defined]
+
 
 # Helper functions for event operations
 
