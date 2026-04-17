@@ -2075,7 +2075,9 @@ class LRS_Accessor(object):
             except GeometryTopologyError:
                 raise GeometryTopologyError(
                     "Linear geometries of adjacent events are disjointed and "
-                    "cannot be merged into a single geometry."
+                    "cannot be merged into a single geometry. To resolve this, "
+                    "ensure that geometries are contiguous or add chaining to "
+                    "the dataframe using the `lr.add_chaining` method."
                 )
             merged = np.array([i.geom for i in merged_m])
             # Assign merged geometries to the dataframe
@@ -2090,7 +2092,11 @@ class LRS_Accessor(object):
             except GeometryTopologyError:
                 raise GeometryTopologyError(
                     "Linear geometries of adjacent events are disjointed and "
-                    "cannot be merged into a single geometry."
+                    "cannot be merged into a single geometry. To resolve this, "
+                    "first add M-enabled geometries to the dataframe using the "
+                    "`add_geom_m` method, then ensure that geometries are "
+                    "contiguous or add chaining to the dataframe using the "
+                    "`lr.add_chaining` method."
                 )
             merged = np.array([i.geom for i in merged_m])
             # Assign merged geometries to the dataframe

@@ -1669,10 +1669,11 @@ class EventsRelation(object):
                     squeeze=True,
                     cast_geom=True,
                 )
-            except Exception:
-                raise Exception(
-                    f"Error occurred during merge on row number {i}."
-                )
+            except Exception as e:
+                raise type(e)(
+                    f"Error occurred during merge on row number {i}. "
+                    f"{e}"
+                ) from e
             # Log values
             output.append(merged)
         
