@@ -93,6 +93,7 @@ for every dataset:
 
    df = df.lr.set_lrs(
        key_col=['route_id'],
+       chain_col='chain',
        beg_col='beg',
        end_col='end',
        geom_col='geometry',
@@ -109,6 +110,7 @@ for every dataset:
    # Or set a default LRS for all DataFrames at once
    lr.set_default_lrs(lr.LRS(
        key_col=['route_id'],
+       chain_col='chain',
        beg_col='beg',
        end_col='end',
        loc_col='loc',

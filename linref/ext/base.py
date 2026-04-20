@@ -29,6 +29,7 @@ class LRS(object):
     def __init__(
         self,
         key_col: str | list[str] | None = None,
+        chain_col: str | None = None,
         loc_col: str | None = None,
         beg_col: str | None = None,
         end_col: str | None = None,
@@ -44,6 +45,13 @@ class LRS(object):
         key_col : str or list of str, optional
             Column name(s) identifying one or more unique route identifier 
             or grouping columns (e.g., 'Route', 'County', etc.).
+        chain_col : str, optional
+            Column name for chain indices identifying contiguous geometry 
+            groups within each route. Unlike key columns, this column may 
+            not exist in the DataFrame until ``add_chaining()`` is called.
+            When present in the DataFrame, it is automatically included in
+            grouping operations alongside the key columns and functionally
+            operates as an additional key level.
         loc_col : str, optional
             Column name for point event locations.
         beg_col : str, optional
@@ -60,6 +68,7 @@ class LRS(object):
         # Set LRS parameters
         self.set_params(
             key_col=key_col,
+            chain_col=chain_col,
             loc_col=loc_col,
             beg_col=beg_col,
             end_col=end_col,
@@ -76,6 +85,7 @@ class LRS(object):
         return (
             "LRS("
             f"key_col={self.key_col}, "
+            f"chain_col={"'" + self.chain_col + "'" if isinstance(self.chain_col, str) else self.chain_col}, "
             f"loc_col={"'" + self.loc_col + "'" if isinstance(self.loc_col, str) else self.loc_col}, "
             f"beg_col={"'" + self.beg_col + "'" if isinstance(self.beg_col, str) else self.beg_col}, "
             f"end_col={"'" + self.end_col + "'" if isinstance(self.end_col, str) else self.end_col}, "
@@ -144,9 +154,18 @@ class LRS(object):
         return self.geom_m_col is not None
     
     @property
+    def is_chaining_defined(self) -> bool:
+        """
+        Return whether the LRS has a chain column defined. This does not 
+        check for presence of the column in the DataFrame.
+        """
+        return self.chain_col is not None
+    
+    @property
     def params(self) -> dict:
         return {
             'key_col': self.key_col,
+            'chain_col': self.chain_col,
             'loc_col': self.loc_col,
             'beg_col': self.beg_col,
             'end_col': self.end_col,
@@ -223,6 +242,8 @@ class LRS(object):
         for key, value in kwargs.items():
             if key == 'key_col':
                 obj.key_col = label_list_or_none(value, if_none=[])
+            elif key == 'chain_col':
+                obj.chain_col = label_or_none(value)
             elif key == 'loc_col':
                 obj.loc_col = label_or_none(value)
             elif key == 'beg_col':
@@ -314,6 +335,11 @@ class LRS(object):
             result['geometry_m'] = {'defined': True, 'valid': valid, 'missing': self.geom_m_col if not valid else None}
         else:
             result['geometry_m'] = {'defined': False, 'valid': False, 'missing': None}
+        if self.is_chaining_defined:
+            valid = self.chain_col in df.columns
+            result['chaining'] = {'defined': True, 'valid': valid, 'missing': self.chain_col if not valid else None}
+        else:
+            result['chaining'] = {'defined': False, 'valid': False, 'missing': None}
         return result
 
 
@@ -481,7 +507,26 @@ class LRS_Accessor(object):
     @property
     def key_col(self) -> list[str]:
         """
-        Return a list of all event key columns in the set LRS if defined.
+        Return a list of all event key columns in the set LRS if defined,
+        including the chain column when it exists in the DataFrame.
+        """
+        try:
+            cols = list(self.lrs.key_col)
+            # Dynamically include chain_col when it exists in the DataFrame
+            if (self.lrs.chain_col is not None 
+                    and self.lrs.chain_col not in cols
+                    and self.lrs.chain_col in self._df.columns):
+                cols.append(self.lrs.chain_col)
+            return cols
+        except AttributeError:
+            return None
+
+    @property
+    def base_key_col(self) -> list[str]:
+        """
+        Return the base key columns from the LRS definition, excluding 
+        the chain column. Used for operations that need to group by route 
+        identifiers without chaining (e.g., computing chain indices).
         """
         try:
             return self.lrs.key_col
@@ -1376,16 +1421,17 @@ class LRS_Accessor(object):
         # Return subset of dataframe
         return self.df.loc[index]
         
-    @_method_require(is_grouped=True, is_linear=True, is_spatial=True)
-    def get_chains(self, name: str = 'chain', enforce_m: bool = True) -> pd.Series:
+    @_method_require(is_linear=True, is_spatial=True)
+    def get_chains(self, name: str | None = None, enforce_m: bool = True) -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
         contiguous linear geometries within each group.
 
         Parameters
         ----------
-        name : str, default 'chain'
-            The name of the chain index column to return.
+        name : str, optional
+            The name of the chain index column to return. If None, uses the
+            chain column name from the LRS if defined, or 'chain' otherwise.
         enforce_m : bool, default True
             Whether to require the use of M-enabled geometries for chaining.
             If True, an error will be raised if M-enabled geometries are not 
@@ -1396,6 +1442,9 @@ class LRS_Accessor(object):
         chains : pd.Series
             A series of chain indices for each event in the dataframe.
         """
+        # Resolve chain column name
+        if name is None:
+            name = self.lrs.chain_col or 'chain'
         # Validate presence of M-enabled geometries
         if enforce_m and not self.is_spatial_m:
             raise ValueError(
@@ -1403,17 +1452,28 @@ class LRS_Accessor(object):
                 "present in the DataFrame. Use `add_geom_m` to add M-enabled "
                 "geometries or set `enforce_m` to False."
             )
-        # Iterate over groups
+        # Iterate over groups using base keys (without chain column)
         index = []
         chains = []
-        for group, df in self.iter_groups():
-            # Get chain indices
+        base_keys = self.base_key_col
+        if base_keys:
+            events = self.get_events(key_col=base_keys)
+            for group, idx in events.iter_group_indices():
+                df = self.df.loc[idx]
+                if enforce_m:
+                    chains_i = geometry.get_linestring_chains(df[self.geom_m_col].values)
+                else:
+                    chains_i = geometry.get_linestring_chains(df[self.geom_col].values)
+                chains.append(chains_i)
+                index.append(df.index.values)
+        else:
+            # No base keys — treat entire dataframe as one group
             if enforce_m:
-                chains_i = geometry.get_linestring_chains(df[self.geom_m_col].values)
+                chains_i = geometry.get_linestring_chains(self.df[self.geom_m_col].values)
             else:
-                chains_i = geometry.get_linestring_chains(df[self.geom_col].values)
+                chains_i = geometry.get_linestring_chains(self.df[self.geom_col].values)
             chains.append(chains_i)
-            index.append(df.index.values)
+            index.append(self.df.index.values)
         # Return series
         chains = pd.Series(
             np.concatenate(chains),
@@ -1424,17 +1484,19 @@ class LRS_Accessor(object):
         return chains.reindex_like(self.df)
     
     @_method_require(is_linear=True, is_spatial=True)
-    def add_chaining(self, name: str = 'chain', inplace: bool = False, replace: bool = False, enforce_m: bool = True) -> pd.DataFrame | None:
+    def add_chaining(self, name: str | None = None, inplace: bool = False, replace: bool = False, enforce_m: bool = True) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
         geometries within each group, adding a new column to the dataframe
-        and adding the chain column to the LRS.
+        and setting the chain column on the LRS.
 
         Parameters
         ----------
-        name : str, default 'chain'
-            The name of the chain index column to return. If this column
-            already exists, it will be replaced if `replace` is True.
+        name : str, optional
+            The name of the chain index column to add. If None, uses the
+            chain column name from the LRS if defined, or 'chain' otherwise.
+            If this column already exists, it will be replaced if ``replace``
+            is True.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
         replace : bool, default False
@@ -1446,23 +1508,28 @@ class LRS_Accessor(object):
             If True, an error will be raised if M-enabled geometries are not 
             present in the dataframe.
         """
+        # Resolve chain column name
+        if name is None:
+            name = self.lrs.chain_col or 'chain'
         # Validate column name
         if name in self.df and not replace:
             raise ValueError(
                 f"Column name '{name}' is already in use in the DataFrame."
             )
-        # Prepare chain data
+        # Prepare chain data using base keys (without chain column)
         df = self.df if inplace else self.copy_df()
-        if name in df.lr.key_col:
-            new_lrs = df.lr.lrs
-            chains = df.lr.remove_key(name, inplace=False).lr.get_chains(name=name)
-        else:
-            new_lrs = df.lr.lrs.copy(deep=True).add_key(name, inplace=False)
-            chains = df.lr.get_chains(name=name)
+        chains = df.lr.get_chains(name=name, enforce_m=enforce_m)
+        
+        # Prepare updated LRS with chain_col set
+        new_lrs = df.lr.lrs.copy(deep=True)
+        new_lrs.chain_col = name
+        if name in new_lrs.key_col:
+            new_lrs.remove_key(name, inplace=True)
         
         # Apply changes to the DataFrame
         df[name] = chains
-        df.lr.set_lrs(new_lrs, inplace=True)
+        if new_lrs != df.lr.lrs:
+            df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
     @_method_require(is_point=True)
@@ -1566,7 +1633,8 @@ class LRS_Accessor(object):
             existing end column name in the LRS, or 'end' if no end column is
             defined.
         chain_col : str, optional
-            The name of the chain index column to add. If None, uses 'chain'.
+            The name of the chain index column to add. If None, uses the
+            chain column name from the LRS if defined, or 'chain' otherwise.
             Only used if `add_chain` is True.
         geom_m_col : str, optional
             The name of the M-enabled geometry column to add. If None, uses the
@@ -1605,10 +1673,7 @@ class LRS_Accessor(object):
                 end_col = 'end'
         if add_chain:
             if chain_col is None:
-                if self.lrs.is_grouped and 'chain' in self.lrs.key_col:
-                    chain_col = 'chain'
-                else:
-                    chain_col = 'chain'
+                chain_col = self.lrs.chain_col or 'chain'
         else:
             if not chain_col is None:
                 raise ValueError(
@@ -1632,7 +1697,7 @@ class LRS_Accessor(object):
                     "DataFrame."
                 )
         
-        # Iterate over groups
+        # Iterate over groups using base keys (without chain column)
         index  = []
         chains = []
         begs   = []
@@ -1696,9 +1761,11 @@ class LRS_Accessor(object):
         new_lrs.beg_col = beg_col
         new_lrs.end_col = end_col
         if add_chain:
-            if chain_col not in new_lrs.key_col:
-                new_lrs.add_key(chain_col, inplace=True)
-        df.lr.set_lrs(new_lrs, inplace=True)
+            new_lrs.chain_col = chain_col
+            if chain_col in new_lrs.key_col:
+                new_lrs.remove_key(chain_col, inplace=True)
+        if new_lrs != df.lr.lrs:
+            df.lr.set_lrs(new_lrs, inplace=True)
         # Add M-enabled geometries if needed
         if add_geom_m:
             df.lr.add_geom_m(name=geom_m_col, inplace=True)
@@ -2084,7 +2151,7 @@ class LRS_Accessor(object):
         else:
             if self.is_lrs_grouped:
                 raise LRSConfigurationError(
-                    f"LRS key columns {self.missing_key_cols} are not found "
+                    f"LRS key columns {self.missing_key_cols} not found "
                     f"in the DataFrame. Either add the missing columns or "
                     f"update the LRS configuration with set_lrs() or "
                     f"remove_key()."

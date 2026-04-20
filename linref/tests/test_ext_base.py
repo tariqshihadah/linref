@@ -31,23 +31,29 @@ class TestLRSInit(unittest.TestCase):
         lrs = LRS()
         self.assertIsInstance(lrs, LRS)
         self.assertTrue(len(lrs.key_col) == 0)
+        self.assertIsNone(lrs.chain_col)
         self.assertIsNone(lrs.loc_col)
         self.assertIsNone(lrs.beg_col)
         self.assertIsNone(lrs.end_col)
         self.assertIsNone(lrs.geom_col)
         self.assertIsNone(lrs.geom_m_col)
         self.assertIsNone(lrs.closed)
+        self.assertFalse(lrs.is_chaining_defined)
 
     def test_lrs_init_linear(self):
         """Test creating a linear LRS object."""
         lrs = LRS(
             key_col=['route_id'],
+            chain_col='chain',
             beg_col='begin_mp',
             end_col='end_mp',
             closed='right'
         )
         self.assertIsInstance(lrs, LRS)
         self.assertEqual(lrs.key_col, ['route_id'])
+        self.assertEqual(lrs.chain_col, 'chain')
+        self.assertNotIn('chain', lrs.key_col)
+        self.assertTrue(lrs.is_chaining_defined)
         self.assertEqual(lrs.beg_col, 'begin_mp')
         self.assertEqual(lrs.end_col, 'end_mp')
         self.assertEqual(lrs.closed, 'right')
@@ -146,6 +152,7 @@ class TestLRSProperties(unittest.TestCase):
         params = self.lrs_linear.params
         self.assertIsInstance(params, dict)
         self.assertEqual(params['key_col'], ['route'])
+        self.assertIn('chain_col', params)
         self.assertEqual(params['beg_col'], 'beg')
         self.assertEqual(params['end_col'], 'end')
         self.assertEqual(params['closed'], 'right')
@@ -159,6 +166,11 @@ class TestLRSProperties(unittest.TestCase):
         # Deep copy
         lrs_deep = self.lrs_linear.copy(deep=True)
         self.assertEqual(lrs_deep.params, self.lrs_linear.params)
+        
+        # Copy preserves chain_col
+        lrs_chain = LRS(key_col=['route'], chain_col='chain')
+        self.assertEqual(lrs_chain.copy().chain_col, 'chain')
+        self.assertEqual(lrs_chain.copy(deep=True).chain_col, 'chain')
 
     def test_lrs_set_params(self):
         """Test setting LRS parameters."""
@@ -172,6 +184,11 @@ class TestLRSProperties(unittest.TestCase):
         # New object modified
         self.assertEqual(lrs_modified.beg_col, 'start')
         self.assertEqual(lrs_modified.end_col, 'finish')
+        
+        # chain_col via set_params
+        lrs2 = lrs.set_params(chain_col='chain', inplace=False)
+        self.assertIsNone(lrs.chain_col)
+        self.assertEqual(lrs2.chain_col, 'chain')
 
     def test_lrs_set_params_inplace(self):
         """Test setting LRS parameters in place."""
@@ -212,13 +229,17 @@ class TestLRSProperties(unittest.TestCase):
 
     def test_lrs_equality(self):
         """Test LRS equality comparison."""
-        lrs1 = LRS(key_col=['route'], beg_col='beg', end_col='end', closed='right')
-        lrs2 = LRS(key_col=['route'], beg_col='beg', end_col='end', closed='right')
-        lrs3 = LRS(key_col=['route'], beg_col='start', end_col='end', closed='right')
+        lrs1 = LRS(key_col=['route'], chain_col='chain', beg_col='beg', end_col='end', closed='right')
+        lrs2 = LRS(key_col=['route'], chain_col='chain', beg_col='beg', end_col='end', closed='right')
+        lrs3 = LRS(key_col=['route'], chain_col=None, beg_col='start', end_col='end', closed='right')
+        lrs4 = LRS(key_col=['route'], chain_col=None, beg_col='beg', end_col='end', closed='right')
+        lrs5 = LRS(key_col=['route'], chain_col=None, beg_col='beg', end_col='end', closed='right')
         
         self.assertEqual(lrs1, lrs2)
         self.assertNotEqual(lrs1, lrs3)
         self.assertNotEqual(lrs1, "not an LRS")
+        self.assertEqual(lrs4, lrs5)
+        self.assertNotEqual(lrs1, lrs4)
 
     def test_lrs_str_repr(self):
         """Test LRS string representation."""
@@ -226,6 +247,7 @@ class TestLRSProperties(unittest.TestCase):
         lrs_str = str(lrs)
         self.assertIn('LRS(', lrs_str)
         self.assertIn('key_col=', lrs_str)
+        self.assertIn('chain_col=', lrs_str)
         self.assertIn('beg_col=', lrs_str)
         
         lrs_repr = repr(lrs)
@@ -245,6 +267,7 @@ class TestLRSProperties(unittest.TestCase):
         self.assertTrue(study['keys']['valid'])
         self.assertTrue(study['linear']['valid'])
         self.assertFalse(study['geometry']['valid'])
+        self.assertFalse(study['chaining']['defined'])
 
 
 class TestLRSAccessorInit(unittest.TestCase):
@@ -1234,6 +1257,179 @@ class TestAccessorStatePersistence(unittest.TestCase):
         self.assertTrue(self.df.lr.is_lrs_empty)
         # Returned df should have the LRS
         self.assertEqual(df_with_lrs.lr.lrs, self.lrs)
+
+
+class TestChainCol(unittest.TestCase):
+    """Test chain_col as a first-class LRS parameter."""
+
+    def setUp(self):
+        """Set up test data with disjointed geometries for chaining tests."""
+        from linref.events.geometry import LineStringM
+        
+        # Create data with disjointed geometries within a route:
+        # Route A: two contiguous segments + one disjointed segment
+        # Route B: one segment
+        self.df = gpd.GeoDataFrame({
+            'route': ['A', 'A', 'A', 'B'],
+            'beg': [0.0, 5.0, 20.0, 0.0],
+            'end': [5.0, 10.0, 25.0, 8.0],
+            'geometry': [
+                LineString([(0, 0), (5, 0)]),     # A chain 0
+                LineString([(5, 0), (10, 0)]),    # A chain 0
+                LineString([(20, 0), (25, 0)]),   # A chain 1 (disjointed)
+                LineString([(0, 10), (8, 10)]),   # B chain 0
+            ],
+            'geometry_m': [
+                LineStringM(LineString([(0, 0), (5, 0)]), m=[0.0, 5.0]),
+                LineStringM(LineString([(5, 0), (10, 0)]), m=[5.0, 10.0]),
+                LineStringM(LineString([(20, 0), (25, 0)]), m=[20.0, 25.0]),
+                LineStringM(LineString([(0, 10), (8, 10)]), m=[0.0, 8.0]),
+            ]
+        }, geometry='geometry')
+
+    # --- Accessor key_col dynamic behavior ---
+
+    def test_key_col_excludes_absent_chain(self):
+        """key_col should not include chain_col when column is absent."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # chain column doesn't exist yet
+        self.assertEqual(df.lr.key_col, ['route'])
+
+    def test_key_col_includes_present_chain(self):
+        """key_col should include chain_col when column exists."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 1, 0]
+        df = df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        self.assertEqual(df.lr.key_col, ['route', 'chain'])
+
+    def test_base_key_col_always_excludes_chain(self):
+        """base_key_col should always exclude chain_col."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 1, 0]
+        df = df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        self.assertEqual(df.lr.base_key_col, ['route'])
+        # Even though chain exists, base_key_col excludes it
+        self.assertNotIn('chain', df.lr.base_key_col)
+
+    def test_no_double_append_chain_in_key_col(self):
+        """If chain_col is already in key_col, don't duplicate it."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 1, 0]
+        df = df.lr.set_lrs(
+            key_col=['route', 'chain'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # chain should appear only once
+        self.assertEqual(df.lr.key_col.count('chain'), 1)
+
+    def test_missing_key_cols_excludes_chain(self):
+        """missing_key_cols should not report absent chain_col."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # chain column doesn't exist, but shouldn't be in missing_key_cols
+        self.assertEqual(df.lr.missing_key_cols, [])
+
+    # --- add_chaining with chain_col ---
+
+    def test_add_chaining_defaults_from_lrs(self):
+        """add_chaining should use chain_col from LRS as default name."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='my_chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        result = df.lr.add_chaining()
+        # Should use 'my_chain' from LRS
+        self.assertIn('my_chain', result.columns)
+        self.assertEqual(result.lr.lrs.chain_col, 'my_chain')
+
+    def test_add_chaining_sets_chain_col_on_lrs(self):
+        """add_chaining should set chain_col on LRS when not defined."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'],
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        result = df.lr.add_chaining(name='chain')
+        # chain_col should be set on LRS
+        self.assertEqual(result.lr.lrs.chain_col, 'chain')
+        # chain should NOT be in key_col
+        self.assertNotIn('chain', result.lr.lrs.key_col)
+        # But accessor key_col should include it (column now exists)
+        self.assertIn('chain', result.lr.key_col)
+
+    def test_add_chaining_computes_correct_chains(self):
+        """add_chaining should correctly identify disjointed chains."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        result = df.lr.add_chaining()
+        chains = result['chain']
+        # Route A: first two are chain 0, third is chain 1
+        self.assertEqual(chains.iloc[0], 0)
+        self.assertEqual(chains.iloc[1], 0)
+        self.assertEqual(chains.iloc[2], 1)
+        # Route B: single chain 0
+        self.assertEqual(chains.iloc[3], 0)
+
+    def test_add_chaining_legacy_migration(self):
+        """add_chaining migrates chain from key_col to chain_col."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 1, 0]
+        df = df.lr.set_lrs(
+            key_col=['route', 'chain'],
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # chain is in key_col (legacy pattern)
+        self.assertIn('chain', df.lr.lrs.key_col)
+        result = df.lr.add_chaining(name='chain', replace=True)
+        # After add_chaining, chain should be in chain_col, not key_col
+        self.assertEqual(result.lr.lrs.chain_col, 'chain')
+        self.assertNotIn('chain', result.lr.lrs.key_col)
+
+    # --- Legacy pattern backward compatibility ---
+
+    def test_legacy_chain_in_key_col_still_works(self):
+        """Chain column in key_col (without chain_col) should work."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 1, 0]
+        df = df.lr.set_lrs(
+            key_col=['route', 'chain'],
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # Should work normally — chain is a regular key column
+        self.assertEqual(df.lr.key_col, ['route', 'chain'])
+        self.assertTrue(df.lr.is_grouped)
 
 
 # Run tests
