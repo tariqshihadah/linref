@@ -687,6 +687,17 @@ class LRS_Accessor(object):
             return all([key in self._df.columns for key in self.key_col])
     
     @property
+    def missing_key_cols(self) -> list[str]:
+        """
+        Return a list of key columns defined in the LRS but missing from the
+        DataFrame. Returns an empty list if no keys are defined or all keys
+        are present.
+        """
+        if not self.is_lrs_grouped:
+            return []
+        return [k for k in self.key_col if k not in self._df.columns]
+
+    @property
     def is_linear(self) -> bool:
         """
         Return whether the active LRS is linear and the begin and end columns
@@ -891,7 +902,19 @@ class LRS_Accessor(object):
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not self.is_lrs_set:
             raise LRSConfigurationError("Current DataFrame has no LRS set.")
-        if self.is_grouped:
+        if self.is_lrs_grouped:
+            missing = self.missing_key_cols
+            if missing:
+                raise LRSConfigurationError(
+                    f"Key columns {missing} are defined in the LRS but not "
+                    f"found in the primary DataFrame."
+                )
+            missing_other = other.lr.missing_key_cols
+            if missing_other:
+                raise LRSConfigurationError(
+                    f"Key columns {missing_other} are defined in the LRS of "
+                    f"the other DataFrame but not found in it."
+                )
             if not other.lr.is_grouped:
                 raise LRSCompatibilityError("LRS of other DataFrame is not grouped.")
             if len(self.lrs.key_col) != len(other.lr.lrs.key_col):
@@ -939,18 +962,28 @@ class LRS_Accessor(object):
         np.ndarray
             An array of event keys.
         """
-        # Select data from the dataframe if keys are present
-        if col is None:
+        # Resolve columns from LRS if not provided
+        from_lrs = col is None
+        if from_lrs:
             col = self.key_col
-        if col is None:
+        if not col:
             return None
-        try:
-            # Convert data to list of tuples
-            return self._df[col].to_records(index=False)
-        except KeyError as e:
-            if require:
-                raise e
-            return None
+        # Check for missing columns
+        col_list = [col] if isinstance(col, str) else col
+        missing = [c for c in col_list if c not in self._df.columns]
+        if missing:
+            if not require:
+                return None
+            if from_lrs:
+                raise LRSConfigurationError(
+                    f"LRS key columns {missing} are not found in the "
+                    f"DataFrame."
+                )
+            raise LRSConfigurationError(
+                f"Requested key columns {missing} are not found in the "
+                f"DataFrame."
+            )
+        return self._df[col].to_records(index=False)
         
     def get_events(self, key_col=None, require=True, allow_undefined_events=False) -> EventsData:
         """
@@ -2049,6 +2082,13 @@ class LRS_Accessor(object):
         if self.is_grouped:
             key_col = self.key_col + retain
         else:
+            if self.is_lrs_grouped:
+                raise LRSConfigurationError(
+                    f"LRS key columns {self.missing_key_cols} are not found "
+                    f"in the DataFrame. Either add the missing columns or "
+                    f"update the LRS configuration with set_lrs() or "
+                    f"remove_key()."
+                )
             key_col = retain
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
