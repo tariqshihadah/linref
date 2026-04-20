@@ -1455,8 +1455,9 @@ class LRS_Accessor(object):
         # Iterate over groups using base keys (without chain column)
         index = []
         chains = []
-        base_keys = self.base_key_col
+        base_keys = [k for k in self.base_key_col if k != name]
         if base_keys:
+            # Get events using keys, excluding chain column if in keys
             events = self.get_events(key_col=base_keys)
             for group, idx in events.iter_group_indices():
                 df = self.df.loc[idx]
