@@ -33,6 +33,7 @@ Basic Concepts
 An LRS defines the schema of your linearly referenced data by specifying which columns represent:
 
 * **Key columns** ``key_col`` - One or more unique route identifier or grouping columns (e.g., 'Route', 'County')
+* **Chain column** ``chain_col`` - An optional column for chain indices that identify contiguous geometry groups within each route, extending standard key columns to avoid non-contiguous groups
 * **Location columns** - For point events use ``loc_col`` (e.g., 'Milepost'), for linear events ``beg_col`` and ``end_col`` (e.g., 'Begin_Milepost', 'End_Milepost')
 * **Geometry columns** - For spatial data ``geom_col`` and for spatial data that is m-enabled ``geom_m_col`` (generally m-enabled geometries are prepared and managed by ``linref``)
 * **Closure type** ``closed`` - How range endpoints are handled: 'left', 'right', 'both', 'neither', or 'left_mod'/'right_mod'
