@@ -2525,11 +2525,6 @@ class LRS_Accessor(object):
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
     
 
-# Declare the accessor for static type checkers (Pylance, Pyright, mypy)
-if TYPE_CHECKING:
-    pd.DataFrame.lr: LRS_Accessor  # type: ignore[attr-defined]
-
-
 # Helper functions for event operations
 
 def check_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
@@ -2763,10 +2758,6 @@ def parse_geoms_m_shapely(geoms: pd.Series, reverse: bool = False) -> pd.Series:
     return geoms.apply(parse_geom)
 
 
-# Type stub for the pandas accessor so that static type checkers (Pylance,
-# Pyright, mypy) can resolve ``df.lr`` to ``LRS_Accessor``.
+# Declare the accessor for static type checkers (Pylance, Pyright, mypy)
 if TYPE_CHECKING:
-    class _LRAccessorDescriptor:
-        def __get__(self, obj: pd.DataFrame, cls: type) -> LRS_Accessor: ...
-
-    pd.DataFrame.lr = _LRAccessorDescriptor()  # type: ignore[attr-defined]
+    pd.DataFrame.lr: LRS_Accessor  # type: ignore[attr-defined]
