@@ -10,8 +10,7 @@ from linref.utility.direction import extract_direction, extract_bearing
 from linref import datasets
 
 # Expose extension settings
-set_default_lrs = LRS_Accessor.set_default_lrs
-set_default_geometry_sync = LRS_Accessor.set_default_geometry_sync
+from linref.options import options, set_default_lrs
 
 __all__ = [
     'EventsData',
@@ -21,6 +20,6 @@ __all__ = [
     'extract_direction',
     'extract_bearing',
     'datasets',
+    'options',
     'set_default_lrs',
-    'set_default_geometry_sync',
 ]

@@ -17,6 +17,7 @@ from linref.events import modify, relate, geometry, integration
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
 from linref.ext.validation import _method_deprecates_geometry
 from linref.ext.lrs import LRS
+from linref.options import options, set_default_lrs
 
 # Keys for storing accessor state in DataFrame.attrs, ensuring persistence
 # across accessor re-instantiation (required for pandas >= 3.0 compatibility)
@@ -30,19 +31,15 @@ class LRS_Accessor(object):
     Accessor for working with linear referencing systems (LRS) in GeoDataFrames.
     """
 
-    # Initialize default LRS list
-    _default_lrs = LRS()
-    _default_geometry_sync = 'warn'
-
     def __init__(self, df) -> None:
         # Log dataframe
         self.df = df
         # Initialize LRS in attrs only if not already present (preserves
         # state across accessor re-instantiation in pandas >= 3.0)
         if _LINREF_LRS_KEY not in self._df.attrs:
-            self.lrs = self._default_lrs.copy() if self._default_lrs is not None else None
+            self.lrs = options.default_lrs.copy()
         if _LINREF_GEOMETRY_SYNC_KEY not in self._df.attrs:
-            self.geometry_sync = self._default_geometry_sync
+            self.geometry_sync = options.default_geometry_sync
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -142,7 +139,7 @@ class LRS_Accessor(object):
         The geometry synchronization behavior for this DataFrame.
         State is stored in df.attrs for pandas >= 3.0 compatibility.
         """
-        return self._df.attrs.get(_LINREF_GEOMETRY_SYNC_KEY, self._default_geometry_sync)
+        return self._df.attrs.get(_LINREF_GEOMETRY_SYNC_KEY, options.default_geometry_sync)
 
     @geometry_sync.setter
     def geometry_sync(self, value: str) -> None:
@@ -985,70 +982,6 @@ class LRS_Accessor(object):
         """
         groups, counts = self.events.group_counts()
         return pd.Series(data=counts, index=groups)
-
-    @classmethod
-    def set_default_lrs(cls, lrs: LRS | None = None, **kwargs) -> None:
-        """
-        Set the default LRS object for the LRS_Accessor class. Default LRS
-        objects are used when no LRS objects are set for a specific DataFrame.
-
-        Parameters
-        ----------
-        lrs : LRS, default None
-            The LRS object or list of LRS objects to set as the default for the
-            LRS_Accessor class.
-        """
-        # Validate LRS object type
-        if lrs is None:
-            lrs = LRS(**kwargs)
-        elif not isinstance(lrs, LRS):
-            raise ValueError("Input LRS object must be of type `LRS`.")
-        
-        # Set default LRS object
-        cls._default_lrs = lrs
-        return lrs
-
-    @classmethod
-    def set_default_geometry_sync(cls, behavior: str) -> None:
-        """
-        Set the default geometry synchronization behavior for the LRS_Accessor 
-        class. This behavior determines how to handle methods that may create 
-        discrepancies between event data and geometries.
-
-        Parameters
-        ----------
-        behavior : str
-            The geometry synchronization behavior. Must be one of 'none', 
-            'warn', 'error', or 'remove'.
-        """
-        valid_behaviors = ['none', 'warn', 'error', 'remove']
-        if behavior not in valid_behaviors:
-            raise ValueError(
-                f"Invalid geometry synchronization behavior '{behavior}'. "
-                f"Must be one of {valid_behaviors}."
-            )
-        cls._default_geometry_sync = behavior
-
-    def set_geometry_sync(self, behavior: str) -> None:
-        """
-        Set the geometry synchronization behavior for the LRS_Accessor instance.
-        This behavior determines how to handle methods that may create 
-        discrepancies between event data and geometries.
-
-        Parameters
-        ----------
-        behavior : str
-            The geometry synchronization behavior. Must be one of 'none', 
-            'warn', 'error', or 'remove'.
-        """
-        self.geometry_sync = behavior
-
-    @classmethod
-    def clear_default_lrs(cls) -> None:
-        """
-        Clear the default LRS objects from the LRS_Accessor class.
-        """
-        cls._default_lrs = LRS()
 
     def sort_standard(
         self,

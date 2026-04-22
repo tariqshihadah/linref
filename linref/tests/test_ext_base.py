@@ -19,6 +19,7 @@ from shapely.geometry import LineString, Point
 # Import from main package to ensure accessor registration
 import linref
 from linref import LRS, LRS_Accessor, integrate
+from linref.options import options, set_default_lrs
 from linref.ext.base import check_compatibility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 
@@ -687,50 +688,77 @@ class TestCompatibilityFunctions(unittest.TestCase):
 class TestDefaultLRS(unittest.TestCase):
     """Test default LRS functionality."""
 
+    def tearDown(self):
+        options.reset()
+
     def test_set_default_lrs(self):
         """Test setting default LRS."""
         default_lrs = LRS(key_col=['route'], beg_col='beg', end_col='end', closed='right')
-        LRS_Accessor.set_default_lrs(default_lrs)
+        set_default_lrs(default_lrs)
         
         # New DataFrames should have this LRS by default
         df = pd.DataFrame({'route': ['A'], 'beg': [0], 'end': [1]})
         self.assertEqual(df.lr.lrs, default_lrs)
-        
-        # Clean up
-        LRS_Accessor.clear_default_lrs()
 
-    def test_clear_default_lrs(self):
-        """Test clearing default LRS."""
-        default_lrs = LRS(key_col=['route'], beg_col='beg', end_col='end')
-        LRS_Accessor.set_default_lrs(default_lrs)
-        LRS_Accessor.clear_default_lrs()
+    def test_set_default_lrs_with_kwargs(self):
+        """Test setting default LRS via keyword arguments."""
+        set_default_lrs(key_col=['route'], beg_col='beg', end_col='end')
+        expected = LRS(key_col=['route'], beg_col='beg', end_col='end')
+        self.assertEqual(options.default_lrs, expected)
+
+    def test_set_default_lrs_rejects_none(self):
+        """Test that setting default LRS to None raises ValueError."""
+        with self.assertRaises(ValueError):
+            options.default_lrs = None
+
+    def test_set_default_lrs_rejects_invalid(self):
+        """Test that setting default LRS to non-LRS raises ValueError."""
+        with self.assertRaises(ValueError):
+            options.default_lrs = 'not an LRS'
+
+    def test_options_reset(self):
+        """Test resetting options restores defaults."""
+        set_default_lrs(key_col=['route'], beg_col='beg', end_col='end')
+        options.reset()
         
         df = pd.DataFrame({'a': [1]})
         self.assertEqual(df.lr.lrs, LRS())  # Should be empty LRS
+
+    def test_options_read_default_lrs(self):
+        """Test reading default LRS from options."""
+        default_lrs = LRS(key_col=['route'], beg_col='beg', end_col='end')
+        set_default_lrs(default_lrs)
+        self.assertEqual(options.default_lrs, default_lrs)
+
+    def test_package_level_options_access(self):
+        """Test that linref.options provides access to defaults."""
+        default_lrs = LRS(key_col=['route'], beg_col='beg', end_col='end')
+        set_default_lrs(default_lrs)
+        self.assertEqual(linref.options.default_lrs, default_lrs)
 
 
 class TestGeometrySyncBehavior(unittest.TestCase):
     """Test geometry synchronization behavior settings."""
 
+    def tearDown(self):
+        options.reset()
+
     def test_set_default_geometry_sync(self):
         """Test setting default geometry sync behavior."""
-        LRS_Accessor.set_default_geometry_sync('error')
-        # This should be reflected in new accessor instances
-        # Actual behavior testing would require geometry operations
-        
-        # Clean up
-        LRS_Accessor.set_default_geometry_sync('warn')
+        options.default_geometry_sync = 'error'
+        df = pd.DataFrame({'a': [1]})
+        self.assertEqual(df.lr.geometry_sync, 'error')
 
     def test_set_default_geometry_sync_invalid(self):
         """Test that invalid sync behavior raises error."""
         with self.assertRaises(ValueError):
-            LRS_Accessor.set_default_geometry_sync('invalid')
+            options.default_geometry_sync = 'invalid'
 
-    def test_set_geometry_sync(self):
-        """Test setting geometry sync behavior on instance."""
+    def test_set_geometry_sync_on_instance(self):
+        """Test setting geometry sync behavior on instance via property."""
         df = pd.DataFrame({'a': [1]})
-        df.lr.set_geometry_sync('error')
-        # Behavior would be tested with actual geometry operations
+        df.lr.geometry_sync = 'error'
+        self.assertEqual(df.lr.geometry_sync, 'error')
 
 
 class TestStudyMethod(unittest.TestCase):
@@ -1206,7 +1234,7 @@ class TestAccessorStatePersistence(unittest.TestCase):
 
     def test_geometry_sync_survives_reinstantiation(self):
         """Geometry sync state persists across accessor re-construction."""
-        self.df.lr.set_geometry_sync('error')
+        self.df.lr.geometry_sync = 'error'
         new_acc = LRS_Accessor(self.df)
         self.assertEqual(new_acc.geometry_sync, 'error')
 
@@ -1243,12 +1271,12 @@ class TestAccessorStatePersistence(unittest.TestCase):
     def test_default_lrs_used_for_new_df(self):
         """Default LRS is still used for DataFrames without stored attrs."""
         default = LRS(key_col=['x'], beg_col='a', end_col='b')
-        LRS_Accessor.set_default_lrs(default)
+        set_default_lrs(default)
         try:
             fresh_df = pd.DataFrame({'x': [1], 'a': [0], 'b': [1]})
             self.assertEqual(fresh_df.lr.lrs, default)
         finally:
-            LRS_Accessor.clear_default_lrs()
+            options.reset()
 
     def test_inplace_false_returns_independent_state(self):
         """Non-inplace set_lrs returns a df with independent LRS state."""
