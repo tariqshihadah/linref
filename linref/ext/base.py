@@ -2170,6 +2170,42 @@ class LRS_Accessor(object):
             df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
+    def geom_m_to_wkt(
+        self,
+        geom_m_col: str | None = None,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Convert LineStringM objects in the M-enabled geometry column to WKT 
+        strings. Typically used for export compatibility while using the 
+        linref LineStringM implementation. Will become unnecessary once M-
+        enabled geometries are more widely supported in shapely.
+
+        Parameters
+        ----------
+        geom_m_col : str, optional
+            The name of the geometry_m column to convert. If None, use the
+            geometry_m column name from the LRS if present.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Define geometry column name
+        if geom_m_col is None:
+            if not self.lrs.is_spatial_m:
+                raise ValueError(
+                    "No geometry_m column defined in the LRS. "
+                    "Please provide a geom_m_col parameter."
+                )
+            else:
+                geom_m_col = self.lrs.geom_m_col
+
+        # Convert LineStringM to WKT
+        df = self.df if inplace else self.copy_df()
+        df[geom_m_col] = df[geom_m_col].apply(
+            lambda x: x.wkt if isinstance(x, geometry.LineStringM) else x
+        )
+        return None if inplace else df
+
     def extract_m_values(
         self,
         beg_col: str | None = None,
