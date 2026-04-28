@@ -522,6 +522,28 @@ class LineStringM:
             distance = self.m_to_distance(distance, snap=False)
         return self.geom.interpolate(distance, normalized=False)
 
+    def reverse(self, inplace: bool = False):
+        """
+        Reverse the direction of the geometry and its M values.
+
+        Parameters
+        ----------
+        inplace : bool, default False
+            Whether to modify the object in place or return a new object.
+
+        Raises
+        ------
+        NotImplementedError
+            LineStringM does not currently support reversing. This method is 
+            a placeholder for future support of non-monotonic M-enabled 
+            geometries.
+        """
+        raise NotImplementedError(
+            "LineStringM does not currently support reversing. Reversing "
+            "would produce non-monotonic M values, which are not supported "
+            "by LineStringM at this time."
+        )
+
     def cut(self, beg, end, normalized=False, m=False, snap=False):
         """
         Return a LineStringM object with the geometry cut between the specified

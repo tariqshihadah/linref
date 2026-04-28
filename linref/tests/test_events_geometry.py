@@ -588,5 +588,17 @@ class TestSubstringMCoordsEdgeCases(unittest.TestCase):
         self.assertEqual(m1[-1], 10.0)
 
 
+class TestLineStringMReverse(unittest.TestCase):
+    """Test LineStringM.reverse() method."""
+
+    def test_reverse_raises_not_implemented(self):
+        """Test that reverse raises NotImplementedError."""
+        geom = LineString([(0, 0), (1, 0), (2, 0)])
+        m = np.array([0.0, 1.0, 2.0])
+        lsm = LineStringM(geom, m)
+        with self.assertRaises(NotImplementedError):
+            lsm.reverse()
+
+
 if __name__ == '__main__':
     unittest.main()

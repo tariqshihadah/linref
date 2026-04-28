@@ -1460,6 +1460,49 @@ class TestChainCol(unittest.TestCase):
         self.assertTrue(df.lr.is_grouped)
 
 
+class TestSetMonotonic(unittest.TestCase):
+    """Test LRS_Accessor.set_monotonic method."""
+
+    def setUp(self):
+        """Set up test DataFrame with mixed monotonic/non-monotonic events."""
+        self.df = pd.DataFrame({
+            'route': ['A', 'A', 'B'],
+            'beg': [0.0, 2.0, 4.0],
+            'end': [1.0, 1.0, 2.0],
+            'geometry': [
+                LineString([(0, 0), (1, 0)]),
+                LineString([(2, 0), (1, 0)]),
+                LineString([(4, 0), (2, 0)]),
+            ]
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end',
+            geom_col='geometry', closed='right'
+        )
+
+    def test_set_monotonic_with_geometry_reversal(self):
+        """Test that bounds are enforced and geometries reversed by default."""
+        result = self.df.lr.set_monotonic()
+        # Bounds enforced
+        self.assertTrue(np.all(result.lr.begs <= result.lr.ends))
+        # Monotonic event unchanged
+        self.assertEqual(list(result.iloc[0]['geometry'].coords), [(0, 0), (1, 0)])
+        # Non-monotonic event geometries reversed
+        self.assertEqual(list(result.iloc[1]['geometry'].coords), [(1, 0), (2, 0)])
+        self.assertEqual(list(result.iloc[2]['geometry'].coords), [(2, 0), (4, 0)])
+
+    def test_set_monotonic_without_geometry_reversal(self):
+        """Test that bounds are enforced but geometries preserved when
+        reverse_geom=False."""
+        result = self.df.lr.set_monotonic(reverse_geom=False)
+        # Bounds enforced
+        self.assertTrue(np.all(result.lr.begs <= result.lr.ends))
+        np.testing.assert_array_equal(result['beg'].values, [0.0, 1.0, 2.0])
+        np.testing.assert_array_equal(result['end'].values, [1.0, 2.0, 4.0])
+        # Geometries unchanged
+        self.assertEqual(list(result.iloc[1]['geometry'].coords), [(2, 0), (1, 0)])
+        self.assertEqual(list(result.iloc[2]['geometry'].coords), [(4, 0), (2, 0)])
+
+
 # Run tests
 if __name__ == '__main__':
     unittest.main()

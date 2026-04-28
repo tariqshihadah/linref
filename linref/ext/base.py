@@ -889,17 +889,26 @@ class LRS_Accessor(object):
         return None if inplace else df
     
     @_method_require(is_linear=True)
-    def set_monotonic(self, inplace: bool = False) -> pd.DataFrame | None:
+    def set_monotonic(self, reverse_geom: bool = True, inplace: bool = False) -> pd.DataFrame | None:
         """
         Ensure that linear events in the DataFrame are monotonic according to
-        the set LRS, reordering begin and end values as needed. This only 
-        effects the begin and end values in the DataFrame, not the geometries.
+        the set LRS, reordering begin and end values as needed. Optionally 
+        reverses associated geometries for events whose bounds are swapped.
 
         Parameters
         ----------
+        reverse_geom : bool, default True
+            Whether to reverse geometries for events whose begin and end 
+            values are swapped to enforce monotonicity. When True, shapely 
+            geometries in the geometry column will be reversed for affected 
+            events, and M-enabled geometries will be reversed if supported. 
+            When False, only begin and end values are swapped and geometries 
+            are left unchanged.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
         """
+        # Identify non-monotonic events before swapping
+        mask = self.begs > self.ends
         # Create events object and enforce monotonicity
         events = self.get_events(allow_undefined_events=True)
         events.set_monotonic(inplace=True)
@@ -910,6 +919,33 @@ class LRS_Accessor(object):
         if self.is_linear:
             df[self.beg_col] = events.begs
             df[self.end_col] = events.ends
+        # Reverse geometries for non-monotonic events if requested
+        if reverse_geom and np.any(mask):
+            # Reverse shapely geometries
+            if self.is_spatial:
+                geoms = df[self.geom_col].values.copy()
+                geoms[mask] = shapely.reverse(geoms[mask])
+                df[self.geom_col] = geoms
+            # Reverse M-enabled geometries
+            if self.is_spatial_m:
+                # NOTE: Reversing M-enabled geometries is currently not 
+                # supported as the LineStringM class does not allow the 
+                # creation of reversed geometries. This is a known limitation 
+                # and will be addressed in a future release or with improved
+                # support for M-enabled geometries in shapely.
+                geoms_m = df[self.geom_m_col].values
+                for i in np.where(mask)[0]:
+                    try:
+                        geoms_m[i].reverse(inplace=True)
+                    except NotImplementedError:
+                        raise NotImplementedError(
+                            "Cannot reverse M-enabled geometries during "
+                            "monotonic enforcement because LineStringM does "
+                            "not currently support reversing. Remove the "
+                            "M-enabled geometry column before calling "
+                            "set_monotonic, or set reverse_geom=False to "
+                            "skip geometry reversal."
+                        )
         return None if inplace else df
 
     def build_geom_m(self) -> np.ndarray:
