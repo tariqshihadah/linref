@@ -1259,6 +1259,7 @@ class EventsRelation(object):
         decay_func: str = 'linear',
         direction: str = 'both',
         length_normalize: bool = True,
+        chunksize: int = 1000,
         squeeze: bool = True,
         **kwargs
     ) -> np.ndarray:
@@ -1327,6 +1328,12 @@ class EventsRelation(object):
             Whether to length-normalize the distributed shares by multiplying
             by the lengths of the events. This assigns a greater share to longer
             events.
+        chunksize : int or None, default 1000
+            The maximum number of source event columns to process in a single
+            chunk. Controls peak memory usage by avoiding materializing the
+            full distributed matrix at once. Set to None to process all columns
+            in a single pass (original behavior). This does not affect actual
+            results, only computation.
         squeeze : bool, default True
             Whether to squeeze the output array to a 1D array if possible.
         """
@@ -1354,70 +1361,97 @@ class EventsRelation(object):
         # Get relational data and adjust for axis
         arr = self._get_method_data(method, axis, **kwargs).tocsr()
         if axis == 0:
-            arr = arr.T
+            arr = arr.T.tocsr()
             lengths = self.right.lengths.reshape(-1, 1)
         else:
             lengths = self.left.lengths.reshape(-1, 1)
 
-        # Distribute intersection share based on decay function
+        # Validate decay function scale
         scale = decay_func(0)
         if not scale == 1:
             raise ValueError(
                 "Decay function must return a scale of 1.0 for step 0."
             )
-        distributed = arr.copy()
+
         n_rows = arr.shape[0]
-        # Create a padded array for efficient shifting
-        padded = sp.vstack([
-            sp.csr_matrix((decay_size, arr.shape[1])),
-            arr,
-            sp.csr_matrix((decay_size, arr.shape[1]))
-        ])
-        for step in range(1, min(decay_size + 1, n_rows)):
-            # Aggregate shifted shares
-            if direction in ['forward', 'forw', 'both']:
-                distributed += padded[decay_size + step : n_rows + decay_size + step, :] * decay_func(step)
-            if direction in ['backward', 'back', 'both']:
-                distributed += padded[decay_size - step : n_rows + decay_size - step, :] * decay_func(step)
-        del padded
-        # Enforce equal groups by zeroing out distributed shares that
-        # cross group boundaries
+        n_cols = arr.shape[1]
+
+        # Pre-fetch equal groups data if needed
+        equal_groups = None
         if self.left.is_grouped:
             equal_groups = self._get_equal_groups_data()
             equal_groups = equal_groups.T if axis == 0 else equal_groups
-            distributed = distributed.multiply(equal_groups)
-        
-        # Multiply result shares by event lengths to favor longer events
-        if length_normalize:
-            distributed *= lengths
-        
-        # Normalize result shares to sum to 1.0
-        # Convert from matrix (may become unnecessary in future scipy versions)
-        denominator = np.asarray(distributed.sum(axis=0)).flatten()
-        # Enforce CSR format for efficient in-place normalization
-        distributed = distributed.tocsr()
-        # Normalize non-zero values in-place via direct CSR data array access.
-        # In CSR format, distributed.indices holds the column index for each
-        # stored value, so np.take maps each value to its column's denominator.
-        nonzero_mask = denominator[distributed.indices] != 0
-        distributed.data[nonzero_mask] /= \
-            denominator[distributed.indices[nonzero_mask]]
-        
-        # Multiply by data if provided
-        if data is not None:
-            # Check for simple all 1s data for optimization
-            if data.shape[1] == 1 and np.all(data == 1):
-                output_array = np.asarray(distributed.sum(axis=1))
+
+        # Pre-check for simple all-ones data optimization
+        data_is_ones = (
+            data is not None and data.shape[1] == 1 and np.all(data == 1)
+        )
+        n_out_cols = (
+            1 if data is None or data_is_ones else data.shape[1]
+        )
+        output_array = np.zeros((n_rows, n_out_cols))
+
+        # Process source event columns in chunks to limit memory usage.
+        # Each column is independent through decay, normalization, and
+        # aggregation, so partial results accumulate additively.
+        if chunksize is None:
+            chunksize = n_cols
+        for col_start in range(0, n_cols, chunksize):
+            col_end = min(col_start + chunksize, n_cols)
+            arr_chunk = arr[:, col_start:col_end]
+
+            # Distribute intersection share based on decay function
+            distributed = arr_chunk.copy()
+            padded = sp.vstack([
+                sp.csr_matrix((decay_size, arr_chunk.shape[1])),
+                arr_chunk,
+                sp.csr_matrix((decay_size, arr_chunk.shape[1]))
+            ])
+            for step in range(1, min(decay_size + 1, n_rows)):
+                # Aggregate shifted shares
+                if direction in ['forward', 'forw', 'both']:
+                    distributed += padded[decay_size + step : n_rows + decay_size + step, :] * decay_func(step)
+                if direction in ['backward', 'back', 'both']:
+                    distributed += padded[decay_size - step : n_rows + decay_size - step, :] * decay_func(step)
+            del padded
+
+            # Enforce equal groups by zeroing out distributed shares that
+            # cross group boundaries
+            if equal_groups is not None:
+                distributed = distributed.multiply(
+                    equal_groups[:, col_start:col_end]
+                )
+
+            # Multiply result shares by event lengths to favor longer events
+            if length_normalize:
+                distributed *= lengths
+
+            # Normalize result shares to sum to 1.0
+            denominator = np.asarray(distributed.sum(axis=0)).flatten()
+            # Enforce CSR format for efficient in-place normalization
+            distributed = distributed.tocsr()
+            # Normalize non-zero values in-place via direct CSR data array
+            # access. In CSR format, distributed.indices holds the column
+            # index for each stored value, so np.take maps each value to its
+            # column's denominator.
+            nonzero_mask = denominator[distributed.indices] != 0
+            distributed.data[nonzero_mask] /= \
+                denominator[distributed.indices[nonzero_mask]]
+
+            # Accumulate chunk results into output
+            if data is not None and not data_is_ones:
+                data_chunk = data[col_start:col_end, :]
+                for k, column in enumerate(data_chunk.T):
+                    output_array[:, k] += np.asarray(
+                        distributed.multiply(column).sum(axis=1)
+                    ).flatten()
             else:
-                aggregated = []
-                for column in data.T:
-                    aggregated.append(
-                        np.asarray(distributed.multiply(column).sum(axis=1))
-                    )
-                # Concatenate results
-                output_array = np.vstack(aggregated).T
-        else:
-            output_array = np.asarray(distributed.sum(axis=1))
+                output_array += np.asarray(
+                    distributed.sum(axis=1)
+                ).reshape(n_rows, 1)
+
+            del distributed
+
         return output_array
 
     @_get_linestring_m_data_wrapper
