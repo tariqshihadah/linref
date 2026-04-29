@@ -1097,6 +1097,82 @@ class TestDistributeAggregation(unittest.TestCase):
         # Result should sum to 1.0
         self.assertAlmostEqual(np.sum(result), 1.0, places=5)
 
+    def test_distribute_multi_column_data(self):
+        """Test distribute with multi-column data and per-element value checks."""
+        data = np.array([[2.0, 5.0]])  # shape (1, 2)
+        result = self.relation.distribute(
+            data=data,
+            axis=1,
+            method='overlay',
+            decay_size=1,
+            decay_func='linear',
+            direction='both',
+            length_normalize=True,
+            squeeze=False
+        )
+        
+        # Result should be (5, 2)
+        self.assertEqual(result.shape, (5, 2))
+        
+        # Column sums should equal the input data values
+        np.testing.assert_allclose(result.sum(axis=0), [2.0, 5.0], atol=1e-10)
+        
+        # Per-element spot checks (column 0, data=2.0)
+        np.testing.assert_allclose(result[0, 0], 0.25, atol=1e-10)
+        np.testing.assert_allclose(result[1, 0], 0.75, atol=1e-10)
+        np.testing.assert_allclose(result[2, 0], 0.75, atol=1e-10)
+        np.testing.assert_allclose(result[3, 0], 0.25, atol=1e-10)
+        np.testing.assert_allclose(result[4, 0], 0.0, atol=1e-10)
+        
+        # Per-element spot checks (column 1, data=5.0)
+        np.testing.assert_allclose(result[0, 1], 0.625, atol=1e-10)
+        np.testing.assert_allclose(result[1, 1], 1.875, atol=1e-10)
+        np.testing.assert_allclose(result[2, 1], 1.875, atol=1e-10)
+        np.testing.assert_allclose(result[3, 1], 0.625, atol=1e-10)
+        np.testing.assert_allclose(result[4, 1], 0.0, atol=1e-10)
+
+    def test_distribute_grouped_events(self):
+        """Test distribute respects group boundaries."""
+        left_grouped = base.EventsData(
+            begs=np.array([0.0, 10.0, 20.0, 0.0, 10.0]),
+            ends=np.array([10.0, 20.0, 30.0, 10.0, 20.0]),
+            groups=np.array(['A', 'A', 'A', 'B', 'B'])
+        )
+        right_grouped = base.EventsData(
+            begs=np.array([5.0, 5.0]),
+            ends=np.array([15.0, 15.0]),
+            groups=np.array(['A', 'B'])
+        )
+        relation = relate.EventsRelation(left_grouped, right_grouped)
+        
+        data = np.array([[1.0, 2.0], [3.0, 4.0]])
+        result = relation.distribute(
+            data=data,
+            axis=1,
+            method='overlay',
+            decay_size=1,
+            decay_func='linear',
+            direction='both',
+            length_normalize=True,
+            squeeze=False
+        )
+        
+        self.assertEqual(result.shape, (5, 2))
+        
+        # Column sums should equal sum of input data per column
+        np.testing.assert_allclose(result.sum(axis=0), [4.0, 6.0], atol=1e-10)
+        
+        # Group A events (indices 0,1,2) should not receive shares from
+        # group B right event, and vice versa
+        # Per-element checks for group A (first 3 rows)
+        np.testing.assert_allclose(result[0, 0], 0.42857143, atol=1e-6)
+        np.testing.assert_allclose(result[1, 0], 0.42857143, atol=1e-6)
+        np.testing.assert_allclose(result[2, 0], 0.14285714, atol=1e-6)
+        
+        # Per-element checks for group B (last 2 rows)
+        np.testing.assert_allclose(result[3, 0], 1.5, atol=1e-6)
+        np.testing.assert_allclose(result[4, 0], 1.5, atol=1e-6)
+
 
 class TestValueCounts(unittest.TestCase):
     """Test cases for value_counts aggregation."""

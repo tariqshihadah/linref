@@ -1366,18 +1366,20 @@ class EventsRelation(object):
                 "Decay function must return a scale of 1.0 for step 0."
             )
         distributed = arr.copy()
+        n_rows = arr.shape[0]
         # Create a padded array for efficient shifting
         padded = sp.vstack([
             sp.csr_matrix((decay_size, arr.shape[1])),
             arr,
             sp.csr_matrix((decay_size, arr.shape[1]))
         ])
-        for step in range(1, min(decay_size + 1, arr.shape[0])):
+        for step in range(1, min(decay_size + 1, n_rows)):
             # Aggregate shifted shares
             if direction in ['forward', 'forw', 'both']:
-                distributed += padded[decay_size + step : arr.shape[0] + decay_size + step, :] * decay_func(step)
+                distributed += padded[decay_size + step : n_rows + decay_size + step, :] * decay_func(step)
             if direction in ['backward', 'back', 'both']:
-                distributed += padded[decay_size - step : arr.shape[0] + decay_size - step, :] * decay_func(step)
+                distributed += padded[decay_size - step : n_rows + decay_size - step, :] * decay_func(step)
+        del padded
         # Enforce equal groups by zeroing out distributed shares that
         # cross group boundaries
         if self.left.is_grouped:
@@ -1392,13 +1394,14 @@ class EventsRelation(object):
         # Normalize result shares to sum to 1.0
         # Convert from matrix (may become unnecessary in future scipy versions)
         denominator = np.asarray(distributed.sum(axis=0)).flatten()
-        # Get indices with non-zero values
-        nonzero_locs = distributed.nonzero()
-        # Enforce CSR format for efficient indexing
+        # Enforce CSR format for efficient in-place normalization
         distributed = distributed.tocsr()
-        # Normalize only non-zero locations to avoid division by zero
-        distributed[nonzero_locs] = \
-            distributed[nonzero_locs] / denominator[nonzero_locs[1]]
+        # Normalize non-zero values in-place via direct CSR data array access.
+        # In CSR format, distributed.indices holds the column index for each
+        # stored value, so np.take maps each value to its column's denominator.
+        nonzero_mask = denominator[distributed.indices] != 0
+        distributed.data[nonzero_mask] /= \
+            denominator[distributed.indices[nonzero_mask]]
         
         # Multiply by data if provided
         if data is not None:
