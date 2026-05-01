@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from linref.events import base, geometry
+from linref.events.profile import resolve_profile
 from linref.utility import utility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 from scipy import sparse as sp
@@ -429,6 +430,8 @@ class EventsRelation(object):
         # Adjust kwargs for axis
         if not 'norm_by' in kwargs:
             kwargs['norm_by'] = 'right' if axis == 1 else 'left'
+        if 'profile' not in kwargs:
+            kwargs['profile'] = None
         if self.overlay_data is not None:
             if all(
                 self._overlay_kwargs.get(key, None) == value
@@ -579,7 +582,7 @@ class EventsRelation(object):
             }
         return arr
 
-    def overlay(self, normalize: bool = True, norm_by: str = 'right', chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
+    def overlay(self, normalize: bool = True, norm_by: str = 'right', profile=None, chunksize: int = 1000, grouped: bool = True) -> sp.csr_matrix:
         """
         Compute the overlay of the left and right events.
         
@@ -593,6 +596,15 @@ class EventsRelation(object):
             `normalize` is True.
             - 'right' : Normalize by the length of the right events.
             - 'left' : Normalize by the length of the left events.
+        profile : str, EventProfile, or None, default None
+            An event profile defining how value is distributed along the
+            event's length. When provided, overlay weights reflect the
+            proportion of the event's profiled value that is overlapped
+            rather than simple length proportion.
+            - None : No profiling (default, current behavior).
+            - str : Name of a built-in profile ('uniform', 'triangular',
+              'parabolic', 'trapezoidal').
+            - EventProfile : A profile instance for custom parameterization.
         chunksize : int or None, default 1000
             The maximum number of events to process in a single chunk.
             Input chunksize will affect the memory usage and performance of
@@ -617,6 +629,7 @@ class EventsRelation(object):
             self.right,
             normalize=normalize,
             norm_by=norm_by,
+            profile=profile,
             chunksize=chunksize,
             grouped=grouped
         )
@@ -626,6 +639,7 @@ class EventsRelation(object):
             self._overlay_kwargs = {
                 'normalize': normalize,
                 'norm_by': norm_by,
+                'profile': profile,
                 'chunksize': chunksize,
                 'grouped': grouped
             }
@@ -777,7 +791,7 @@ class EventsRelation(object):
         
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr.T if axis == 0 else arr
+        arr = (arr.T if axis == 0 else arr).tocsr()
 
         # Iterate over sparse rows
         output = []
@@ -896,7 +910,7 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr if axis == 1 else arr.T
+        arr = (arr if axis == 1 else arr.T).tocsr()
 
         # Iterate over sparse rows
         output = []
@@ -1358,13 +1372,15 @@ class EventsRelation(object):
                 "instance of DecayFunction."
             )
 
-        # Get relational data and adjust for axis
-        arr = self._get_method_data(method, axis, **kwargs).tocsr()
+        # Get relational data and adjust for axis.
+        # Store as CSC since we only column-slice arr inside the loop.
+        arr = self._get_method_data(method, axis, **kwargs)
         if axis == 0:
-            arr = arr.T.tocsr()
+            arr = arr.T
             lengths = self.right.lengths.reshape(-1, 1)
         else:
             lengths = self.left.lengths.reshape(-1, 1)
+        arr = arr.tocsc()
 
         # Validate decay function scale
         scale = decay_func(0)
@@ -1376,11 +1392,26 @@ class EventsRelation(object):
         n_rows = arr.shape[0]
         n_cols = arr.shape[1]
 
-        # Pre-fetch equal groups data if needed
-        equal_groups = None
+        # Pre-compute group membership vectors for efficient masking.
+        # Instead of materializing the full (n_rows x n_cols) equal_groups
+        # matrix (which can be multi-GB for large datasets), we store only
+        # integer group codes for each event and check membership on the
+        # sparse non-zeros directly. This is O(nnz) per chunk.
+        row_group_codes = None
+        col_group_codes = None
         if self.left.is_grouped:
-            equal_groups = self._get_equal_groups_data()
-            equal_groups = equal_groups.T if axis == 0 else equal_groups
+            all_groups = np.concatenate([
+                self.left.groups_data, self.right.groups_data
+            ])
+            _, codes = np.unique(all_groups, return_inverse=True)
+            left_codes = codes[:self.left.num_events]
+            right_codes = codes[self.left.num_events:]
+            if axis == 0:
+                row_group_codes = right_codes
+                col_group_codes = left_codes
+            else:
+                row_group_codes = left_codes
+                col_group_codes = right_codes
 
         # Pre-check for simple all-ones data optimization
         data_is_ones = (
@@ -1398,7 +1429,7 @@ class EventsRelation(object):
             chunksize = n_cols
         for col_start in range(0, n_cols, chunksize):
             col_end = min(col_start + chunksize, n_cols)
-            arr_chunk = arr[:, col_start:col_end]
+            arr_chunk = arr[:, col_start:col_end].tocsr()
 
             # Distribute intersection share based on decay function
             distributed = arr_chunk.copy()
@@ -1406,7 +1437,7 @@ class EventsRelation(object):
                 sp.csr_matrix((decay_size, arr_chunk.shape[1])),
                 arr_chunk,
                 sp.csr_matrix((decay_size, arr_chunk.shape[1]))
-            ])
+            ], format='csr')
             for step in range(1, min(decay_size + 1, n_rows)):
                 # Aggregate shifted shares
                 if direction in ['forward', 'forw', 'both']:
@@ -1416,20 +1447,27 @@ class EventsRelation(object):
             del padded
 
             # Enforce equal groups by zeroing out distributed shares that
-            # cross group boundaries
-            if equal_groups is not None:
-                distributed = distributed.multiply(
-                    equal_groups[:, col_start:col_end]
+            # cross group boundaries. Uses vectorized group code comparison
+            # on sparse non-zeros instead of full matrix multiplication.
+            if row_group_codes is not None:
+                chunk_col_codes = col_group_codes[col_start:col_end]
+                row_indices = np.repeat(
+                    np.arange(distributed.shape[0]),
+                    np.diff(distributed.indptr)
                 )
+                group_match = (
+                    row_group_codes[row_indices]
+                    == chunk_col_codes[distributed.indices]
+                )
+                distributed.data[~group_match] = 0
+                distributed.eliminate_zeros()
 
             # Multiply result shares by event lengths to favor longer events
             if length_normalize:
-                distributed *= lengths
+                distributed = distributed.multiply(lengths).tocsr() # Ensure format
 
             # Normalize result shares to sum to 1.0
             denominator = np.asarray(distributed.sum(axis=0)).flatten()
-            # Enforce CSR format for efficient in-place normalization
-            distributed = distributed.tocsr()
             # Normalize non-zero values in-place via direct CSR data array
             # access. In CSR format, distributed.indices holds the column
             # index for each stored value, so np.take maps each value to its
@@ -1509,7 +1547,7 @@ class EventsRelation(object):
         
         # Check for cached data
         arr = self._get_intersect_data(**kwargs)
-        arr = arr if axis == 1 else arr.T
+        arr = (arr if axis == 1 else arr.T).tocsr()
 
         # Pull event locations
         locs = self.left.locs if axis == 1 else self.right.locs
@@ -1603,7 +1641,7 @@ class EventsRelation(object):
         # Check for cached data
         kwargs['enforce_edges'] = False # Edges not needed for cutting
         arr = self._get_intersect_data(**kwargs)
-        arr = arr if axis == 1 else arr.T
+        arr = (arr if axis == 1 else arr.T).tocsr()
 
         # Pull event bounds
         begs = self.left.begs if axis == 1 else self.right.begs
@@ -1691,7 +1729,7 @@ class EventsRelation(object):
         # Check for cached data
         kwargs['enforce_edges'] = False # Edges not needed for merging
         arr = self._get_intersect_data(**kwargs)
-        arr = arr if axis == 1 else arr.T
+        arr = (arr if axis == 1 else arr.T).tocsr()
 
         # Iterate over sparse rows
         output = []
@@ -1862,7 +1900,7 @@ def _chunked_operation_wrapper(func) -> callable:
 
 @_grouped_operation_wrapper
 @_chunked_operation_wrapper
-def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.csr_matrix:
+def overlay(left, right, normalize=True, norm_by='right', profile=None, chunksize=None) -> sp.csr_matrix:
     """
     Compute the overlay of two collections of events.
 
@@ -1878,6 +1916,16 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
         `normalize` is True.
         - 'right' : Normalize by the length of the right events.
         - 'left' : Normalize by the length of the left events.
+    profile : str, EventProfile, or None, default None
+        An event profile defining how value is distributed along the
+        event's length. When provided, overlay weights reflect the
+        proportion of the event's profiled value that is overlapped
+        rather than simple length proportion. Only applied when
+        `normalize` is True.
+        - None : No profiling (default, simple length-based normalization).
+        - str : Name of a built-in profile ('uniform', 'triangular',
+          'parabolic', 'trapezoidal').
+        - EventProfile : A profile instance for custom parameterization.
     chunksize : int or None, default None
         The maximum number of elements to process in a single chunk.
         Input chunksize will affect the memory usage and performance of
@@ -1894,6 +1942,9 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
         raise ValueError("Input events must be linear.")
     if not left.is_monotonic or not right.is_monotonic:
         raise ValueError("Input events must be monotonic.")
+
+    # Resolve profile
+    profile = resolve_profile(profile)
 
     # Early exit for completely disjoint event collections
     if left.begs.min() >= right.ends.max() or right.begs.min() >= left.ends.max():
@@ -1921,18 +1972,57 @@ def overlay(left, right, normalize=True, norm_by='right', chunksize=None) -> sp.
 
     # Normalize if necessary
     if normalize:
-        # Get denominator
-        if norm_by == 'right':
-            denom = right.lengths.reshape(1, -1)
-        elif norm_by == 'left':
-            denom = left.lengths.reshape(-1, 1)
+        if profile is not None:
+            # Profile-based normalization: compute the integral of the profile
+            # over the normalized overlap region within the norm_by event.
+            # Determine overlap start/end in absolute coordinates
+            overlap_start = np.maximum(
+                left.begs.reshape(-1, 1), right.begs.reshape(1, -1)
+            )
+            overlap_end = np.minimum(
+                left.ends.reshape(-1, 1), right.ends.reshape(1, -1)
+            )
+            # Compute has-overlap mask before in-place normalization
+            has_overlap = overlap_end > overlap_start
+            # Normalize positions to [0, 1] within the norm_by event
+            if norm_by == 'right':
+                event_begs = right.begs.reshape(1, -1)
+                event_lengths = right.lengths.reshape(1, -1)
+            elif norm_by == 'left':
+                event_begs = left.begs.reshape(-1, 1)
+                event_lengths = left.lengths.reshape(-1, 1)
+            else:
+                raise ValueError(
+                    f"Invalid 'norm_by' parameter value provided ({norm_by}). Must be one "
+                    f"of {_norm_by_options}.")
+            # Normalize overlap positions in-place (reuse overlap_start/end)
+            safe_lengths = np.where(event_lengths == 0, np.inf, event_lengths)
+            np.subtract(overlap_start, event_begs, out=overlap_start)
+            np.divide(overlap_start, safe_lengths, out=overlap_start)
+            np.subtract(overlap_end, event_begs, out=overlap_end)
+            np.divide(overlap_end, safe_lengths, out=overlap_end)
+            np.clip(overlap_start, 0, 1, out=overlap_start)
+            np.clip(overlap_end, 0, 1, out=overlap_end)
+            # Compute profiled weights
+            overlap = profile.integral(overlap_start, overlap_end)
+            # Zero out where there's no actual overlap
+            np.multiply(overlap, has_overlap, out=overlap)
+            # Re-apply group mask
+            if left.is_grouped:
+                np.multiply(overlap, mask, out=overlap)
         else:
-            raise ValueError(
-                f"Invalid 'norm_by' parameter value provided ({norm_by}). Must be one "
-                f"of {_norm_by_options}.")
-        # Normalize
-        denom = np.where(denom==0, np.inf, denom)
-        np.divide(overlap, denom, out=overlap)
+            # Standard length-based normalization
+            if norm_by == 'right':
+                denom = right.lengths.reshape(1, -1)
+            elif norm_by == 'left':
+                denom = left.lengths.reshape(-1, 1)
+            else:
+                raise ValueError(
+                    f"Invalid 'norm_by' parameter value provided ({norm_by}). Must be one "
+                    f"of {_norm_by_options}.")
+            # Normalize
+            denom = np.where(denom==0, np.inf, denom)
+            np.divide(overlap, denom, out=overlap)
     
     return overlap
 
