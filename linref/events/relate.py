@@ -2003,8 +2003,8 @@ def overlay(left, right, normalize=True, norm_by='right', profile=None, chunksiz
             np.divide(overlap_end, safe_lengths, out=overlap_end)
             np.clip(overlap_start, 0, 1, out=overlap_start)
             np.clip(overlap_end, 0, 1, out=overlap_end)
-            # Compute profiled weights
-            overlap = profile.integral(overlap_start, overlap_end)
+            # Compute profiled weights (bypass bounds check since already clipped)
+            overlap = profile._integral(overlap_start, overlap_end)
             # Zero out where there's no actual overlap
             np.multiply(overlap, has_overlap, out=overlap)
             # Re-apply group mask
