@@ -1015,7 +1015,7 @@ class EventsRelation(object):
     @_get_selector_data_wrapper
     @_validate_agg_2d_data_wrapper
     @_squeeze_output_wrapper
-    def sum(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, method: str | None = None, axis: int = 1, squeeze: bool = True, **kwargs) -> np.ndarray:
+    def sum(self, data: np.ndarray | pd.Series | pd.DataFrame | None = None, method: str | None = None, axis: int = 1, squeeze: bool = True, conserve: bool = False, **kwargs) -> np.ndarray:
         """
         Sum the input data along the specified axis of the events relationship,
         multiplying by the overlay or intersection data and summing the result.
@@ -1043,6 +1043,15 @@ class EventsRelation(object):
             - 1 : Aggregate right events onto the left events index.
         squeeze : bool, default True
             Whether to squeeze the output array to a 1D array if possible.
+        conserve : bool, default False
+            Whether to conserve the total value of each source event during
+            aggregation. When True, the relation matrix is normalized so that
+            each source event's weights sum to 1.0, ensuring that 100% of its
+            value is distributed proportionally across overlapping target 
+            events. This is useful when source events are only partially 
+            covered by target events and the full value should still be 
+            allocated, or when over-coverage occurs and the total value should
+            be scaled down proportionally.
         **kwargs
             Additional keyword arguments to pass to the intersection or overlay
             methods if they have not been previously computed and cached.
@@ -1059,6 +1068,20 @@ class EventsRelation(object):
         """
         # Check for cached data
         arr = self._get_method_data(method, axis, **kwargs)
+        
+        # Normalize source event weights to conserve total value
+        if conserve:
+            if axis == 1:
+                # Source events are columns → normalize columns to sum to 1.0
+                arr = arr.tocsr().copy()
+                sums = np.asarray(arr.sum(axis=0)).flatten()
+            else:
+                # Source events are rows → normalize rows to sum to 1.0
+                arr = arr.tocsc().copy()
+                sums = np.asarray(arr.sum(axis=1)).flatten()
+            # Divide nonzero rows/columns by their sums
+            nonzero_mask = sums[arr.indices] != 0
+            arr.data[nonzero_mask] /= sums[arr.indices[nonzero_mask]]
         
         # Perform aggregation
         aggregated = []

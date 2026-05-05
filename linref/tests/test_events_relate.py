@@ -1235,5 +1235,61 @@ class TestValueCounts(unittest.TestCase):
         self.assertEqual(result.loc[3, 'C'], 1)
 
 
+class TestSum(unittest.TestCase):
+    """Test cases for the sum aggregator, including the conserve parameter."""
+
+    def setUp(self):
+        """Set up test data with partial coverage."""
+        self.left = base.EventsData(
+            begs=np.array([0.0, 10.0]),
+            ends=np.array([10.0, 15.0])
+        )
+        self.right = base.EventsData(
+            begs=np.array([0.0]),
+            ends=np.array([20.0])
+        )
+        self.relation = relate.EventsRelation(self.left, self.right)
+        self.data = np.array([100.0])
+
+    def test_sum_partial_coverage(self):
+        """Sum distributes only the covered fraction by default."""
+        result = self.relation.sum(data=self.data, method='overlay', axis=1)
+        self.assertAlmostEqual(result[0], 50.0)
+        self.assertAlmostEqual(result[1], 25.0)
+
+    def test_sum_conserve_partial_coverage(self):
+        """With conserve, full value is distributed proportionally."""
+        result = self.relation.sum(
+            data=self.data, method='overlay', axis=1, conserve=True)
+        self.assertAlmostEqual(result[0], 100.0 * 2 / 3, places=5)
+        self.assertAlmostEqual(result[1], 100.0 * 1 / 3, places=5)
+        self.assertAlmostEqual(result.sum(), 100.0, places=5)
+
+    def test_sum_conserve_axis0(self):
+        """Conserve works with axis=0 (aggregate left onto right index)."""
+        # left[0] (0-10) partially covered by right[0] (0-5) and right[1] (5-8)
+        left = base.EventsData(begs=np.array([0.0]), ends=np.array([10.0]))
+        right = base.EventsData(
+            begs=np.array([0.0, 5.0]), ends=np.array([5.0, 8.0]))
+        relation = relate.EventsRelation(left, right)
+
+        result = relation.sum(
+            data=np.array([100.0]), method='overlay', axis=0, conserve=True)
+        # Row [0.5, 0.3] normalized to [0.625, 0.375]
+        self.assertAlmostEqual(result[0], 62.5, places=5)
+        self.assertAlmostEqual(result[1], 37.5, places=5)
+        self.assertAlmostEqual(result.sum(), 100.0, places=5)
+
+    def test_sum_conserve_no_overlap(self):
+        """No overlap with conserve does not cause division by zero."""
+        left = base.EventsData(begs=np.array([100.0]), ends=np.array([110.0]))
+        right = base.EventsData(begs=np.array([0.0]), ends=np.array([10.0]))
+        relation = relate.EventsRelation(left, right)
+
+        result = relation.sum(
+            data=np.array([100.0]), method='overlay', axis=1, conserve=True)
+        self.assertAlmostEqual(float(result), 0.0)
+
+
 if __name__ == '__main__':
     unittest.main()
