@@ -1,5 +1,5 @@
 """
-Unit tests for linref.events.geometry module.
+Unit tests for linref.geometry module.
 
 Tests cover:
 - LineStringM class initialization and properties

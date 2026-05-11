@@ -23,10 +23,10 @@ linref.events.relate
    :undoc-members:
    :show-inheritance:
 
-linref.events.geometry
-----------------------
+linref.geometry
+---------------
 
-.. automodule:: linref.events.geometry
+.. automodule:: linref.geometry
    :members:
    :undoc-members:
    :show-inheritance:
