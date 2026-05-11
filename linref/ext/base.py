@@ -13,7 +13,8 @@ from scipy import sparse as sp
 from linref.utility.utility import label_list_or_none
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
-from linref.events import modify, relate, geometry, integration
+from linref.events import modify, relate, integration
+from linref import geometry
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
 from linref.ext.validation import _method_deprecates_geometry
 from linref.ext.lrs import LRS
@@ -2512,13 +2513,12 @@ class LRS_Accessor(object):
             )
             joined[distance_col] = left_geoms.distance(right_geoms)
         
-        # Project input points onto event geometries
-        def _project(r):
-            try:
-                return r[self.geom_m_col].project(r[other_geometry_name], m=True)
-            except AttributeError:
-                return
-        locs = joined.apply(_project, axis=1)
+        # Project input points onto event geometries (vectorized)
+        locs = geometry.line_locate_point_m(
+            joined[self.geom_m_col].values,
+            joined[other_geometry_name].values,
+            m=True,
+        )
         joined[self.loc_col] = locs
         # Drop rows with no match if needed
         if dropna:
@@ -2531,6 +2531,7 @@ class LRS_Accessor(object):
     
 
 # Helper functions for event operations
+
 
 def check_compatibility(dfs: list[pd.DataFrame]) -> list[pd.DataFrame]:
     """

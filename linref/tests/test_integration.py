@@ -301,7 +301,7 @@ class TestIntegration(unittest.TestCase):
 
         # Verify M-geometry column was added
         self.assertIn('geometry_m', roads_m.columns)
-        from linref.events.geometry import LineStringM
+        from linref.geometry import LineStringM
         for geom in roads_m['geometry_m']:
             self.assertIsInstance(geom, LineStringM)
 

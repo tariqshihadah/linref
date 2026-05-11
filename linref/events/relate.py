@@ -1,7 +1,9 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from linref.events import base, geometry
+from linref.events import base
+from linref import geometry
+from shapely.geometry import LineString
 from linref.events.profile import resolve_profile
 from linref.utility import utility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
@@ -66,7 +68,7 @@ def _get_linestring_m_data_wrapper(func) -> callable:
         else:
             data = np.asarray(data)
         # Validate data type
-        if isinstance(data[0], geometry.LineString):
+        if isinstance(data[0], LineString):
             raise TypeError(
                 "Input aggregation data does not contain M values. Use "
                 "the `add_geom_m` method to add M values to LineString "

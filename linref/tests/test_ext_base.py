@@ -809,7 +809,7 @@ class TestProjectMethod(unittest.TestCase):
 
     def setUp(self):
         """Set up test data with M-enabled geometries."""
-        from linref.events.geometry import LineStringM
+        from linref.geometry import LineStringM
         
         # Create linear events (roads) with M-enabled geometries
         roads_data = pd.DataFrame({
@@ -1292,7 +1292,7 @@ class TestChainCol(unittest.TestCase):
 
     def setUp(self):
         """Set up test data with disjointed geometries for chaining tests."""
-        from linref.events.geometry import LineStringM
+        from linref.geometry import LineStringM
         
         # Create data with disjointed geometries within a route:
         # Route A: two contiguous segments + one disjointed segment

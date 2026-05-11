@@ -11,7 +11,7 @@ Tests cover:
 import unittest
 import numpy as np
 from shapely.geometry import LineString, Point
-from linref.events.geometry import LineStringM, substring_m_coords
+from linref.geometry import LineStringM, substring_m_coords
 from linref.errors import GeometryMeasureError
 
 
