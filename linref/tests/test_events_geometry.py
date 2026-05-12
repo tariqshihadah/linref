@@ -11,7 +11,14 @@ Tests cover:
 import unittest
 import numpy as np
 from shapely.geometry import LineString, Point
-from linref.geometry import LineStringM, substring_m_coords
+from linref.geometry import (
+    LineStringM,
+    substring_m_coords,
+    line_locate_point_m,
+    line_interpolate_point_m,
+    distance_to_m,
+    m_to_distance,
+)
 from linref.errors import GeometryMeasureError
 
 
@@ -680,8 +687,6 @@ class TestLineInterpolatePointM(unittest.TestCase):
 
     def test_array_interpolation(self):
         """Vectorized interpolation of multiple (line, distance) pairs."""
-        from linref.geometry import line_interpolate_point_m
-
         lines = np.array([self.lsm_h, self.lsm_h, self.lsm_d], dtype=object)
         m_values = np.array([15.0, 0.0, 2.5])
 
@@ -696,8 +701,6 @@ class TestLineInterpolatePointM(unittest.TestCase):
 
     def test_array_with_none_geometry(self):
         """None entries in array produce None output."""
-        from linref.geometry import line_interpolate_point_m
-
         lines = np.array([self.lsm_h, None, self.lsm_h], dtype=object)
         m_values = np.array([10.0, 10.0, 20.0])
 
@@ -710,8 +713,6 @@ class TestLineInterpolatePointM(unittest.TestCase):
     def test_array_shared_geometry(self):
         """Multiple rows sharing the same LineStringM object are batched
         correctly via the grouping optimization."""
-        from linref.geometry import line_interpolate_point_m
-
         # Same object used 4 times with different M values
         lines = np.array([self.lsm_h] * 4, dtype=object)
         m_values = np.array([0.0, 10.0, 20.0, 30.0])
@@ -721,6 +722,232 @@ class TestLineInterpolatePointM(unittest.TestCase):
         for i, expected_x in enumerate([0.0, 1.0, 2.0, 3.0]):
             self.assertAlmostEqual(points[i].x, expected_x, msg=f"index {i}")
             self.assertAlmostEqual(points[i].y, 0.0, msg=f"index {i}")
+
+
+class TestLineLocatePointM(unittest.TestCase):
+    """Test the module-level line_locate_point_m function for both scalar
+    and vectorized array inputs, verifying exact projected distances/M values."""
+
+    def setUp(self):
+        """Create test LineStringM objects with known geometry and M values."""
+        # Horizontal line: (0,0)→(3,0), M = [0, 10, 20, 30]
+        self.geom_h = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        self.m_h = np.array([0.0, 10.0, 20.0, 30.0])
+        self.lsm_h = LineStringM(self.geom_h, self.m_h)
+
+        # Diagonal line: (0,0)→(2,2), M = [0, 5, 25] (non-uniform)
+        self.geom_d = LineString([(0, 0), (1, 1), (2, 2)])
+        self.m_d = np.array([0.0, 5.0, 25.0])
+        self.lsm_d = LineStringM(self.geom_d, self.m_d)
+
+    # -- Scalar tests --
+
+    def test_project_on_line_distance(self):
+        """Project a point and get absolute distance."""
+        dist = line_locate_point_m(self.lsm_h, Point(1.5, 0.5))
+        self.assertAlmostEqual(dist, 1.5)
+
+    def test_project_on_line_normalized(self):
+        """Project a point and get normalized distance."""
+        dist = line_locate_point_m(self.lsm_h, Point(1.5, 0), normalized=True)
+        self.assertAlmostEqual(dist, 0.5)
+
+    def test_project_on_line_m_value(self):
+        """Project a point and get M value."""
+        m_val = line_locate_point_m(self.lsm_h, Point(1.5, 0), m=True)
+        self.assertAlmostEqual(m_val, 15.0)
+
+    def test_project_at_vertex(self):
+        """Project a point exactly at a vertex."""
+        m_val = line_locate_point_m(self.lsm_h, Point(2, 0), m=True)
+        self.assertAlmostEqual(m_val, 20.0)
+
+    def test_project_nonuniform_m(self):
+        """Project onto a line with non-uniform M spacing."""
+        # Point at (1,1) is exactly at vertex with M=5
+        m_val = line_locate_point_m(self.lsm_d, Point(1, 1), m=True)
+        self.assertAlmostEqual(m_val, 5.0)
+
+    # -- Array tests --
+
+    def test_array_project_distance(self):
+        """Vectorized projection returning distances."""
+        lines = np.array([self.lsm_h, self.lsm_h, self.lsm_h], dtype=object)
+        points = np.array([Point(0, 0), Point(1.5, 0), Point(3, 0)], dtype=object)
+
+        dists = line_locate_point_m(lines, points)
+        np.testing.assert_array_almost_equal(dists, [0.0, 1.5, 3.0])
+
+    def test_array_project_m_values(self):
+        """Vectorized projection returning M values."""
+        lines = np.array([self.lsm_h, self.lsm_h, self.lsm_d], dtype=object)
+        points = np.array([Point(0, 0), Point(1.5, 0), Point(1, 1)], dtype=object)
+
+        m_vals = line_locate_point_m(lines, points, m=True)
+        np.testing.assert_array_almost_equal(m_vals, [0.0, 15.0, 5.0])
+
+    def test_array_with_none_geometry(self):
+        """None entries produce NaN in output."""
+        lines = np.array([self.lsm_h, None, self.lsm_h], dtype=object)
+        points = np.array([Point(1, 0), Point(1, 0), Point(2, 0)], dtype=object)
+
+        dists = line_locate_point_m(lines, points, m=True)
+        self.assertAlmostEqual(dists[0], 10.0)
+        self.assertTrue(np.isnan(dists[1]))
+        self.assertAlmostEqual(dists[2], 20.0)
+
+    def test_array_shared_geometry(self):
+        """Multiple rows sharing the same LineStringM are batched correctly."""
+        lines = np.array([self.lsm_h] * 4, dtype=object)
+        points = np.array([Point(0, 0), Point(1, 0), Point(2, 0), Point(3, 0)], dtype=object)
+
+        m_vals = line_locate_point_m(lines, points, m=True)
+        np.testing.assert_array_almost_equal(m_vals, [0.0, 10.0, 20.0, 30.0])
+
+
+class TestDistanceToMArray(unittest.TestCase):
+    """Test the module-level distance_to_m function for both scalar and
+    vectorized array inputs."""
+
+    def setUp(self):
+        """Create test LineStringM objects."""
+        self.geom_h = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        self.m_h = np.array([0.0, 10.0, 20.0, 30.0])
+        self.lsm_h = LineStringM(self.geom_h, self.m_h)
+
+        self.geom_nu = LineString([(0, 0), (1, 0), (2, 0)])
+        self.m_nu = np.array([0.0, 5.0, 25.0])
+        self.lsm_nu = LineStringM(self.geom_nu, self.m_nu)
+
+    def test_scalar_at_vertices(self):
+        """Scalar distance_to_m at exact vertex distances."""
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 0.0), 0.0)
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 1.0), 10.0)
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 3.0), 30.0)
+
+    def test_scalar_interpolated(self):
+        """Scalar distance_to_m at mid-segment distances."""
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 0.5), 5.0)
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 1.8), 18.0)
+
+    def test_scalar_normalized(self):
+        """Scalar distance_to_m with normalized distances."""
+        self.assertAlmostEqual(distance_to_m(self.lsm_h, 0.5, normalized=True), 15.0)
+
+    def test_array_uniform_m(self):
+        """Array distance_to_m with uniform M spacing."""
+        lines = np.array([self.lsm_h] * 4, dtype=object)
+        dists = np.array([0.0, 1.0, 1.5, 3.0])
+
+        m_vals = distance_to_m(lines, dists)
+        np.testing.assert_array_almost_equal(m_vals, [0.0, 10.0, 15.0, 30.0])
+
+    def test_array_nonuniform_m(self):
+        """Array distance_to_m with non-uniform M spacing."""
+        lines = np.array([self.lsm_nu, self.lsm_nu], dtype=object)
+        dists = np.array([0.5, 1.5])
+
+        m_vals = distance_to_m(lines, dists)
+        # First segment: M changes 0→5 over distance 0→1, so d=0.5 → M=2.5
+        # Second segment: M changes 5→25 over distance 1→2, so d=1.5 → M=15.0
+        np.testing.assert_array_almost_equal(m_vals, [2.5, 15.0])
+
+    def test_array_mixed_geometries(self):
+        """Array distance_to_m with different LineStringM objects."""
+        lines = np.array([self.lsm_h, self.lsm_nu], dtype=object)
+        dists = np.array([1.5, 0.5])
+
+        m_vals = distance_to_m(lines, dists)
+        np.testing.assert_array_almost_equal(m_vals, [15.0, 2.5])
+
+    def test_array_with_none(self):
+        """None entries produce NaN in output."""
+        lines = np.array([self.lsm_h, None, self.lsm_h], dtype=object)
+        dists = np.array([1.0, 1.0, 2.0])
+
+        m_vals = distance_to_m(lines, dists)
+        self.assertAlmostEqual(m_vals[0], 10.0)
+        self.assertTrue(np.isnan(m_vals[1]))
+        self.assertAlmostEqual(m_vals[2], 20.0)
+
+
+class TestMToDistanceArray(unittest.TestCase):
+    """Test the module-level m_to_distance function for both scalar and
+    vectorized array inputs."""
+
+    def setUp(self):
+        """Create test LineStringM objects."""
+        self.geom_h = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        self.m_h = np.array([0.0, 10.0, 20.0, 30.0])
+        self.lsm_h = LineStringM(self.geom_h, self.m_h)
+
+        self.geom_nu = LineString([(0, 0), (1, 0), (2, 0)])
+        self.m_nu = np.array([0.0, 5.0, 25.0])
+        self.lsm_nu = LineStringM(self.geom_nu, self.m_nu)
+
+    def test_scalar_at_vertices(self):
+        """Scalar m_to_distance at exact vertex M values."""
+        self.assertAlmostEqual(m_to_distance(self.lsm_h, 0.0), 0.0)
+        self.assertAlmostEqual(m_to_distance(self.lsm_h, 10.0), 1.0)
+        self.assertAlmostEqual(m_to_distance(self.lsm_h, 30.0), 3.0)
+
+    def test_scalar_interpolated(self):
+        """Scalar m_to_distance at mid-segment M values."""
+        self.assertAlmostEqual(m_to_distance(self.lsm_h, 5.0), 0.5)
+        self.assertAlmostEqual(m_to_distance(self.lsm_h, 18.0), 1.8)
+
+    def test_array_uniform_m(self):
+        """Array m_to_distance with uniform M spacing."""
+        lines = np.array([self.lsm_h] * 4, dtype=object)
+        m_vals = np.array([0.0, 10.0, 15.0, 30.0])
+
+        dists = m_to_distance(lines, m_vals)
+        np.testing.assert_array_almost_equal(dists, [0.0, 1.0, 1.5, 3.0])
+
+    def test_array_nonuniform_m(self):
+        """Array m_to_distance with non-uniform M spacing."""
+        lines = np.array([self.lsm_nu, self.lsm_nu], dtype=object)
+        m_vals = np.array([2.5, 15.0])
+
+        dists = m_to_distance(lines, m_vals)
+        np.testing.assert_array_almost_equal(dists, [0.5, 1.5])
+
+    def test_array_mixed_geometries(self):
+        """Array m_to_distance with different LineStringM objects."""
+        lines = np.array([self.lsm_h, self.lsm_nu], dtype=object)
+        m_vals = np.array([15.0, 2.5])
+
+        dists = m_to_distance(lines, m_vals)
+        np.testing.assert_array_almost_equal(dists, [1.5, 0.5])
+
+    def test_array_with_none(self):
+        """None entries produce NaN in output."""
+        lines = np.array([self.lsm_h, None, self.lsm_h], dtype=object)
+        m_vals = np.array([10.0, 10.0, 20.0])
+
+        dists = m_to_distance(lines, m_vals)
+        self.assertAlmostEqual(dists[0], 1.0)
+        self.assertTrue(np.isnan(dists[1]))
+        self.assertAlmostEqual(dists[2], 2.0)
+
+    def test_roundtrip_array(self):
+        """Round-trip M → distance → M on arrays."""
+        lines = np.array([self.lsm_h, self.lsm_nu, self.lsm_h], dtype=object)
+        m_vals = np.array([15.0, 2.5, 25.0])
+
+        dists = m_to_distance(lines, m_vals)
+        m_back = distance_to_m(lines, dists)
+        np.testing.assert_array_almost_equal(m_back, m_vals)
+
+    def test_out_of_range_clamps(self):
+        """Out-of-range M values are clamped to line endpoints."""
+        lines = np.array([self.lsm_h, self.lsm_h], dtype=object)
+        m_vals = np.array([-5.0, 50.0])
+
+        dists = m_to_distance(lines, m_vals)
+        # Should clamp to 0 and line length (3.0)
+        self.assertAlmostEqual(dists[0], 0.0)
+        self.assertAlmostEqual(dists[1], 3.0)
 
 
 if __name__ == '__main__':

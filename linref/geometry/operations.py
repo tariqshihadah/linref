@@ -47,64 +47,18 @@ def line_locate_point_m(
             dist = distance_to_m(line, dist, normalized=normalized)
         return dist
 
-    # Array path: arrays of LineStringM + points
-    return _line_locate_point_m_array(line, point, normalized=normalized, m=m)
-
-
-def _line_locate_point_m_array(
-    line_m_objects: np.ndarray,
-    points: np.ndarray,
-    normalized: bool = False,
-    m: bool = False,
-) -> np.ndarray:
-    """
-    Vectorized projection of point geometries onto LineStringM objects.
-
-    Parameters
-    ----------
-    line_m_objects : array of LineStringM
-        The LineStringM objects to project onto.
-    points : array of shapely.Point
-        The point geometries to project.
-    normalized : bool, default False
-        Whether to return distances as normalized (0-1) or absolute.
-    m : bool, default False
-        Whether to convert distances to M values.
-
-    Returns
-    -------
-    np.ndarray
-        Array of distances (or M-values). NaN where projection is not
-        possible (e.g., None geometry).
-    """
-    n = len(line_m_objects)
-    result = np.full(n, np.nan, dtype=np.float64)
-
-    # Build mask of valid (non-None) LineStringM entries
-    valid_mask = np.array(
-        [obj is not None and hasattr(obj, 'geom') for obj in line_m_objects],
-        dtype=bool,
+    # Array path: extract raw geometries (None stays None) and let shapely
+    # handle null entries natively (returns NaN for None geometries)
+    line_geoms = np.array(
+        [obj.geom if isinstance(obj, LineStringM) else None for obj in line],
+        dtype=object,
     )
-    if not valid_mask.any():
-        return result
+    distances = shapely.line_locate_point(line_geoms, point, normalized=normalized)
 
-    # Extract raw shapely LineStrings and points for valid rows
-    valid_indices = np.where(valid_mask)[0]
-    valid_line_m = line_m_objects[valid_indices]
-    line_geoms = np.array([obj.geom for obj in valid_line_m], dtype=object)
-    point_geoms = points[valid_indices]
+    if m:
+        distances = _distance_to_m_impl(line, distances, normalized=normalized)
 
-    # Vectorized shapely.line_locate_point: compute distance along each line
-    distances = shapely.line_locate_point(line_geoms, point_geoms, normalized=normalized)
-
-    if not m:
-        result[valid_indices] = distances
-        return result
-
-    # Vectorized distance-to-M conversion
-    m_values = _distance_to_m_impl(valid_line_m, distances, normalized=normalized)
-    result[valid_indices] = m_values
-    return result
+    return distances
 
 
 def distance_to_m(
@@ -155,7 +109,6 @@ def _distance_to_m_impl(
     Groups inputs by unique LineStringM object so that the searchsorted +
     interpolation can be batched with numpy rather than looped per-element.
     """
-    # Initialize output with NaN (returned for lines with no M values)
     m_values = np.full(len(lines_m), np.nan, dtype=np.float64)
 
     # Group by unique LineStringM object to batch the interpolation.
@@ -169,12 +122,12 @@ def _distance_to_m_impl(
         # Find the representative LineStringM for this group
         group_mask = inverse == group_idx
         line_m = lines_m[np.argmax(group_mask)]
-        m_arr = line_m.m
 
-        # Skip lines without M values (result stays NaN)
-        if m_arr is None:
+        # Skip non-LineStringM entries or lines without M values
+        if not isinstance(line_m, LineStringM) or line_m.m is None:
             continue
 
+        m_arr = line_m.m
         cumdist = line_m._cumulative_distances
         group_distances = distances[group_mask]
 
@@ -237,61 +190,17 @@ def line_interpolate_point_m(
             distance = m_to_distance(line, distance)
         return shapely.line_interpolate_point(line.geom, distance, normalized=normalized)
 
-    # Array path: arrays of LineStringM + distances
-    return _line_interpolate_point_m_array(line, distance, normalized=normalized, m=m)
-
-
-def _line_interpolate_point_m_array(
-    line_m_objects: np.ndarray,
-    distances: np.ndarray,
-    normalized: bool = False,
-    m: bool = False,
-) -> np.ndarray:
-    """
-    Vectorized interpolation of points along LineStringM objects.
-
-    Parameters
-    ----------
-    line_m_objects : array of LineStringM
-        The LineStringM objects to interpolate along.
-    distances : array of float
-        The distances along each geometry.
-    normalized : bool, default False
-        Whether distances are normalized (0-1) or absolute.
-    m : bool, default False
-        Whether distances should be interpreted as M values.
-
-    Returns
-    -------
-    np.ndarray
-        Array of shapely.Point objects. None where interpolation is not
-        possible (e.g., None geometry).
-    """
-    result = np.empty(len(line_m_objects), dtype=object)
-
-    # Build mask of valid (non-None) LineStringM entries
-    valid_mask = np.array(
-        [obj is not None and hasattr(obj, 'geom') for obj in line_m_objects],
-        dtype=bool,
-    )
-    if not valid_mask.any():
-        return result
-
-    valid_indices = np.where(valid_mask)[0]
-    valid_line_m = line_m_objects[valid_indices]
-    valid_distances = np.asarray(distances, dtype=np.float64)[valid_indices]
-
-    # Convert M values to absolute distances if needed
+    # Array path: convert M values to distances if needed, then extract raw
+    # geometries (None stays None) and let shapely handle null natively
+    distances = np.asarray(distance, dtype=np.float64)
     if m:
-        valid_distances = _m_to_distance_impl(valid_line_m, valid_distances)
+        distances = _m_to_distance_impl(line, distances)
 
-    # Extract raw shapely LineStrings for vectorized call
-    line_geoms = np.array([obj.geom for obj in valid_line_m], dtype=object)
-
-    # Vectorized shapely.line_interpolate_point
-    points = shapely.line_interpolate_point(line_geoms, valid_distances, normalized=normalized)
-    result[valid_indices] = points
-    return result
+    line_geoms = np.array(
+        [obj.geom if isinstance(obj, LineStringM) else None for obj in line],
+        dtype=object,
+    )
+    return shapely.line_interpolate_point(line_geoms, distances, normalized=normalized)
 
 
 def m_to_distance(
@@ -337,7 +246,6 @@ def _m_to_distance_impl(
     Groups inputs by unique LineStringM object so that the searchsorted +
     interpolation can be batched with numpy rather than looped per-element.
     """
-    # Initialize output with NaN (returned for lines with no M values)
     distances = np.full(len(lines_m), np.nan, dtype=np.float64)
 
     # Group by unique LineStringM object to batch the interpolation.
@@ -351,12 +259,12 @@ def _m_to_distance_impl(
         # Find the representative LineStringM for this group
         group_mask = inverse == group_idx
         line_m = lines_m[np.argmax(group_mask)]
-        m_arr = line_m.m
 
-        # Skip lines without M values (result stays NaN)
-        if m_arr is None:
+        # Skip non-LineStringM entries or lines without M values
+        if not isinstance(line_m, LineStringM) or line_m.m is None:
             continue
 
+        m_arr = line_m.m
         cumdist = line_m._cumulative_distances
         group_m = m_values[group_mask]
 
