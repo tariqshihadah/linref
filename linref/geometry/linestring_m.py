@@ -467,6 +467,8 @@ class LineStringM:
         """
         Return a point at the specified distance along the linear geometry.
 
+        Alias of ``line_interpolate_point_m`` for single-geometry calls.
+
         Parameters
         ----------
         distance : float
@@ -482,12 +484,9 @@ class LineStringM:
         """
         # Check input snapping
         distance = self._check_snapping(distance, normalized=normalized, m=m, snap=snap)[0]
-        # Compute the interpolated point
-        if normalized:
-            return self.geom.interpolate(distance, normalized=True)
-        if m:
-            distance = self.m_to_distance(distance, snap=False)
-        return self.geom.interpolate(distance, normalized=False)
+        # Delegate to module-level function
+        from linref.geometry.operations import line_interpolate_point_m
+        return line_interpolate_point_m(self, distance, normalized=normalized, m=m)
 
     def reverse(self, inplace: bool = False):
         """

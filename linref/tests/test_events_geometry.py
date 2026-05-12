@@ -600,5 +600,128 @@ class TestLineStringMReverse(unittest.TestCase):
             lsm.reverse()
 
 
+class TestLineInterpolatePointM(unittest.TestCase):
+    """Test the module-level line_interpolate_point_m function and the
+    LineStringM.interpolate wrapper, verifying output coordinates
+    for scalar and array inputs."""
+
+    def setUp(self):
+        """Create test LineStringM objects with known geometry and M values."""
+        # Horizontal line: (0,0)→(3,0), M = [0, 10, 20, 30]
+        self.geom_h = LineString([(0, 0), (1, 0), (2, 0), (3, 0)])
+        self.m_h = np.array([0.0, 10.0, 20.0, 30.0])
+        self.lsm_h = LineStringM(self.geom_h, self.m_h)
+
+        # Diagonal line: (0,0)→(2,2), M = [0, 5, 25] (non-uniform)
+        self.geom_d = LineString([(0, 0), (1, 1), (2, 2)])
+        self.m_d = np.array([0.0, 5.0, 25.0])
+        self.lsm_d = LineStringM(self.geom_d, self.m_d)
+
+    # -- Scalar (instance method) tests --
+
+    def test_interpolate_at_vertex_by_distance(self):
+        """Interpolate at exact vertex distances returns exact vertex coords."""
+        pt = self.lsm_h.interpolate(1.0, normalized=False, m=False)
+        self.assertAlmostEqual(pt.x, 1.0)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_midpoint_by_distance(self):
+        """Interpolate at midpoint distance returns correct coords."""
+        pt = self.lsm_h.interpolate(1.5, normalized=False, m=False)
+        self.assertAlmostEqual(pt.x, 1.5)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_by_m_value(self):
+        """Interpolate using M value returns correct coords."""
+        # M=15 is halfway between M=10 (x=1) and M=20 (x=2) → x=1.5
+        pt = self.lsm_h.interpolate(15.0, m=True)
+        self.assertAlmostEqual(pt.x, 1.5)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_by_m_at_vertex(self):
+        """Interpolate at exact vertex M value."""
+        pt = self.lsm_h.interpolate(20.0, m=True)
+        self.assertAlmostEqual(pt.x, 2.0)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_by_normalized(self):
+        """Interpolate using normalized distance."""
+        # Normalized 0.5 on a length-3 line → distance 1.5 → (1.5, 0)
+        pt = self.lsm_h.interpolate(0.5, normalized=True)
+        self.assertAlmostEqual(pt.x, 1.5)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_nonuniform_m(self):
+        """Interpolate with non-uniform M spacing gives correct coords."""
+        # M=2.5 is halfway in first segment [0,5], distance = half of
+        # segment length (sqrt(2)), so coord = (0.5, 0.5)
+        pt = self.lsm_d.interpolate(2.5, m=True)
+        self.assertAlmostEqual(pt.x, 0.5)
+        self.assertAlmostEqual(pt.y, 0.5)
+
+    def test_interpolate_snap_below(self):
+        """Snap=True clamps M below range to start point."""
+        pt = self.lsm_h.interpolate(-5.0, m=True, snap=True)
+        self.assertAlmostEqual(pt.x, 0.0)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_snap_above(self):
+        """Snap=True clamps M above range to end point."""
+        pt = self.lsm_h.interpolate(50.0, m=True, snap=True)
+        self.assertAlmostEqual(pt.x, 3.0)
+        self.assertAlmostEqual(pt.y, 0.0)
+
+    def test_interpolate_out_of_range_raises(self):
+        """Snap=False raises ValueError for out-of-range M."""
+        with self.assertRaises(ValueError):
+            self.lsm_h.interpolate(50.0, m=True, snap=False)
+
+    # -- Array (module-level function) tests --
+
+    def test_array_interpolation(self):
+        """Vectorized interpolation of multiple (line, distance) pairs."""
+        from linref.geometry import line_interpolate_point_m
+
+        lines = np.array([self.lsm_h, self.lsm_h, self.lsm_d], dtype=object)
+        m_values = np.array([15.0, 0.0, 2.5])
+
+        points = line_interpolate_point_m(lines, m_values, m=True)
+
+        self.assertAlmostEqual(points[0].x, 1.5)
+        self.assertAlmostEqual(points[0].y, 0.0)
+        self.assertAlmostEqual(points[1].x, 0.0)
+        self.assertAlmostEqual(points[1].y, 0.0)
+        self.assertAlmostEqual(points[2].x, 0.5)
+        self.assertAlmostEqual(points[2].y, 0.5)
+
+    def test_array_with_none_geometry(self):
+        """None entries in array produce None output."""
+        from linref.geometry import line_interpolate_point_m
+
+        lines = np.array([self.lsm_h, None, self.lsm_h], dtype=object)
+        m_values = np.array([10.0, 10.0, 20.0])
+
+        points = line_interpolate_point_m(lines, m_values, m=True)
+
+        self.assertAlmostEqual(points[0].x, 1.0)
+        self.assertIsNone(points[1])
+        self.assertAlmostEqual(points[2].x, 2.0)
+
+    def test_array_shared_geometry(self):
+        """Multiple rows sharing the same LineStringM object are batched
+        correctly via the grouping optimization."""
+        from linref.geometry import line_interpolate_point_m
+
+        # Same object used 4 times with different M values
+        lines = np.array([self.lsm_h] * 4, dtype=object)
+        m_values = np.array([0.0, 10.0, 20.0, 30.0])
+
+        points = line_interpolate_point_m(lines, m_values, m=True)
+
+        for i, expected_x in enumerate([0.0, 1.0, 2.0, 3.0]):
+            self.assertAlmostEqual(points[i].x, expected_x, msg=f"index {i}")
+            self.assertAlmostEqual(points[i].y, 0.0, msg=f"index {i}")
+
+
 if __name__ == '__main__':
     unittest.main()

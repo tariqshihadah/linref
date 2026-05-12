@@ -1574,44 +1574,47 @@ class EventsRelation(object):
         arr = self._get_intersect_data(**kwargs)
         arr = (arr if axis == 1 else arr.T).tocsr()
 
-        # Pull event locations
+        # Pull event locations (M values for point events)
         locs = self.left.locs if axis == 1 else self.right.locs
 
-        # Iterate over sparse rows
-        output = []
-        for row, loc in zip(arr, locs):
-            # Get data values
-            geoms = data[row.indices]
-            # Determine approach to interpolate multiple geometries
-            if multiple == 'first':
-                geoms = geoms[:1]
-            elif multiple == 'last':
-                geoms = geoms[-1:]
-            elif multiple == 'raise':
-                if len(geoms) > 1:
-                    raise ValueError(
-                        "Multiple intersecting geometries found when 'raise' "
-                        "option is set for 'interpolate' aggregation."
-                    )
-            # Interpolate new geometries from intersecting geometries
-            interp_geoms = [
-                geom.interpolate(loc, normalized=False, m=True, snap=True)
-                for geom in geoms
-            ]
-            # Determine approach to post-processing multiple geometries
-            if multiple == 'list':
-                pass  # Keep as list
-            else:  # 'first' or 'last'
-                interp_geoms = interp_geoms[0] if interp_geoms else None
-            # Log values
-            output.append(interp_geoms)
+        # Number of matches per row from CSR indptr
+        row_counts = np.diff(arr.indptr)
 
-        # Convert to numpy array of lists if needed
-        if multiple == 'list':
+        if multiple in ('first', 'last', 'raise'):
+            if multiple == 'raise' and np.any(row_counts > 1):
+                raise ValueError(
+                    "Multiple intersecting geometries found when 'raise' "
+                    "option is set for 'interpolate' aggregation."
+                )
+
+            # Pick first or last column index per row directly from CSR arrays
+            has_match = row_counts > 0
+            pick = arr.indptr[:-1] if multiple != 'last' else arr.indptr[1:] - 1
+
+            flat_geoms = np.empty(arr.shape[0], dtype=object)
+            flat_locs = np.full(arr.shape[0], np.nan, dtype=np.float64)
+            flat_geoms[has_match] = data[arr.indices[pick[has_match]]]
+            flat_locs[has_match] = locs[has_match]
+
+            # Bulk interpolation via module-level vectorized function
+            output_array = geometry.line_interpolate_point_m(
+                flat_geoms, flat_locs, normalized=False, m=True,
+            )
+        else:
+            # 'list' path: collect all matches per row
+            output = []
+            for i in range(arr.shape[0]):
+                row_indices = arr.indices[arr.indptr[i]:arr.indptr[i+1]]
+                geoms = data[row_indices]
+                loc = locs[i]
+                interp_geoms = [
+                    geom.interpolate(loc, normalized=False, m=True, snap=True)
+                    for geom in geoms
+                ]
+                output.append(interp_geoms)
             output_array = np.empty((len(output), data.shape[0]), dtype=object)
             output_array[:] = output
-        else:
-            output_array = np.array(output, dtype=object)
+
         return output_array
     
     @_get_linestring_m_data_wrapper

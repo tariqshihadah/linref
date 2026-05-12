@@ -202,6 +202,98 @@ def _distance_to_m_impl(
     return m_values
 
 
+def line_interpolate_point_m(
+    line: LineStringM | np.ndarray,
+    distance,
+    normalized: bool = False,
+    m: bool = False,
+):
+    """
+    Return a point at the specified distance along the linear geometry.
+    Supports both scalar and vectorized (array) inputs.
+
+    Analogous to ``shapely.line_interpolate_point``, extended with M-value
+    support.
+
+    Parameters
+    ----------
+    line : LineStringM or array of LineStringM
+        The M-enabled line geometry (or geometries) to interpolate along.
+    distance : float or array of float
+        The distance(s) along each geometry at which to interpolate.
+    normalized : bool, default False
+        Whether the distance is normalized (0-1) or absolute.
+    m : bool, default False
+        Whether the distance should be interpreted as an M value.
+
+    Returns
+    -------
+    shapely.Point or np.ndarray of shapely.Point
+        The interpolated point(s). None where interpolation is not possible.
+    """
+    # Scalar path: single LineStringM + single distance
+    if isinstance(line, LineStringM):
+        if m:
+            distance = m_to_distance(line, distance)
+        return shapely.line_interpolate_point(line.geom, distance, normalized=normalized)
+
+    # Array path: arrays of LineStringM + distances
+    return _line_interpolate_point_m_array(line, distance, normalized=normalized, m=m)
+
+
+def _line_interpolate_point_m_array(
+    line_m_objects: np.ndarray,
+    distances: np.ndarray,
+    normalized: bool = False,
+    m: bool = False,
+) -> np.ndarray:
+    """
+    Vectorized interpolation of points along LineStringM objects.
+
+    Parameters
+    ----------
+    line_m_objects : array of LineStringM
+        The LineStringM objects to interpolate along.
+    distances : array of float
+        The distances along each geometry.
+    normalized : bool, default False
+        Whether distances are normalized (0-1) or absolute.
+    m : bool, default False
+        Whether distances should be interpreted as M values.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shapely.Point objects. None where interpolation is not
+        possible (e.g., None geometry).
+    """
+    result = np.empty(len(line_m_objects), dtype=object)
+
+    # Build mask of valid (non-None) LineStringM entries
+    valid_mask = np.array(
+        [obj is not None and hasattr(obj, 'geom') for obj in line_m_objects],
+        dtype=bool,
+    )
+    if not valid_mask.any():
+        return result
+
+    valid_indices = np.where(valid_mask)[0]
+    valid_line_m = line_m_objects[valid_indices]
+    valid_distances = np.asarray(distances, dtype=np.float64)[valid_indices]
+
+    # Convert M values to absolute distances if needed
+    if m:
+        valid_distances = _m_to_distance_impl(valid_line_m, valid_distances)
+
+    # Extract raw shapely LineStrings for vectorized call
+    line_geoms = np.array([obj.geom for obj in valid_line_m], dtype=object)
+
+    # Vectorized shapely.line_interpolate_point
+    points = shapely.line_interpolate_point(line_geoms, valid_distances, normalized=normalized)
+    result[valid_indices] = points
+    return result
+
+
 def m_to_distance(
     line_m: LineStringM | np.ndarray,
     m_value: float | np.ndarray,
