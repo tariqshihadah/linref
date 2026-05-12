@@ -2508,7 +2508,7 @@ class LRS_Accessor(object):
             # Get distances for all matches
             left_geoms = joined.geometry
             right_geoms = gpd.GeoSeries(
-                joined[index_right_name].replace(self.df[self.geom_col]),
+                joined[index_right_name].map(self.df[self.geom_col]),
                 crs=getattr(self.df, 'crs', None),
             )
             joined[distance_col] = left_geoms.distance(right_geoms)
