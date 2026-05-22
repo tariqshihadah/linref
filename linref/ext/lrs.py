@@ -136,7 +136,7 @@ class LRS(object):
         return self.geom_m_col is not None
     
     @property
-    def is_chaining_defined(self) -> bool:
+    def is_chained(self) -> bool:
         """
         Return whether the LRS has a chain column defined. This does not 
         check for presence of the column in the DataFrame.
@@ -317,7 +317,7 @@ class LRS(object):
             result['geometry_m'] = {'defined': True, 'valid': valid, 'missing': self.geom_m_col if not valid else None}
         else:
             result['geometry_m'] = {'defined': False, 'valid': False, 'missing': None}
-        if self.is_chaining_defined:
+        if self.is_chained:
             valid = self.chain_col in df.columns
             result['chaining'] = {'defined': True, 'valid': valid, 'missing': self.chain_col if not valid else None}
         else:

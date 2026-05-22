@@ -529,11 +529,29 @@ class LRS_Accessor(object):
         return self.lrs.is_spatial_m
 
     @property
-    def is_contiguous(self) -> bool:
+    def is_lrs_chained(self) -> bool:
+        """
+        Return whether the active LRS has a chain column defined, regardless 
+        of presence of the chain column in the dataframe.
+        """
+        return self.lrs.is_chained
+
+    @property
+    def is_chained(self) -> bool:
+        """
+        Return whether the active LRS has a chain column defined and the 
+        chain column is present in the dataframe.
+        """
+        if not self.lrs.is_chained:
+            return False
+        return self.lrs.chain_col in self._df.columns
+
+    @property
+    def is_geometrically_contiguous(self) -> bool:
         """
         Return whether linear geometries in the dataframe when grouped by LRS 
-        keys are contiguous, producing single continuous geometries without 
-        gaps.
+        keys are geometrically contiguous, producing single continuous 
+        geometries without gaps when dissolved and merged.
         """
         if not self.is_linear or not self.is_spatial:
             return False
@@ -542,17 +560,26 @@ class LRS_Accessor(object):
         return all(counts == 1)
     
     @property
-    def is_chained(self) -> bool:
+    def is_contiguous(self) -> bool:
         """
         Return whether linear geometries in the dataframe when grouped by LRS 
-        keys are chained, producing continuous geometries without overlaps or 
-        gaps.
+        keys are contiguous, producing continuous geometries without disjoints 
+        such as overlaps or gaps.
         """
         if not self.is_linear or not self.is_spatial:
             return False
-        # Check for chaining by generating new chains and checking for multiples
-        chains = self.get_chains()
+        # Check for contiguity by generating chains and checking for multiples
+        chains = self.get_chains(include_chain=True)
         return all(chains == 0)
+
+    @property
+    def is_disjointed(self) -> bool:
+        """
+        Return whether linear geometries in the dataframe when grouped by LRS 
+        keys contain disjointed segments (i.e., are not contiguous). Equivalent 
+        to not self.is_contiguous.
+        """
+        return not self.is_contiguous
     
     @property
     def valid_events(self) -> pd.Series:
@@ -1073,7 +1100,7 @@ class LRS_Accessor(object):
         return self.df.loc[index]
         
     @_method_require(is_linear=True, is_spatial=True)
-    def get_chains(self, name: str | None = None, enforce_m: bool = True) -> pd.Series:
+    def get_chains(self, name: str | None = None, enforce_m: bool = True, include_chain: bool = False) -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
         contiguous linear geometries within each group.
@@ -1087,6 +1114,13 @@ class LRS_Accessor(object):
             Whether to require the use of M-enabled geometries for chaining.
             If True, an error will be raised if M-enabled geometries are not 
             present in the dataframe.
+        include_chain : bool, default False
+            Whether to include the existing chain column in the grouping keys
+            when computing chains. When True and the chain column is defined 
+            in the LRS and present in the DataFrame, groups by full keys 
+            (including chain) to detect sub-chains within existing chain 
+            groups. When False, groups by base keys only (excluding the chain 
+            column), computing chains from scratch.
 
         Returns
         -------
@@ -1103,10 +1137,16 @@ class LRS_Accessor(object):
                 "present in the DataFrame. Use `add_geom_m` to add M-enabled "
                 "geometries or set `enforce_m` to False."
             )
-        # Iterate over groups using base keys (without chain column)
+        # Determine grouping keys
+        if (include_chain 
+                and self.lrs.chain_col is not None 
+                and self.lrs.chain_col in self._df.columns):
+            base_keys = list(self.key_col)
+        else:
+            base_keys = list(self.base_key_col)
+        # Iterate over groups
         index = []
         chains = []
-        base_keys = [k for k in self.base_key_col if k != name]
         if base_keys:
             # Get events using keys, excluding chain column if in keys
             events = self.get_events(key_col=base_keys)

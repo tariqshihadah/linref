@@ -39,7 +39,7 @@ class TestLRSInit(unittest.TestCase):
         self.assertIsNone(lrs.geom_col)
         self.assertIsNone(lrs.geom_m_col)
         self.assertIsNone(lrs.closed)
-        self.assertFalse(lrs.is_chaining_defined)
+        self.assertFalse(lrs.is_chained)
 
     def test_lrs_init_linear(self):
         """Test creating a linear LRS object."""
@@ -54,7 +54,7 @@ class TestLRSInit(unittest.TestCase):
         self.assertEqual(lrs.key_col, ['route_id'])
         self.assertEqual(lrs.chain_col, 'chain')
         self.assertNotIn('chain', lrs.key_col)
-        self.assertTrue(lrs.is_chaining_defined)
+        self.assertTrue(lrs.is_chained)
         self.assertEqual(lrs.beg_col, 'begin_mp')
         self.assertEqual(lrs.end_col, 'end_mp')
         self.assertEqual(lrs.closed, 'right')
@@ -1458,6 +1458,70 @@ class TestChainCol(unittest.TestCase):
         # Should work normally — chain is a regular key column
         self.assertEqual(df.lr.key_col, ['route', 'chain'])
         self.assertTrue(df.lr.is_grouped)
+
+    # --- is_contiguous / is_disjointed ---
+
+    def test_is_contiguous_false_without_chain_column(self):
+        """is_contiguous should be False when disjointed segments exist without chaining."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        # No chain column in data — disjoint segments in route A
+        self.assertFalse(df.lr.is_contiguous)
+
+    def test_is_contiguous_true_with_correct_chains(self):
+        """is_contiguous should be True when chain column correctly separates disjoint segments."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        result = df.lr.add_chaining()
+        # After add_chaining, data should be properly chained
+        self.assertTrue(result.lr.is_contiguous)
+
+    def test_is_contiguous_false_with_incorrect_chains(self):
+        """is_contiguous should be False when chain column doesn't properly separate disjoint segments."""
+        df = self.df.copy()
+        # Assign all to chain 0 — incorrect, since route A has disjointed segments
+        df['chain'] = [0, 0, 0, 0]
+        df = df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        self.assertFalse(df.lr.is_contiguous)
+
+    def test_get_chains_include_chain_all_zero_when_correct(self):
+        """get_chains(include_chain=True) should return all zeros when chains are correct."""
+        df = self.df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        result = df.lr.add_chaining()
+        chains = result.lr.get_chains(include_chain=True)
+        self.assertTrue(all(chains == 0))
+
+    def test_get_chains_include_chain_nonzero_when_incorrect(self):
+        """get_chains(include_chain=True) should return non-zero when chains are wrong."""
+        df = self.df.copy()
+        df['chain'] = [0, 0, 0, 0]
+        df = df.lr.set_lrs(
+            key_col=['route'], chain_col='chain',
+            beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m',
+            closed='left_mod'
+        )
+        chains = df.lr.get_chains(include_chain=True)
+        # Route A chain 0 still has disjointed segments
+        self.assertFalse(all(chains == 0))
 
 
 class TestSetMonotonic(unittest.TestCase):
