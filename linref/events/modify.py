@@ -95,7 +95,7 @@ def dissolve(events, sort=False, return_index=False, return_relation=False):
         events_for_relation = events_original if sort else events
         relation = relate.EventsRelation(dissolved, events_for_relation, cache=True)
         relation._intersect_data = arr
-        relation._intersect_kwargs = {}
+        relation._intersect_kwargs = {'enforce_edges': False}
         outputs.append(relation)
     return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
@@ -423,7 +423,7 @@ def resegment(events, length=1, fill='cut', return_relation=False):
         relation._intersect_data = _indices_to_sparse_many_to_one(
             index, events.index_data
         )
-        relation._intersect_kwargs = {}
+        relation._intersect_kwargs = {'enforce_edges': False}
         outputs.append(relation)
     return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
