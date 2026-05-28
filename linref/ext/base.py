@@ -2545,6 +2545,49 @@ class LRS_Accessor(object):
         df[name] = labels
         return None if inplace else df
 
+    @_method_require(is_spatial=True)
+    def generate_intersections(
+        self,
+        exclude_groups: bool | str | list[str] = True,
+        predicate: str = 'touches',
+    ) -> gpd.GeoDataFrame:
+        """
+        Find intersection geometries between line geometries in the DataFrame.
+
+        Parameters
+        ----------
+        exclude_groups : bool, str, or list of str, default True
+            Controls which column(s) are used for group exclusion:
+            - True : Use the LRS key columns for group exclusion, preventing
+              intersections between segments of the same route.
+            - str or list of str : Use the specified column name(s).
+            - False : No group exclusion; all intersecting pairs are included.
+        predicate : str, default 'touches'
+            Spatial predicate used to identify intersecting pairs. Common 
+            values:
+            - 'touches' : Pairs that share boundary points (endpoints) only.
+            - 'crosses' : Pairs whose interiors intersect (interior crossings).
+            - 'intersects' : All pairs that share any point.
+
+        Returns
+        -------
+        GeoDataFrame
+            A GeoDataFrame of intersection geometries with columns 
+            'index_left' and 'index_right' identifying the source geometry 
+            pair.
+        """
+        from linref.ext.spatial import generate_intersections
+        # Resolve exclude_groups from LRS keys
+        if exclude_groups is True:
+            cols = self.key_col if self.is_grouped else None
+        elif exclude_groups is False:
+            cols = None
+        else:
+            cols = exclude_groups
+        return generate_intersections(
+            self.df, exclude_groups=cols, predicate=predicate
+        )
+
     @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
     def project(
         self,

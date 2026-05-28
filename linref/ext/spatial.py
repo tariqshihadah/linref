@@ -10,6 +10,7 @@ from shapely.ops import nearest_points, substring
 from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError
+from linref.utility.utility import label_list_or_none
 
 
 def parallel_project_hausdorff(
@@ -556,4 +557,106 @@ class ParallelProjector(object):
             .drop(columns=['__projector__', '__target__', '__proj_lines__', self.target.lr.geom_m_col],
                   errors='ignore')
         return select
+
+
+def generate_intersections(
+    gdf: gpd.GeoDataFrame,
+    exclude_groups: str | list[str] | None = None,
+    predicate: str = 'touches',
+) -> gpd.GeoDataFrame:
+    """
+    Find intersection geometries between linestring geometries within a 
+    GeoDataFrame. Uses a spatial predicate to control which types of 
+    intersections are returned.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        The GeoDataFrame containing linestring geometries to find 
+        intersections within.
+    exclude_groups : str or list of str, optional
+        Column name(s) used for group exclusion. Pairs where both geometries
+        share the same value in these columns are excluded from results. 
+        Useful for excluding intersections between segments of the same route.
+    predicate : str, default 'touches'
+        Spatial predicate used to identify intersecting pairs. Common values:
+        - 'touches' : Pairs that share boundary points (endpoints) only.
+        - 'crosses' : Pairs whose interiors intersect (interior crossings).
+        - 'intersects' : All pairs that share any point (union of touches, 
+          crosses, and overlaps).
+
+    Returns
+    -------
+    GeoDataFrame
+        A GeoDataFrame of intersection geometries with the following columns:
+        - geometry : Intersection geometries (Point, MultiPoint, or 
+          LineString depending on the intersection type).
+        - index_left : Index label of the first geometry in each pair.
+        - index_right : Index label of the second geometry in each pair.
+    """
+    # Validate inputs
+    if not isinstance(gdf, gpd.GeoDataFrame):
+        raise TypeError("Input must be a GeoDataFrame.")
     
+    # Normalize exclude_groups to list or None
+    exclude_groups = label_list_or_none(exclude_groups)
+    if exclude_groups is not None:
+        missing = [c for c in exclude_groups if c not in gdf.columns]
+        if missing:
+            raise ValueError(
+                f"Columns {missing} specified in exclude_groups are not "
+                f"found in the GeoDataFrame."
+            )
+
+    # Prepare empty result template
+    result = gpd.GeoDataFrame(
+        {'geometry': [], 'index_left': [], 'index_right': []},
+        geometry='geometry',
+        crs=gdf.crs,
+    )
+
+    # Extract geometry array and index
+    geoms = gdf.geometry.values
+    idx = gdf.index
+
+    if len(geoms) < 2:
+        return result
+
+    # Build spatial index and query pairs matching the predicate
+    tree = shapely.STRtree(geoms)
+    try:
+        left_idx, right_idx = tree.query(geoms, predicate=predicate)
+    except Exception as e:
+        raise ValueError(
+            f"Invalid predicate '{predicate}'. See shapely.STRtree.query "
+            f"for supported predicates."
+        ) from e
+
+    # Enforce i < j to deduplicate pairs and remove self-intersections
+    mask = left_idx < right_idx
+    left_idx = left_idx[mask]
+    right_idx = right_idx[mask]
+
+    if len(left_idx) == 0:
+        return result
+
+    # Filter out same-group pairs
+    if exclude_groups is not None:
+        group_values = gdf[exclude_groups].values
+        left_groups = group_values[left_idx]
+        right_groups = group_values[right_idx]
+        if left_groups.ndim == 1:
+            different_group = left_groups != right_groups
+        else:
+            different_group = np.any(left_groups != right_groups, axis=1)
+        left_idx = left_idx[different_group]
+        right_idx = right_idx[different_group]
+
+    if len(left_idx) == 0:
+        return result
+
+    # Compute intersection geometries and populate result
+    result['geometry'] = shapely.intersection(geoms[left_idx], geoms[right_idx])
+    result['index_left'] = idx[left_idx]
+    result['index_right'] = idx[right_idx]
+    return result
