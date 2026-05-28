@@ -141,10 +141,8 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
 
     def test_default_uses_key_col(self):
         """Default exclude_groups=True uses LRS key columns."""
-        # With predicate='crosses': A1×B1, A2×B2 but same-route excluded → 2
-        result = self.gdf.lr.generate_intersections(
-            exclude_groups=False, predicate='intersects'
-        )
+        # Default excludes same-route pairs; with 'intersects': A1×B1, A2×B2 = 2
+        result = self.gdf.lr.generate_intersections(predicate='intersects')
         self.assertEqual(len(result), 2)
 
     def test_exclude_groups_false(self):
