@@ -8,6 +8,7 @@ from linref.events.profile import resolve_profile
 from linref.utility import utility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
 from scipy import sparse as sp
+from scipy.sparse.csgraph import connected_components as _connected_components
 from scipy.stats import norm
 import copy
 
@@ -1783,6 +1784,32 @@ class EventsRelation(object):
         # Convert to pandas Series
         index = self.left.index if axis == 1 else self.right.index
         return pd.Series(output, index=index)
+
+    def connected_components(self, **kwargs) -> tuple[int, np.ndarray]:
+        """
+        Find connected components in the intersection graph of the events
+        relationship. Events that intersect (directly or transitively) are
+        assigned to the same component.
+
+        Parameters
+        ----------
+        **kwargs
+            Additional keyword arguments to pass to the intersection method
+            if it has not been previously computed and cached.
+
+        Returns
+        -------
+        n_components : int
+            The number of connected components found.
+        labels : np.ndarray
+            An array of component labels (0-based integers) for each event
+            in the left events collection.
+        """
+        # Get intersection adjacency matrix
+        arr = self._get_intersect_data(**kwargs)
+
+        # Find connected components
+        return _connected_components(arr, directed=False)
 
 
 # -----------------------------------------------------------------------------

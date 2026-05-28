@@ -2453,6 +2453,98 @@ class LRS_Accessor(object):
             grouped=grouped
         )
 
+    def cluster_proximity(
+        self,
+        tolerance: float,
+        name: str = 'cluster',
+        enforce_edges: bool | None = None,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Cluster events based on linear referencing proximity within each group.
+        Events whose locations are within the specified tolerance of each other
+        (directly or transitively) are assigned to the same cluster.
+
+        This method buffers each event location by the tolerance to create 
+        small linear ranges, then identifies overlapping ranges within each 
+        group using a self-intersection, and finally extracts connected 
+        components from the resulting adjacency graph to form clusters.
+
+        For point events, two points are proximal if their locations are within 
+        the tolerance distance. For linear events, two events are proximal if 
+        their ranges (after extension by the tolerance) overlap.
+
+        Parameters
+        ----------
+        tolerance : float
+            The maximum linear distance between event locations for them to 
+            be considered proximal. Events within this distance (directly or 
+            transitively through intermediate events) will be assigned to the 
+            same cluster.
+        name : str, default 'cluster'
+            The name of the cluster column to add to the DataFrame.
+        enforce_edges : bool or None, default None
+            Whether to treat shared edges (touching boundaries) as 
+            intersections. If None, defaults to False for linear events and 
+            is disregarded for point events.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+
+        Returns
+        -------
+        df : DataFrame or None
+            A copy of the DataFrame with a new cluster column, or None if 
+            inplace=True.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If the LRS has no location or linear data defined, or if event 
+            locations or bounds contain undefined (NaN) values.
+        """
+        # Get events, requiring fully defined positional data
+        try:
+            events = self.get_events(allow_undefined_events=False)
+        except LRSConfigurationError as e:
+            raise LRSConfigurationError(
+                "Cannot cluster events with undefined locations or bounds. "
+                "Use `drop_invalid_events()` to remove events with missing "
+                "data before clustering."
+            ) from e
+
+        # Buffer event locations into linear ranges (skip if tolerance is zero)
+        if tolerance > 0:
+            buffered = events.extend(
+                extend_begs=tolerance,
+                extend_ends=tolerance,
+                inplace=False
+            )
+        elif tolerance < 0:
+            raise ValueError("Tolerance must be non-negative.")
+        else:
+            buffered = events
+
+        # Self-relate buffered events and extract connected components
+        relation = buffered.relate(buffered)
+        if buffered.is_point:
+            if enforce_edges is not None:
+                raise ValueError(
+                    "The enforce_edges parameter is not applicable to point "
+                    "events."
+                )
+            n_clusters, labels = relation.connected_components()
+        else:
+            if enforce_edges is None:
+                enforce_edges = False
+            n_clusters, labels = relation.connected_components(
+                enforce_edges=enforce_edges
+            )
+
+        # Apply cluster labels to the DataFrame
+        df = self.df if inplace else self.copy_df()
+        df[name] = labels
+        return None if inplace else df
+
     @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
     def project(
         self,
