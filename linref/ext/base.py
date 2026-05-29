@@ -2453,30 +2453,30 @@ class LRS_Accessor(object):
             grouped=grouped
         )
 
-    def cluster_proximity(
+    def cluster(
         self,
-        tolerance: float,
+        max_gap: float,
         name: str = 'cluster',
         enforce_edges: bool | None = None,
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
         Cluster events based on linear referencing proximity within each group.
-        Events whose locations are within the specified tolerance of each other
+        Events whose locations are within the specified max gap of each other
         (directly or transitively) are assigned to the same cluster.
 
-        This method buffers each event location by the tolerance to create 
+        This method buffers each event location by the max gap to create 
         small linear ranges, then identifies overlapping ranges within each 
         group using a self-intersection, and finally extracts connected 
         components from the resulting adjacency graph to form clusters.
 
         For point events, two points are proximal if their locations are within 
-        the tolerance distance. For linear events, two events are proximal if 
-        their ranges (after extension by the tolerance) overlap.
+        the max gap distance. For linear events, two events are proximal if 
+        their ranges (after extension by the max gap) overlap.
 
         Parameters
         ----------
-        tolerance : float
+        max_gap : float
             The maximum linear distance between event locations for them to 
             be considered proximal. Events within this distance (directly or 
             transitively through intermediate events) will be assigned to the 
@@ -2512,15 +2512,15 @@ class LRS_Accessor(object):
                 "data before clustering."
             ) from e
 
-        # Buffer event locations into linear ranges (skip if tolerance is zero)
-        if tolerance > 0:
+        # Buffer event locations into linear ranges (skip if max_gap is zero)
+        if max_gap > 0:
             buffered = events.extend(
-                extend_begs=tolerance,
-                extend_ends=tolerance,
+                extend_begs=max_gap,
+                extend_ends=max_gap,
                 inplace=False
             )
-        elif tolerance < 0:
-            raise ValueError("Tolerance must be non-negative.")
+        elif max_gap < 0:
+            raise ValueError("max_gap must be non-negative.")
         else:
             buffered = events
 
@@ -2619,7 +2619,7 @@ class LRS_Accessor(object):
         )
         # Optionally project onto LRS
         if project:
-            result = self.project(
+            result = self.dissolve().lr.project(
                 result, buffer=1e-10, nearest=not expand, replace=True,
             )
         return result

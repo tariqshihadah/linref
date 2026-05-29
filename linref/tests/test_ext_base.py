@@ -1567,8 +1567,8 @@ class TestSetMonotonic(unittest.TestCase):
         self.assertEqual(list(result.iloc[2]['geometry'].coords), [(4, 0), (2, 0)])
 
 
-class TestClusterProximity(unittest.TestCase):
-    """Test cluster_proximity method on LRS_Accessor."""
+class TestCluster(unittest.TestCase):
+    """Test cluster method on LRS_Accessor."""
 
     def test_point_events_basic(self):
         """Test clustering point events with clear proximity groups."""
@@ -1577,7 +1577,7 @@ class TestClusterProximity(unittest.TestCase):
             'mp': [1.0, 1.01, 5.0, 5.005],
         }).lr.set_lrs(key_col=['route'], loc_col='mp')
 
-        result = df.lr.cluster_proximity(tolerance=0.02)
+        result = df.lr.cluster(max_gap=0.02)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1, 1])
 
     def test_point_events_grouped(self):
@@ -1587,7 +1587,7 @@ class TestClusterProximity(unittest.TestCase):
             'mp': [1.0, 1.01, 1.0, 1.01],
         }).lr.set_lrs(key_col=['route'], loc_col='mp')
 
-        result = df.lr.cluster_proximity(tolerance=0.02)
+        result = df.lr.cluster(max_gap=0.02)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1, 1])
 
     def test_point_events_transitive(self):
@@ -1600,7 +1600,7 @@ class TestClusterProximity(unittest.TestCase):
         # With tolerance=0.02, 1.0↔1.015 overlap, 1.015↔1.03 overlap,
         # but 1.0↔1.03 do NOT directly overlap. Connected components
         # should still group all three together.
-        result = df.lr.cluster_proximity(tolerance=0.02)
+        result = df.lr.cluster(max_gap=0.02)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 0])
 
     def test_linear_events_overlapping(self):
@@ -1612,7 +1612,7 @@ class TestClusterProximity(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='both')
 
         # First two events already overlap (0-1 and 0.9-2), tolerance extends further
-        result = df.lr.cluster_proximity(tolerance=0.1)
+        result = df.lr.cluster(max_gap=0.1)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1])
 
     def test_linear_events_gap_within_tolerance(self):
@@ -1624,7 +1624,7 @@ class TestClusterProximity(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='both')
 
         # Gap of 0.05, tolerance of 0.1 should bridge it
-        result = df.lr.cluster_proximity(tolerance=0.1)
+        result = df.lr.cluster(max_gap=0.1)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0])
 
     def test_custom_column_name(self):
@@ -1634,7 +1634,7 @@ class TestClusterProximity(unittest.TestCase):
             'mp': [1.0, 5.0],
         }).lr.set_lrs(key_col=['route'], loc_col='mp')
 
-        result = df.lr.cluster_proximity(tolerance=0.1, name='group_id')
+        result = df.lr.cluster(max_gap=0.1, name='group_id')
         self.assertIn('group_id', result.columns)
         self.assertNotIn('cluster', result.columns)
         np.testing.assert_array_equal(result['group_id'].values, [0, 1])
@@ -1646,7 +1646,7 @@ class TestClusterProximity(unittest.TestCase):
             'mp': [1.0, 5.0],
         }).lr.set_lrs(key_col=['route'], loc_col='mp')
 
-        result = df.lr.cluster_proximity(tolerance=0.1, inplace=True)
+        result = df.lr.cluster(max_gap=0.1, inplace=True)
         self.assertIsNone(result)
         np.testing.assert_array_equal(df['cluster'].values, [0, 1])
 
@@ -1657,7 +1657,7 @@ class TestClusterProximity(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'])
 
         with self.assertRaises(LRSConfigurationError):
-            df.lr.cluster_proximity(tolerance=0.1)
+            df.lr.cluster(max_gap=0.1)
 
     def test_zero_tolerance(self):
         """Test with zero tolerance: coincident points cluster, others don't."""
@@ -1668,7 +1668,7 @@ class TestClusterProximity(unittest.TestCase):
 
         # Zero tolerance with enforce_edges defaulting to True means
         # coincident points cluster, but non-coincident points don't.
-        result = df.lr.cluster_proximity(tolerance=0.0)
+        result = df.lr.cluster(max_gap=0.0)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1])
 
     def test_small_tolerance_coincident(self):
@@ -1678,7 +1678,7 @@ class TestClusterProximity(unittest.TestCase):
             'mp': [1.0, 1.0, 2.0],
         }).lr.set_lrs(key_col=['route'], loc_col='mp')
 
-        result = df.lr.cluster_proximity(tolerance=0.001)
+        result = df.lr.cluster(max_gap=0.001)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1])
 
     def test_enforce_edges_on_linear_events(self):
@@ -1690,11 +1690,11 @@ class TestClusterProximity(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='both')
 
         # With enforce_edges=True, adjacent events sharing edge at 1.0 cluster
-        result = df.lr.cluster_proximity(tolerance=0.0, enforce_edges=True)
+        result = df.lr.cluster(max_gap=0.0, enforce_edges=True)
         np.testing.assert_array_equal(result['cluster'].values, [0, 0])
 
         # With enforce_edges=False, they don't cluster
-        result = df.lr.cluster_proximity(tolerance=0.0, enforce_edges=False)
+        result = df.lr.cluster(max_gap=0.0, enforce_edges=False)
         np.testing.assert_array_equal(result['cluster'].values, [0, 1])
 
 
