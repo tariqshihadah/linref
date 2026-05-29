@@ -546,7 +546,7 @@ class TestEventOperations(unittest.TestCase):
 
     def test_extend(self):
         """Test extending event bounds."""
-        df_extended = self.df.lr.extend(extend_begs=0.1, extend_ends=0.1, inplace=False)
+        df_extended = self.df.lr.extend(extend_begs=0.1, extend_ends=0.1, inplace=False, geometry_sync='ignore')
         
         # Check that events were extended
         self.assertAlmostEqual(df_extended.iloc[0]['beg'], -0.1)
@@ -554,7 +554,7 @@ class TestEventOperations(unittest.TestCase):
 
     def test_shift(self):
         """Test shifting events."""
-        df_shifted = self.df.lr.shift(shift=10.0, inplace=False)
+        df_shifted = self.df.lr.shift(shift=10.0, inplace=False, geometry_sync='ignore')
         
         # Check that events were shifted
         self.assertAlmostEqual(df_shifted.iloc[0]['beg'], 10.0)
@@ -832,7 +832,7 @@ class TestProjectMethod(unittest.TestCase):
             LineStringM(LineString([(0, 10), (15, 10)]), m=[0.0, 15.0])
         ]
         
-        self.roads = gpd.GeoDataFrame(roads_data, geometry='geometry', crs='EPSG:4326')
+        self.roads = gpd.GeoDataFrame(roads_data, geometry='geometry', crs='EPSG:3857')
         self.roads = self.roads.lr.set_lrs(
             key_col=['route'],
             loc_col='milepost',
@@ -852,7 +852,7 @@ class TestProjectMethod(unittest.TestCase):
                 Point(15, 0.02),     # Near US-101, MP ~15
                 Point(7, 10.1)       # Near SR-1, MP ~7
             ]
-        }, crs='EPSG:4326')
+        }, crs='EPSG:3857')
 
     def test_project_basic(self):
         """Test basic projection of points onto lines."""
@@ -922,7 +922,7 @@ class TestProjectMethod(unittest.TestCase):
                 Point(100, 100),   # Far away - no match
                 Point(7, 10.1)     # Near SR-1
             ]
-        }, crs='EPSG:4326')
+        }, crs='EPSG:3857')
         
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -944,7 +944,7 @@ class TestProjectMethod(unittest.TestCase):
                 Point(100, 100),   # Far away - no match
                 Point(7, 10.1)     # Near SR-1
             ]
-        }, crs='EPSG:4326')
+        }, crs='EPSG:3857')
         
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)

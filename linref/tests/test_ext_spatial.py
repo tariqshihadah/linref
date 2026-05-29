@@ -22,7 +22,7 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
                     LineString([(15, -5), (15, 5)]),  # B seg 2 crosses A2
                 ],
             },
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
 
     def test_touches_predicate(self):
@@ -63,7 +63,7 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
                 LineString([(0, 0), (10, 0)]),
                 LineString([(0, 5), (10, 5)]),
             ]},
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         intersections, index_left, index_right = generate_intersection_pairs(parallel)
         self.assertEqual(len(intersections), 0)
@@ -79,7 +79,7 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
                 LineString([(5, 0), (10, 0)]),
             ]},
             index=[10, 20],
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         _, index_left, index_right = generate_intersection_pairs(gdf)
         self.assertEqual(index_left[0], 10)
@@ -123,7 +123,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
                     LineString([(15, -5), (15, 5)]),  # B seg 2 crosses A2
                 ],
             },
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
 
     def test_returns_tuple_of_arrays(self):
@@ -163,7 +163,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
                 LineString([(5, 0), (10, 0)]),
                 LineString([(5, -5), (5, 5)]),
             ]},
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         geoms, indices = generate_intersection_nodes(gdf, predicate='intersects')
         # All three meet at (5,0) → single node with indices [0, 1, 2]
@@ -186,7 +186,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
                 LineString([(0, 0), (10, 0)]),
                 LineString([(0, 5), (10, 5)]),
             ]},
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         geoms, indices = generate_intersection_nodes(parallel)
         self.assertEqual(len(geoms), 0)
@@ -196,7 +196,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
         """Single geometry returns empty result."""
         single = gpd.GeoDataFrame(
             {'geometry': [LineString([(0, 0), (10, 0)])]},
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         geoms, indices = generate_intersection_nodes(single)
         self.assertEqual(len(geoms), 0)
@@ -209,7 +209,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
                 LineString([(5, 0), (10, 0)]),
             ]},
             index=[10, 20],
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         geoms, indices = generate_intersection_nodes(gdf)
         self.assertEqual(indices[0], [10, 20])
@@ -235,7 +235,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
                     LineString([(15, -5), (15, 5)]),
                 ],
             },
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         self.gdf.lr.set_lrs(
             key_col='route_id', geom_col='geometry', inplace=True
@@ -273,7 +273,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
                 LineString([(0, 0), (5, 0)]),
                 LineString([(5, 0), (10, 0)]),
             ]},
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         gdf.lr.set_lrs(geom_col='geometry', inplace=True)
         result = gdf.lr.generate_intersections(project=False)
@@ -331,7 +331,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
                     LineStringM(LineString([(5, -5), (5, 5)]), m=[0.0, 10.0]),
                 ],
             },
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         gdf.lr.set_lrs(
             key_col='route_id', loc_col='beg', beg_col='beg', end_col='end',
@@ -365,7 +365,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
                     LineStringM(LineString([(5, -5), (5, 5)]), m=[0.0, 10.0]),
                 ],
             },
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
         gdf.lr.set_lrs(
             key_col='route_id', loc_col='beg', beg_col='beg', end_col='end',

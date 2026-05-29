@@ -265,7 +265,7 @@ class TestIntegration(unittest.TestCase):
                 Point(5.0, 1.0),   # near mid-network
                 Point(8.0, 1.5),   # near end-of-network
             ],
-            crs='EPSG:4326',
+            crs='EPSG:3857',
         )
 
         projected = roads_m.lr.project(points, buffer=2, nearest=True)
