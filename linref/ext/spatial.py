@@ -562,11 +562,12 @@ class ParallelProjector(object):
 def generate_intersection_pairs(
     gdf: gpd.GeoDataFrame,
     exclude_groups: str | list[str] | None = None,
-    predicate: str = 'touches',
+    touches: bool = True,
+    crosses: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Find pairwise intersection geometries between linestring geometries within 
-    a GeoDataFrame. Uses a spatial predicate to control which types of 
+    a GeoDataFrame. Uses spatial predicates to control which types of 
     intersections are returned.
 
     Parameters
@@ -578,14 +579,10 @@ def generate_intersection_pairs(
         Column name(s) used for group exclusion. Pairs where both geometries
         share the same value in these columns are excluded from results. 
         Useful for excluding intersections between segments of the same route.
-    predicate : str, default 'touches'
-        Spatial predicate used to identify intersecting pairs. Common values:
-        - 'touches' : Pairs that share boundary points (endpoints) only.
-        - 'crosses' : Pairs whose interiors intersect (interior crossings).
-        - 'overlaps' : Pairs that share some but not all interior points 
-          (overlapping segments).
-        - 'intersects' : All pairs that share any point (union of touches, 
-          crosses, and overlaps).
+    touches : bool, default True
+        If True, include pairs that share boundary points (endpoints) only.
+    crosses : bool, default True
+        If True, include pairs whose interiors intersect (interior crossings).
 
     Returns
     -------
@@ -596,10 +593,17 @@ def generate_intersection_pairs(
           pair.
         - index_right : Array of index labels of the second geometry in each 
           pair.
+
+    Raises
+    ------
+    ValueError
+        If both `touches` and `crosses` are False.
     """
     # Validate inputs
     if not isinstance(gdf, gpd.GeoDataFrame):
         raise TypeError("Input must be a GeoDataFrame.")
+    if not touches and not crosses:
+        raise ValueError("At least one of 'touches' or 'crosses' must be True.")
     
     # Normalize exclude_groups to list or None
     exclude_groups = label_list_or_none(exclude_groups)
@@ -620,20 +624,25 @@ def generate_intersection_pairs(
     if len(geoms) < 2:
         return empty
 
-    # Build spatial index and query pairs matching the predicate
+    # Build spatial index and query candidate pairs
     tree = shapely.STRtree(geoms)
-    try:
-        left_idx, right_idx = tree.query(geoms, predicate=predicate)
-    except Exception as e:
-        raise ValueError(
-            f"Invalid predicate '{predicate}'. See shapely.STRtree.query "
-            f"for supported predicates."
-        ) from e
+    left_idx, right_idx = tree.query(geoms, predicate='intersects')
 
     # Enforce i < j to deduplicate pairs and remove self-intersections
     mask = left_idx < right_idx
-    left_idx = left_idx[mask]
-    right_idx = right_idx[mask]
+    left_idx, right_idx = left_idx[mask], right_idx[mask]
+
+    if len(left_idx) == 0:
+        return empty
+
+    # Refine to only enabled predicates
+    checks = []
+    if touches:
+        checks.append(shapely.touches(geoms[left_idx], geoms[right_idx]))
+    if crosses:
+        checks.append(shapely.crosses(geoms[left_idx], geoms[right_idx]))
+    keep = np.any(checks, axis=0)
+    left_idx, right_idx = left_idx[keep], right_idx[keep]
 
     if len(left_idx) == 0:
         return empty
@@ -663,7 +672,8 @@ def generate_intersection_pairs(
 def generate_intersection_nodes(
     gdf: gpd.GeoDataFrame,
     exclude_groups: str | list[str] | None = None,
-    predicate: str = 'touches',
+    touches: bool = True,
+    crosses: bool = True,
 ) -> tuple[np.ndarray, list[list]]:
     """
     Find unique intersection nodes between geometries in a GeoDataFrame,
@@ -681,14 +691,10 @@ def generate_intersection_nodes(
         Column name(s) used for group exclusion. Pairs where both geometries
         share the same value in these columns are excluded from results.
         Useful for excluding intersections between segments of the same route.
-    predicate : str, default 'touches'
-        Spatial predicate used to identify intersecting pairs. Common values:
-        - 'touches' : Pairs that share boundary points (endpoints) only.
-        - 'crosses' : Pairs whose interiors intersect (interior crossings).
-        - 'overlaps' : Pairs that share some but not all interior points 
-          (overlapping segments).
-        - 'intersects' : All pairs that share any point (union of touches,
-          crosses, and overlaps).
+    touches : bool, default True
+        If True, include pairs that share boundary points (endpoints) only.
+    crosses : bool, default True
+        If True, include pairs whose interiors intersect (interior crossings).
 
     Returns
     -------
@@ -700,7 +706,7 @@ def generate_intersection_nodes(
     """
     # Get pairwise intersection arrays
     intersections, index_left, index_right = generate_intersection_pairs(
-        gdf, exclude_groups=exclude_groups, predicate=predicate
+        gdf, exclude_groups=exclude_groups, touches=touches, crosses=crosses
     )
 
     # Empty result

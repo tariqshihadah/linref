@@ -25,19 +25,21 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
             crs='EPSG:3857',
         )
 
-    def test_touches_predicate(self):
-        """Default predicate='touches' finds endpoint-sharing pairs."""
-        intersections, index_left, index_right = generate_intersection_pairs(self.gdf)
+    def test_touches_only(self):
+        """touches=True, crosses=False finds endpoint-sharing pairs only."""
+        intersections, index_left, index_right = generate_intersection_pairs(
+            self.gdf, touches=True, crosses=False
+        )
         # A1 and A2 touch at (10,0); no other pairs touch
         self.assertEqual(len(intersections), 1)
         self.assertEqual(intersections[0], Point(10, 0))
         np.testing.assert_array_equal(index_left, [0])
         np.testing.assert_array_equal(index_right, [1])
 
-    def test_crosses_predicate(self):
-        """predicate='crosses' finds interior crossings only."""
+    def test_crosses_only(self):
+        """touches=False, crosses=True finds interior crossings only."""
         intersections, index_left, index_right = generate_intersection_pairs(
-            self.gdf, predicate='crosses'
+            self.gdf, touches=False, crosses=True
         )
         # A1×B1 and A2×B2 cross; A1×A2 only touch → 2
         self.assertEqual(len(intersections), 2)
@@ -45,10 +47,10 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
         np.testing.assert_array_equal(index_left, [0, 1])
         np.testing.assert_array_equal(index_right, [2, 3])
 
-    def test_intersects_predicate(self):
-        """predicate='intersects' finds all intersecting pairs."""
+    def test_both_touches_and_crosses(self):
+        """Default touches=True, crosses=True finds all touching and crossing pairs."""
         intersections, index_left, index_right = generate_intersection_pairs(
-            self.gdf, predicate='intersects'
+            self.gdf
         )
         # A1×A2 (touch), A1×B1 (cross), A2×B2 (cross) = 3
         self.assertEqual(len(intersections), 3)
@@ -88,12 +90,12 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
     def test_exclude_groups(self):
         """Group exclusion removes same-group pairs."""
         intersections_all, _, _ = generate_intersection_pairs(
-            self.gdf, exclude_groups=None, predicate='intersects'
+            self.gdf, exclude_groups=None
         )
         self.assertEqual(len(intersections_all), 3)
         # Exclude same route: removes A1×A2 → 2
         intersections_excl, _, _ = generate_intersection_pairs(
-            self.gdf, exclude_groups='route_id', predicate='intersects'
+            self.gdf, exclude_groups='route_id'
         )
         self.assertEqual(len(intersections_excl), 2)
 
@@ -128,7 +130,9 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
 
     def test_returns_tuple_of_arrays(self):
         """Result is a tuple of (geometry_array, indices_list)."""
-        result = generate_intersection_nodes(self.gdf, predicate='touches')
+        result = generate_intersection_nodes(
+            self.gdf, touches=True, crosses=False
+        )
         self.assertIsInstance(result, tuple)
         self.assertEqual(len(result), 2)
         geoms, indices = result
@@ -136,15 +140,19 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
         self.assertIsInstance(indices, list)
 
     def test_touches_groups_correctly(self):
-        """touches: A1×A2 at (10,0) → indices [0, 1]."""
-        geoms, indices = generate_intersection_nodes(self.gdf, predicate='touches')
+        """touches only: A1×A2 at (10,0) → indices [0, 1]."""
+        geoms, indices = generate_intersection_nodes(
+            self.gdf, touches=True, crosses=False
+        )
         self.assertEqual(len(geoms), 1)
         self.assertEqual(geoms[0], Point(10, 0))
         self.assertEqual(indices[0], [0, 1])
 
     def test_crosses_groups_correctly(self):
-        """crosses: A1×B1 at (5,0), A2×B2 at (15,0)."""
-        geoms, indices = generate_intersection_nodes(self.gdf, predicate='crosses')
+        """crosses only: A1×B1 at (5,0), A2×B2 at (15,0)."""
+        geoms, indices = generate_intersection_nodes(
+            self.gdf, touches=False, crosses=True
+        )
         # Sort by x coordinate for stable comparison
         order = np.argsort([g.x for g in geoms])
         geoms = geoms[order]
@@ -155,7 +163,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
         self.assertEqual(geoms[1], Point(15, 0))
         self.assertEqual(indices[1], [1, 3])
 
-    def test_intersects_merges_shared_point(self):
+    def test_both_merges_shared_point(self):
         """Three lines meeting at one point produce a single node."""
         gdf = gpd.GeoDataFrame(
             {'geometry': [
@@ -165,7 +173,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
             ]},
             crs='EPSG:3857',
         )
-        geoms, indices = generate_intersection_nodes(gdf, predicate='intersects')
+        geoms, indices = generate_intersection_nodes(gdf)
         # All three meet at (5,0) → single node with indices [0, 1, 2]
         self.assertEqual(len(geoms), 1)
         self.assertEqual(geoms[0], Point(5, 0))
@@ -174,7 +182,7 @@ class TestGenerateIntersectionNodes(unittest.TestCase):
     def test_exclude_groups(self):
         """Group exclusion removes same-group pairs before grouping."""
         geoms, indices = generate_intersection_nodes(
-            self.gdf, exclude_groups='route_id', predicate='intersects'
+            self.gdf, exclude_groups='route_id'
         )
         # Excludes A1×A2 → only cross-route pairs remain: 2 nodes
         self.assertEqual(len(geoms), 2)
@@ -244,27 +252,27 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
     def test_default_uses_key_col(self):
         """Default exclude_groups=True uses LRS key columns."""
         result = self.gdf.lr.generate_intersections(
-            predicate='intersects', project=False,
+            project=False,
         )
         self.assertEqual(len(result), 2)
 
     def test_exclude_groups_false(self):
         """exclude_groups=False includes same-route pairs."""
         result = self.gdf.lr.generate_intersections(
-            exclude_groups=False, predicate='intersects', project=False,
+            exclude_groups=False, project=False,
         )
         self.assertEqual(len(result), 3)
 
-    def test_predicate_forwarded(self):
-        """predicate parameter is forwarded correctly."""
-        touches = self.gdf.lr.generate_intersections(
-            predicate='touches', project=False,
+    def test_touches_crosses_forwarded(self):
+        """touches/crosses parameters are forwarded correctly."""
+        touches_only = self.gdf.lr.generate_intersections(
+            touches=True, crosses=False, project=False,
         )
-        crosses = self.gdf.lr.generate_intersections(
-            predicate='crosses', project=False,
+        crosses_only = self.gdf.lr.generate_intersections(
+            touches=False, crosses=True, project=False,
         )
-        self.assertEqual(len(touches), 0)
-        self.assertEqual(len(crosses), 2)
+        self.assertEqual(len(touches_only), 0)
+        self.assertEqual(len(crosses_only), 2)
 
     def test_ungrouped_lrs(self):
         """Ungrouped LRS with default resolves to no exclusion."""
@@ -282,7 +290,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
     def test_returns_geodataframe_with_indices(self):
         """Result is a GeoDataFrame with indices column, no index_left/right."""
         result = self.gdf.lr.generate_intersections(
-            predicate='crosses', project=False,
+            touches=False, crosses=True, project=False,
         )
         self.assertIsInstance(result, gpd.GeoDataFrame)
         self.assertIn('indices', result.columns)
@@ -295,7 +303,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
     def test_grouped_indices_correct(self):
         """Verify indices are correctly grouped per intersection point."""
         result = self.gdf.lr.generate_intersections(
-            predicate='crosses', project=False,
+            touches=False, crosses=True, project=False,
         )
         result = result.sort_values(
             'geometry', key=lambda s: s.apply(lambda g: g.x),
@@ -306,7 +314,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
     def test_empty_result(self):
         """Empty result returns GeoDataFrame with correct schema."""
         result = self.gdf.lr.generate_intersections(
-            predicate='touches', project=False,
+            touches=True, crosses=False, project=False,
         )
         self.assertEqual(len(result), 0)
         self.assertIn('geometry', result.columns)
@@ -338,7 +346,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
             geom_col='geometry', geom_m_col='geometry_m', inplace=True,
         )
         result = gdf.lr.generate_intersections(
-            predicate='crosses', project=True, expand=True,
+            touches=False, crosses=True, project=True, expand=True,
         )
         self.assertEqual(len(result), 2)
         self.assertEqual(set(result['route_id']), {'A', 'B'})
@@ -372,7 +380,7 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
             geom_col='geometry', geom_m_col='geometry_m', inplace=True,
         )
         result = gdf.lr.generate_intersections(
-            predicate='crosses', project=True, expand=False,
+            touches=False, crosses=True, project=True, expand=False,
         )
         # One row; which route is non-deterministic for equidistant matches
         self.assertEqual(len(result), 1)

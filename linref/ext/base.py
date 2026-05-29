@@ -2549,7 +2549,8 @@ class LRS_Accessor(object):
     def generate_intersections(
         self,
         exclude_groups: bool | str | list[str] = True,
-        predicate: str = 'touches',
+        touches: bool = True,
+        crosses: bool = True,
         project: bool = True,
         expand: bool = True,
     ) -> gpd.GeoDataFrame:
@@ -2569,12 +2570,11 @@ class LRS_Accessor(object):
               intersections between segments of the same route.
             - str or list of str : Use the specified column name(s).
             - False : No group exclusion; all intersecting pairs are included.
-        predicate : str, default 'touches'
-            Spatial predicate used to identify intersecting pairs. Common 
-            values:
-            - 'touches' : Pairs that share boundary points (endpoints) only.
-            - 'crosses' : Pairs whose interiors intersect (interior crossings).
-            - 'intersects' : All pairs that share any point.
+        touches : bool, default True
+            If True, include pairs that share boundary points (endpoints) only.
+        crosses : bool, default True
+            If True, include pairs whose interiors intersect (interior 
+            crossings).
         project : bool, default True
             Whether to project intersection points onto the LRS to obtain 
             linear referencing locations. Requires a fully configured linear 
@@ -2609,7 +2609,7 @@ class LRS_Accessor(object):
             cols = exclude_groups
         # Generate intersection nodes (tuple of arrays)
         geoms, indices = generate_intersection_nodes(
-            self.df, exclude_groups=cols, predicate=predicate
+            self.df, exclude_groups=cols, touches=touches, crosses=crosses
         )
         # Construct GeoDataFrame from arrays
         result = gpd.GeoDataFrame(
