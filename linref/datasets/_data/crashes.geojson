@@ -1,7 +1,7 @@
 {
 "type": "FeatureCollection",
 "name": "crashes",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::3857" } },
 "features": [
 { "type": "Feature", "properties": { "crash_id": 1, "route": "US-101", "loc": 2.56, "severity": "Injury", "mode": "Motor Vehicle" }, "geometry": { "type": "Point", "coordinates": [ 2.56, 0.52 ] } },
 { "type": "Feature", "properties": { "crash_id": 2, "route": "US-101", "loc": 8.18, "severity": "Fatal", "mode": "Bicyclist" }, "geometry": { "type": "Point", "coordinates": [ 8.18, 2.15 ] } },
