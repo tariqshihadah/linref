@@ -2550,9 +2550,16 @@ class LRS_Accessor(object):
         self,
         exclude_groups: bool | str | list[str] = True,
         predicate: str = 'touches',
+        project: bool = True,
+        expand: bool = True,
     ) -> gpd.GeoDataFrame:
         """
-        Find intersection geometries between line geometries in the DataFrame.
+        Find unique intersection locations between line geometries in the 
+        DataFrame, returning one row per unique intersection point with all
+        participating source geometry indices.
+
+        Optionally projects intersection points onto the LRS to obtain linear
+        referencing locations.
 
         Parameters
         ----------
@@ -2568,15 +2575,31 @@ class LRS_Accessor(object):
             - 'touches' : Pairs that share boundary points (endpoints) only.
             - 'crosses' : Pairs whose interiors intersect (interior crossings).
             - 'intersects' : All pairs that share any point.
+        project : bool, default True
+            Whether to project intersection points onto the LRS to obtain 
+            linear referencing locations. Requires a fully configured linear 
+            spatial LRS with M-enabled geometries.
+        expand : bool, default True
+            When projecting, whether to expand results to one row per 
+            intersecting line per node. If True, each intersection node 
+            produces one row for each coincident line, giving the LRS 
+            location on every line. If False, each node produces a single 
+            row projected onto an arbitrary coincident line. Only used when 
+            ``project=True``.
 
         Returns
         -------
         GeoDataFrame
-            A GeoDataFrame of intersection geometries with columns 
-            'index_left' and 'index_right' identifying the source geometry 
-            pair.
+            A GeoDataFrame with one row per unique intersection location 
+            (or per line per location when ``expand=True``):
+            - geometry : The intersection Point geometry.
+            - indices : A list of source geometry index labels participating 
+              in the intersection.
+            
+            When ``project=True``, additional LRS columns are included from
+            the projection step.
         """
-        from linref.ext.spatial import generate_intersections
+        from linref.ext.spatial import generate_intersection_nodes
         # Resolve exclude_groups from LRS keys
         if exclude_groups is True:
             cols = self.key_col if self.is_grouped else None
@@ -2584,9 +2607,22 @@ class LRS_Accessor(object):
             cols = None
         else:
             cols = exclude_groups
-        return generate_intersections(
+        # Generate intersection nodes (tuple of arrays)
+        geoms, indices = generate_intersection_nodes(
             self.df, exclude_groups=cols, predicate=predicate
         )
+        # Construct GeoDataFrame from arrays
+        result = gpd.GeoDataFrame(
+            {'geometry': geoms, 'indices': indices},
+            geometry='geometry',
+            crs=self.df.crs,
+        )
+        # Optionally project onto LRS
+        if project:
+            result = self.project(
+                result, buffer=1e-10, nearest=not expand, replace=True,
+            )
+        return result
 
     @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
     def project(
@@ -2683,7 +2719,8 @@ class LRS_Accessor(object):
             # Get distances for all matches
             left_geoms = joined.geometry
             right_geoms = gpd.GeoSeries(
-                joined[index_right_name].map(self.df[self.geom_col]),
+                joined[index_right_name].map(self.df[self.geom_col]).values,
+                index=joined.index,
                 crs=getattr(self.df, 'crs', None),
             )
             joined[distance_col] = left_geoms.distance(right_geoms)

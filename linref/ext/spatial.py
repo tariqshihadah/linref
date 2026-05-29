@@ -559,14 +559,14 @@ class ParallelProjector(object):
         return select
 
 
-def generate_intersections(
+def generate_intersection_pairs(
     gdf: gpd.GeoDataFrame,
     exclude_groups: str | list[str] | None = None,
     predicate: str = 'touches',
-) -> gpd.GeoDataFrame:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Find intersection geometries between linestring geometries within a 
-    GeoDataFrame. Uses a spatial predicate to control which types of 
+    Find pairwise intersection geometries between linestring geometries within 
+    a GeoDataFrame. Uses a spatial predicate to control which types of 
     intersections are returned.
 
     Parameters
@@ -582,17 +582,20 @@ def generate_intersections(
         Spatial predicate used to identify intersecting pairs. Common values:
         - 'touches' : Pairs that share boundary points (endpoints) only.
         - 'crosses' : Pairs whose interiors intersect (interior crossings).
+        - 'overlaps' : Pairs that share some but not all interior points 
+          (overlapping segments).
         - 'intersects' : All pairs that share any point (union of touches, 
           crosses, and overlaps).
 
     Returns
     -------
-    GeoDataFrame
-        A GeoDataFrame of intersection geometries with the following columns:
-        - geometry : Intersection geometries (Point, MultiPoint, or 
-          LineString depending on the intersection type).
-        - index_left : Index label of the first geometry in each pair.
-        - index_right : Index label of the second geometry in each pair.
+    tuple of (ndarray, ndarray, ndarray)
+        A tuple of three arrays:
+        - intersections : Array of intersection geometries (shapely objects).
+        - index_left : Array of index labels of the first geometry in each 
+          pair.
+        - index_right : Array of index labels of the second geometry in each 
+          pair.
     """
     # Validate inputs
     if not isinstance(gdf, gpd.GeoDataFrame):
@@ -608,19 +611,14 @@ def generate_intersections(
                 f"found in the GeoDataFrame."
             )
 
-    # Prepare empty result template
-    result = gpd.GeoDataFrame(
-        {'geometry': [], 'index_left': [], 'index_right': []},
-        geometry='geometry',
-        crs=gdf.crs,
-    )
-
     # Extract geometry array and index
     geoms = gdf.geometry.values
     idx = gdf.index
 
+    # Empty result
+    empty = (np.array([], dtype=object), np.array([]), np.array([]))
     if len(geoms) < 2:
-        return result
+        return empty
 
     # Build spatial index and query pairs matching the predicate
     tree = shapely.STRtree(geoms)
@@ -638,7 +636,7 @@ def generate_intersections(
     right_idx = right_idx[mask]
 
     if len(left_idx) == 0:
-        return result
+        return empty
 
     # Filter out same-group pairs
     if exclude_groups is not None:
@@ -653,10 +651,85 @@ def generate_intersections(
         right_idx = right_idx[different_group]
 
     if len(left_idx) == 0:
-        return result
+        return empty
 
-    # Compute intersection geometries and populate result
-    result['geometry'] = shapely.intersection(geoms[left_idx], geoms[right_idx])
-    result['index_left'] = idx[left_idx]
-    result['index_right'] = idx[right_idx]
-    return result
+    # Compute intersection geometries
+    intersections = shapely.intersection(geoms[left_idx], geoms[right_idx])
+    index_left = idx[left_idx]
+    index_right = idx[right_idx]
+    return intersections, np.asarray(index_left), np.asarray(index_right)
+
+
+def generate_intersection_nodes(
+    gdf: gpd.GeoDataFrame,
+    exclude_groups: str | list[str] | None = None,
+    predicate: str = 'touches',
+) -> tuple[np.ndarray, list[list]]:
+    """
+    Find unique intersection nodes between geometries in a GeoDataFrame,
+    returning one entry per unique intersection location with the list of all
+    participating source geometry indices.
+
+    Calls :func:`generate_intersection_pairs` to obtain pairwise results,
+    then explodes multipart geometries and groups by unique location.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        The GeoDataFrame containing geometries to find intersections within.
+    exclude_groups : str or list of str, optional
+        Column name(s) used for group exclusion. Pairs where both geometries
+        share the same value in these columns are excluded from results.
+        Useful for excluding intersections between segments of the same route.
+    predicate : str, default 'touches'
+        Spatial predicate used to identify intersecting pairs. Common values:
+        - 'touches' : Pairs that share boundary points (endpoints) only.
+        - 'crosses' : Pairs whose interiors intersect (interior crossings).
+        - 'overlaps' : Pairs that share some but not all interior points 
+          (overlapping segments).
+        - 'intersects' : All pairs that share any point (union of touches,
+          crosses, and overlaps).
+
+    Returns
+    -------
+    tuple of (ndarray, list of list)
+        A tuple of two elements:
+        - geometries : Array of unique intersection geometries.
+        - indices : List of lists, where each inner list contains the sorted
+          source geometry index labels participating at that location.
+    """
+    # Get pairwise intersection arrays
+    intersections, index_left, index_right = generate_intersection_pairs(
+        gdf, exclude_groups=exclude_groups, predicate=predicate
+    )
+
+    # Empty result
+    empty = (np.array([], dtype=object), [])
+    if len(intersections) == 0:
+        return empty
+
+    # Explode multipart geometries to individual parts
+    parts, part_pair_idx = shapely.get_parts(intersections, return_index=True)
+
+    if len(parts) == 0:
+        return empty
+
+    # Map each part back to the source index labels
+    part_left = index_left[part_pair_idx]
+    part_right = index_right[part_pair_idx]
+
+    # Group by unique geometry using WKB representation
+    wkb = shapely.to_wkb(parts)
+    unique_wkb, inverse = np.unique(wkb, return_inverse=True)
+
+    # Collect all participating source indices per unique geometry
+    n_unique = len(unique_wkb)
+    indices_sets = [set() for _ in range(n_unique)]
+    for i, group_id in enumerate(inverse):
+        indices_sets[group_id].add(part_left[i])
+        indices_sets[group_id].add(part_right[i])
+
+    # Build result arrays
+    unique_geoms = shapely.from_wkb(unique_wkb)
+    indices = [sorted(s) for s in indices_sets]
+    return unique_geoms, indices
