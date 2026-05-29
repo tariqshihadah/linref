@@ -37,6 +37,8 @@ def _method_deprecates_geometry(func) -> callable:
                     "geometry of the underlying GeoDataFrame with event data.",
                     GeometrySyncWarning
                 )
+            elif geometry_sync == 'ignore':
+                pass
             elif geometry_sync == 'remove':
                 # Remove geometry column
                 if self.is_spatial:
