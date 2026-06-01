@@ -179,7 +179,7 @@ def concatenate(objs, ignore_index=False, closed=None):
         closed=closed if closed is not None else objs[0].closed
     )
 
-def extend(events, extend_begs=0, extend_ends=0, inplace=False):
+def extend(events, length=0, inplace=False):
     """
     Extend the range of events by a specified amount in either or both directions.
 
@@ -187,23 +187,28 @@ def extend(events, extend_begs=0, extend_ends=0, inplace=False):
     ----------
     events : EventsData
         Input range of events.
-    extend_begs : float or array-like, optional
-        Amount to extend the beginning and end of each event range. If an array-like
-        is provided, it must be the same length as the number of events in the 
-        collection. Positive values extend ranges to the left, negative values to
-        the right. Default is 0.
-    extend_ends : float or array-like, optional
-        Amount to extend the end of each event range. If an array-like is provided,
-        it must be the same length as the number of events in the collection. Positive
-        values extend ranges to the right, negative values to the left. Default is 0.
+    length : float, array-like, or tuple, optional
+        Amount to extend the event ranges. If a scalar or array-like is provided,
+        it is applied equally to both the beginning and end of each event range. 
+        If a tuple of two values is provided, the first value extends the beginning 
+        and the second value extends the end. Positive values extend ranges outward,
+        negative values contract ranges inward. Default is 0.
     inplace : bool, optional
         If True, modify the input object in place. Default is False.
     """
     # Validate input
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    extend_begs = utility._validate_scalar_or_array_input(events, extend_begs, 'extend_begs')
-    extend_ends = utility._validate_scalar_or_array_input(events, extend_ends, 'extend_ends')
+    
+    # Parse length parameter
+    if isinstance(length, tuple):
+        extend_begs, extend_ends = length
+    else:
+        extend_begs = length
+        extend_ends = length
+    
+    extend_begs = utility._validate_scalar_or_array_input(events, extend_begs, 'length')
+    extend_ends = utility._validate_scalar_or_array_input(events, extend_ends, 'length')
 
     # Select object to modify
     events = events if inplace else events.copy()
@@ -219,7 +224,7 @@ def extend(events, extend_begs=0, extend_ends=0, inplace=False):
     # Return results
     return None if inplace else events
 
-def shift(events, shift, inplace=False):
+def shift(events, length, inplace=False):
     """
     Shift the range of events by a specified amount.
 
@@ -227,7 +232,7 @@ def shift(events, shift, inplace=False):
     ----------
     events : EventsData
         Input range of events.
-    shift : float or array-like
+    length : float or array-like
         Amount to shift all events. If an array-like is provided, it must
         be the same length as the number of events in the collection. Positive
         values shift events to the right, negative values to the left.
@@ -237,17 +242,17 @@ def shift(events, shift, inplace=False):
     # Validate input
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    shift = utility._validate_scalar_or_array_input(events, shift, 'shift')
+    length = utility._validate_scalar_or_array_input(events, length, 'length')
 
     # Select object to modify
     events = events if inplace else events.copy()
 
     # Select methodology
     if events.is_located:
-        events._locs = events._locs + shift
+        events._locs = events._locs + length
     if events.is_linear:
-        events._begs = events._begs + shift
-        events._ends = events._ends + shift
+        events._begs = events._begs + length
+        events._ends = events._ends + length
     
     # Return results
     return None if inplace else events

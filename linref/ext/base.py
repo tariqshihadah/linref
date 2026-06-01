@@ -1468,8 +1468,7 @@ class LRS_Accessor(object):
     @_method_deprecates_geometry
     def extend(
         self,
-        extend_begs: float = 0,
-        extend_ends: float = 0,
+        length: float | tuple = 0,
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
@@ -1478,12 +1477,12 @@ class LRS_Accessor(object):
 
         Parameters
         ----------
-        extend_begs : float, default 0
-            The amount to extend the begin locations to the left. Negative
-            values shift the begin locations to the right.
-        extend_ends : float, default 0
-            The amount to extend the end locations to the right. Negative
-            values shift the end locations to the left.
+        length : float or tuple, default 0
+            Amount to extend the event ranges. If a scalar is provided, it is 
+            applied equally to both the beginning and end of each event range. 
+            If a tuple of two values is provided, the first value extends the 
+            beginning and the second value extends the end. Positive values 
+            extend ranges outward, negative values contract ranges inward.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
 
@@ -1500,8 +1499,7 @@ class LRS_Accessor(object):
             obj.point_to_linear(inplace=True)
         # Extend events
         events = self.events.extend(
-            extend_begs=extend_begs,
-            extend_ends=extend_ends,
+            length=length,
             inplace=False
         )
         # Apply changes to the DataFrame
@@ -1512,7 +1510,7 @@ class LRS_Accessor(object):
     @_method_deprecates_geometry
     def shift(
         self,
-        shift: float,
+        length: float = 0,
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
@@ -1520,7 +1518,7 @@ class LRS_Accessor(object):
 
         Parameters
         ----------
-        shift : float
+        length : float
             The amount to shift the events by.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
@@ -1531,7 +1529,7 @@ class LRS_Accessor(object):
             A copy of the current DataFrame with shifted events.
         """
         # Shift events
-        events = self.events.shift(shift, inplace=False)
+        events = self.events.shift(length, inplace=False)
         # Apply changes to the DataFrame
         obj = self if inplace else self.copy(deep=True)
         if self.is_located:
@@ -2561,8 +2559,7 @@ class LRS_Accessor(object):
         # Buffer event locations into linear ranges (skip if max_gap is zero)
         if max_gap > 0:
             buffered = events.extend(
-                extend_begs=max_gap,
-                extend_ends=max_gap,
+                length=max_gap,
                 inplace=False
             )
         elif max_gap < 0:

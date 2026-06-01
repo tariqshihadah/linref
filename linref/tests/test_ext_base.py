@@ -546,7 +546,7 @@ class TestEventOperations(unittest.TestCase):
 
     def test_extend(self):
         """Test extending event bounds."""
-        df_extended = self.df.lr.extend(extend_begs=0.1, extend_ends=0.1, inplace=False, geometry_sync='ignore')
+        df_extended = self.df.lr.extend(length=0.1, inplace=False, geometry_sync='ignore')
         
         # Check that events were extended
         self.assertAlmostEqual(df_extended.iloc[0]['beg'], -0.1)
@@ -554,7 +554,7 @@ class TestEventOperations(unittest.TestCase):
 
     def test_shift(self):
         """Test shifting events."""
-        df_shifted = self.df.lr.shift(shift=10.0, inplace=False, geometry_sync='ignore')
+        df_shifted = self.df.lr.shift(length=10.0, inplace=False, geometry_sync='ignore')
         
         # Check that events were shifted
         self.assertAlmostEqual(df_shifted.iloc[0]['beg'], 10.0)
