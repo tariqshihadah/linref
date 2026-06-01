@@ -636,6 +636,38 @@ class TestEventOperations(unittest.TestCase):
             geom_length = row['geometry'].length
             self.assertAlmostEqual(event_length, geom_length)
 
+    def test_separate(self):
+        """Test separating overlapping events via accessor."""
+        df_overlap = pd.DataFrame({
+            'route': ['A', 'A', 'A'],
+            'beg': [0.0, 3.0, 7.0],
+            'end': [5.0, 8.0, 12.0],
+            'attr': ['x', 'y', 'z']
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+
+        result = df_overlap.lr.separate()
+
+        # No overlaps in output
+        for i in range(len(result) - 1):
+            self.assertLessEqual(result.iloc[i]['end'], result.iloc[i + 1]['beg'])
+        # LRS is preserved
+        self.assertTrue(result.lr.lrs == df_overlap.lr.lrs)
+        self.assertEqual(result.lr.beg_col, 'beg')
+        # Attributes are preserved
+        self.assertEqual(list(result['attr']), ['x', 'y', 'z'])
+
+    def test_separate_drop_short(self):
+        """Test separate with drop_short removes eclipsed events."""
+        df_eclipsed = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 2.0],
+            'end': [10.0, 5.0]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+
+        result = df_eclipsed.lr.separate(drop_short=True)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result.lr.lrs == df_eclipsed.lr.lrs)
+
 
 class TestCompatibilityFunctions(unittest.TestCase):
     """Test compatibility checking functions."""

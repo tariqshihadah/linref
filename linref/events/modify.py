@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from linref.events import base, utility, relate, common
+from linref.events import base, utility, relate, common, selection
 from scipy import sparse as sp
 
 def dissolve(events, sort=False, return_index=False, return_relation=False):
@@ -427,109 +427,167 @@ def resegment(events, length=1, fill='cut', return_relation=False):
         outputs.append(relation)
     return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
-def separate(events, by='centers', inplace=False):
+def separate(events, anchor='centers', method='balanced', drop_short=False, inplace=False):
     """
     Address overlapping ranges by distributing overlaps between adjacent
-    events. Distributions are made equally and are based on a specified 
-    event anchor point of the location, begin, end, or center of each 
-    event.
+    events. Eclipsed ranges (fully contained within another range) are
+    eliminated. Identical ranges are deduplicated (first kept). Distributions
+    are made based on a specified event anchor point and split method.
 
     Parameters
     ----------
     events : EventsData
         Input range of events.
-    by : str {'locs', 'begs', 'ends', 'centers'}, default 'centers'
-        The anchor point of each event to be used when distributing 
-        overlaps between events.
+    anchor : str {'centers', 'begs', 'ends'}, default 'centers'
+        The anchor point of each event to be used when sorting events and 
+        distributing overlaps. Events are sorted by this anchor before 
+        processing, which determines overlap resolution priority.
+    method : str {'balanced', 'center', 'left', 'right'}, default 'balanced'
+        The strategy for splitting overlapping regions between adjacent events.
+
+        - ``balanced`` : Use the midpoint of the overlapping termini (ends[i],
+          begs[j]), clamped between the two event centers. Where the overlap is
+          large enough that the center midpoint falls within the overlap, use
+          the center midpoint instead. This provides conservative splits for
+          small overlaps and fair splits for large symmetric overlaps.
+        - ``center`` : Always split at the midpoint of the two event centers.
+          Provides a fair, geometry-independent split regardless of overlap
+          magnitude.
+        - ``left`` : Assign the full overlap to the left (earlier) event. The
+          right event's beg is set to the left event's end.
+        - ``right`` : Assign the full overlap to the right (later) event. The
+          left event's end is set to the right event's beg.
+
+    drop_short : bool, default False
+        Whether to drop events that have been reduced to zero length 
+        (eclipsed or fully squeezed out by adjacent events).
     inplace : bool, optional
         If True, modify the input object in place. Default is False.
+
+    Returns
+    -------
+    EventsData or None
+        The resulting events with all overlapping ranges separated. Returns
+        None if inplace is True.
     """
-    raise NotImplementedError("This function is not yet implemented.")
     # Validate input
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
     if not events.is_linear:
         raise ValueError("Input object must be a linear EventsData instance.")
     if events.is_empty:
-        raise ValueError("No events to separate.")
-    if not by in [None, 'locs', 'begs', 'ends', 'centers']:
-        raise ValueError("Separate 'by' must be either 'locs', 'begs', "
-            "'ends', 'centers' or None.")
+        return None if inplace else events.copy()
+    if anchor not in ['centers', 'begs', 'ends']:
+        raise ValueError("'anchor' must be one of 'centers', 'begs', or 'ends'.")
+    if method not in ['balanced', 'center', 'left', 'right']:
+        raise ValueError(
+            "'method' must be one of 'balanced', 'center', 'left', or 'right'.")
 
     # Select object to modify
     modified = events if inplace else events.copy()
+    n = modified.num_events
+    if n == 1:
+        return None if inplace else modified
 
-    # Prepare sorted events for processing
-    modified, inv = modified.sort(
-        by=[by, 'lengths'],
-        ascending=[True, False],
-        inplace=False,
-        return_inverse=True
-    )
+    # Sort by group, anchor ascending, length descending
+    sort_by = [anchor, 'lengths']
+    sort_ascending = [True, False]
+    if modified.is_grouped:
+        sort_by.insert(0, 'groups')
+        sort_ascending.insert(0, True)
+    sorted_events, sort_idx = modified.sort(
+        by=sort_by, ascending=sort_ascending, return_index=True)
+    inv_sort_idx = np.argsort(sort_idx)
 
-#    # Eliminate concentric and same ranges
-#
-#
-#
-#
-#    
-#    # Eliminate concentric, same, and inside ranges
-#    rc = rc.eliminate_concentric(**kwargs).eliminate_same(**kwargs)
-#    if eliminate_inside:
-#        rc = rc.eliminate_inside(**kwargs)
-#    index = np.where(rc.lengths > 0)[0]
-#    
-#    #---------------#
-#    # MODIFY RANGES #
-#    #---------------#
-#    # Identify the new begin and end points based on computed
-#    # midpoints and existing begin and end points
-#    rights    = rc.ends[index[:-1]].copy()
-#    lefts     = rc.begs[index[1:]].copy()
-#    centers_l = rc.centers[index[:-1]].copy()
-#    centers_r = rc.centers[index[1:]].copy()
-#    
-#    # Compute midpoints between consecutive centers
-#    center_mids = (centers_l + centers_r) / 2
-#    center_mids_valid = (rights >= center_mids) & (lefts <= center_mids)
-#    
-#    # Compute midpoints between consecutive termini
-#    termini_mids = (rights + lefts)/2
-#    termini_mids = np.min([np.max([termini_mids, centers_l], axis=0),
-#                            centers_r], axis=0)
-#    termini_mids_valid = (
-#        (rights >= termini_mids) &
-#        (lefts <= termini_mids) &
-#        (termini_mids >= centers_l)
-#    )
-#    
-#    # Apply termini mids
-#    rights[termini_mids_valid] = termini_mids[termini_mids_valid]
-#    lefts[termini_mids_valid]  = termini_mids[termini_mids_valid]
-#    
-#    # Apply center mids
-#    rights[center_mids_valid] = center_mids[center_mids_valid]
-#    lefts[center_mids_valid]  = center_mids[center_mids_valid]
-#
-#    # Assign the new begin and end points to the processed ranges
-#    rc.reset_centers(inplace=True)
-#    rc._ends[index[:-1]] = rights
-#    rc._begs[index[1:]]  = lefts
-#    rc = rc[inv]
-#
-#    if inplace:
-#        self._begs = rc._begs
-#        self._ends = rc._ends
-#        self.reset_centers(inplace=True)
-#        # Drop short if requested
-#        if drop_short:
-#            self.drop_short(length=0, inplace=True)
-#        return
-#    else:
-#        # Drop short if requested
-#        if drop_short:
-#            rc.drop_short(length=0, inplace=True)
-#        return rc
+    # Extract sorted data
+    begs = sorted_events.begs.copy()
+    ends = sorted_events.ends.copy()
+    centers = (begs + ends) / 2
+
+    # --- Eliminate identical ranges (keep first occurrence) ---
+    same_mask = sorted_events.find_same(keep='first')
+
+    # --- Eliminate eclipsed ranges (fully contained within another) ---
+    eclipsed = sorted_events.find_inside(enforce_edges=True)
+
+    # Combine masks: zero out both same and eclipsed events
+    eliminate = same_mask | eclipsed
+    begs[eliminate] = centers[eliminate]
+    ends[eliminate] = centers[eliminate]
+    valid_idx = np.where(~eliminate)[0]
+
+    # --- Separate overlapping valid events ---
+    if len(valid_idx) > 1:
+        # Same-group check for adjacent valid pairs
+        if modified.is_grouped:
+            pair_same_group = (
+                sorted_events.groups[valid_idx[:-1]] == 
+                sorted_events.groups[valid_idx[1:]]
+            )
+        else:
+            pair_same_group = np.ones(len(valid_idx) - 1, dtype=bool)
+
+        # Adjacent valid pair bounds and centers
+        rights = ends[valid_idx[:-1]]
+        lefts = begs[valid_idx[1:]]
+        centers_l = centers[valid_idx[:-1]]
+        centers_r = centers[valid_idx[1:]]
+
+        # Determine split points based on method
+        overlapping = pair_same_group & (rights > lefts)
+        if method == 'center':
+            # Fair split: always use midpoint between event centers
+            mids = (centers_l + centers_r) / 2
+            split_mask = overlapping
+        elif method == 'left':
+            # Assign overlap to left event: split at right's original beg
+            # (i.e., left keeps its end, right's beg stays unchanged)
+            mids = rights
+            split_mask = overlapping
+        elif method == 'right':
+            # Assign overlap to right event: split at left's original end
+            # (i.e., right keeps its beg, left's end stays unchanged)
+            mids = lefts
+            split_mask = overlapping
+        else:
+            # Balanced (default): two-level approach.
+            # Level 1 (termini): midpoint of the overlapping bounds, clamped
+            # between centers. Handles small overlaps conservatively by
+            # splitting near the actual overlap region.
+            # Level 2 (center): midpoint of centers. Overrides termini when
+            # the overlap is large enough for this fairer split to apply.
+            termini_mids = np.clip((rights + lefts) / 2, centers_l, centers_r)
+            center_mids = (centers_l + centers_r) / 2
+
+            termini_valid = (
+                overlapping & 
+                (rights >= termini_mids) & (lefts <= termini_mids)
+            )
+            center_valid = (
+                overlapping & 
+                (rights >= center_mids) & (lefts <= center_mids)
+            )
+
+            # Apply termini first, then center overrides where applicable
+            mids = np.where(termini_valid, termini_mids, rights)
+            mids = np.where(center_valid, center_mids, mids)
+            split_mask = termini_valid | center_valid
+
+        # Apply split points to ends of left events and begs of right events
+        ends[valid_idx[:-1]] = np.where(split_mask, mids, rights)
+        begs[valid_idx[1:]] = np.where(split_mask, mids, lefts)
+
+    # Unsort and apply
+    modified._begs = begs[inv_sort_idx]
+    modified._ends = ends[inv_sort_idx]
+
+    # Drop zero-length events if requested
+    if drop_short:
+        mask = modified.lengths > 0
+        if not mask.all():
+            return selection.select_mask(modified, mask, inplace=inplace)
+
+    return None if inplace else modified
 
 def _indices_to_sparse_many_to_one(idx_left, idx_right):
     """

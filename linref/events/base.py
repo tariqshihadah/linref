@@ -977,8 +977,38 @@ class EventsData:
             yield group, indices
         
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
-    def separate(self):
-        pass
+    def separate(
+            self,
+            anchor: str = 'centers',
+            method: str = 'balanced',
+            drop_short: bool = False,
+            inplace: bool = False
+        ) -> EventsData | None:
+        """
+        Address overlapping ranges by distributing overlaps between adjacent
+        events. Eclipsed ranges (fully contained within another range) are
+        eliminated. Identical ranges are deduplicated (first kept).
+
+        Parameters
+        ----------
+        anchor : str {'centers', 'begs', 'ends'}, default 'centers'
+            The anchor point of each event to be used when sorting events and
+            distributing overlaps.
+        method : str {'balanced', 'center', 'left', 'right'}, default 'balanced'
+            The strategy for splitting overlapping regions between adjacent
+            events.
+        drop_short : bool, default False
+            Whether to drop events that have been reduced to zero length.
+        inplace : bool, default False
+            Whether to perform the operation in place, returning None.
+        """
+        return modify.separate(
+            self,
+            anchor=anchor,
+            method=method,
+            drop_short=drop_short,
+            inplace=inplace
+        )
 
     @utility._method_require(is_linear=True, is_monotonic=True, is_empty=False)
     def dissolve(

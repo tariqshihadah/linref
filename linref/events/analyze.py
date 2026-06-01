@@ -26,33 +26,62 @@ def duplicated(events, subset=None, keep='first'):
             subset = [subset]
         elif not isinstance(subset, (list, np.ndarray)):
             raise TypeError("Input 'subset' must be an array-like.")
-        if not all([anchor in events.anchors for anchor in subset]):
+        if not all(anchor in events.anchors for anchor in subset):
             raise ValueError(
                 "Input 'subset' contains invalid anchor values. Must be one or "
                 f"more of: {events.anchors}")
-    
-    # Create array to study for uniqueness based on selected anchors
+    if keep not in ('first', 'last', 'none'):
+        raise ValueError("Input 'keep' must be one of: 'first', 'last', 'none'")
+
+    # Collect numeric arrays for comparison
+    arrays = [getattr(events, anchor) for anchor in subset]
+
+    # Iterate over groups or apply directly
+    result = np.zeros(events.num_events, dtype=bool)
     if events.is_grouped:
-        subset.append('groups')
-    study = np.array([getattr(events, anchor) for anchor in subset]).T
+        for group in events.unique_groups:
+            group_mask = events.groups == group
+            group_arrays = [arr[group_mask] for arr in arrays]
+            result[group_mask] = _duplicated_ungrouped(group_arrays, keep)
+    else:
+        result = _duplicated_ungrouped(arrays, keep)
+
+    return result
+
+
+def _duplicated_ungrouped(arrays, keep='first'):
+    """
+    Find duplicated rows across one or more numeric arrays.
+
+    Parameters
+    ----------
+    arrays : list of np.ndarray
+        List of 1D numeric arrays of equal length to compare row-wise.
+    keep : {'first', 'last', 'none'}
+        Which occurrence to keep (mark as False).
+    """
+    n = len(arrays[0])
+    if n <= 1:
+        return np.zeros(n, dtype=bool)
+
+    # Stack into 2D array for row-wise uniqueness
+    study = np.column_stack(arrays)
     if keep == 'last':
         study = study[::-1]
 
-    # Find unique indices
-    unique, uindex, ucounts = np.unique(
+    # Find unique rows
+    _, uindex, ucounts = np.unique(
         study, axis=0, return_index=True, return_counts=True)
-    
+
     # Determine which indices to keep
     if keep in ('first', 'last'):
-        index = uindex
-    elif keep == 'none':
-        index = uindex[ucounts == 1]
-    else:
-        raise ValueError("Input 'keep' must be one of: 'first', 'last', 'none'")
+        kept = uindex
+    else:  # 'none'
+        kept = uindex[ucounts == 1]
 
-    # Convert to boolean mask
-    mask = np.ones(len(study), dtype=bool)
-    mask[index] = False
+    # Build mask
+    mask = np.ones(n, dtype=bool)
+    mask[kept] = False
     return mask if keep != 'last' else mask[::-1]
 
 def find_same(events, keep='first'):

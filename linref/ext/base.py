@@ -1791,6 +1791,52 @@ class LRS_Accessor(object):
         return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)
+    def separate(
+        self,
+        anchor: str = 'centers',
+        method: str = 'balanced',
+        drop_short: bool = False,
+        inplace: bool = False
+    ) -> pd.DataFrame | None:
+        """
+        Address overlapping ranges by distributing overlaps between adjacent
+        events. Eclipsed ranges (fully contained within another range) are
+        eliminated. Identical ranges are deduplicated (first kept).
+
+        Parameters
+        ----------
+        anchor : str {'centers', 'begs', 'ends'}, default 'centers'
+            The anchor point of each event to be used when sorting events and
+            distributing overlaps.
+        method : str {'balanced', 'center', 'left', 'right'}, default 'balanced'
+            The strategy for splitting overlapping regions between adjacent
+            events.
+        drop_short : bool, default False
+            Whether to drop events that have been reduced to zero length.
+        inplace : bool, default False
+            Whether to apply changes to the DataFrame in place.
+        """
+        # Separate events
+        events = self.events.separate(
+            anchor=anchor,
+            method=method,
+            drop_short=drop_short,
+            inplace=False
+        )
+        # Apply changes to the DataFrame
+        if drop_short and events.num_events < len(self.df):
+            if inplace:
+                raise ValueError(
+                    "Cannot use inplace=True with drop_short=True because "
+                    "dropping rows requires creating a new DataFrame.")
+            df = self.df.loc[events.index].lr.lrs_like(self)
+        else:
+            df = self.df if inplace else self.copy_df()
+        df[self.beg_col] = events.begs
+        df[self.end_col] = events.ends
+        return None if inplace else df
+
+    @_method_require(is_linear=True)
     def dissolve(
         self, 
         retain: list[str] = [], 
