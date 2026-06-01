@@ -10,6 +10,7 @@ import copy, hashlib
 from shapely.errors import GeometryTypeError
 from pandas.api.extensions import register_dataframe_accessor
 from scipy import sparse as sp
+from scipy.sparse.csgraph import connected_components as _connected_components
 from linref.utility.utility import label_list_or_none
 from linref.events.base import EventsData
 from linref.events.utility import _method_require
@@ -2501,6 +2502,7 @@ class LRS_Accessor(object):
         self,
         max_gap: float,
         name: str = 'cluster',
+        link_col: str | list[str] | None = None,
         enforce_edges: bool | None = None,
         inplace: bool = False
     ) -> pd.DataFrame | None:
@@ -2518,6 +2520,10 @@ class LRS_Accessor(object):
         the max gap distance. For linear events, two events are proximal if 
         their ranges (after extension by the max gap) overlap.
 
+        If link_col is provided, events sharing the same link value(s) are 
+        additionally connected across groups, allowing clusters to span 
+        multiple routes or keys.
+
         Parameters
         ----------
         max_gap : float
@@ -2527,6 +2533,12 @@ class LRS_Accessor(object):
             same cluster.
         name : str, default 'cluster'
             The name of the cluster column to add to the DataFrame.
+        link_col : str, list of str, or None, default None
+            Column name(s) identifying shared entities across groups. Events 
+            with the same link value(s) are connected in the cluster graph, 
+            allowing clusters to bridge across different key groups (e.g., 
+            an intersection ID that is shared across multiple routes). Rows 
+            with NaN in link columns are not linked.
         enforce_edges : bool or None, default None
             Whether to treat shared edges (touching boundaries) as 
             intersections. If None, defaults to False for linear events and 
@@ -2567,7 +2579,7 @@ class LRS_Accessor(object):
         else:
             buffered = events
 
-        # Self-relate buffered events and extract connected components
+        # Compute proximity adjacency matrix
         relation = buffered.relate(buffered)
         if buffered.is_point:
             if enforce_edges is not None:
@@ -2575,13 +2587,37 @@ class LRS_Accessor(object):
                     "The enforce_edges parameter is not applicable to point "
                     "events."
                 )
-            n_clusters, labels = relation.connected_components()
+            arr = relation.intersect()
         else:
             if enforce_edges is None:
                 enforce_edges = False
-            n_clusters, labels = relation.connected_components(
-                enforce_edges=enforce_edges
-            )
+            arr = relation.intersect(enforce_edges=enforce_edges)
+
+        # Add cross-group link edges if link_col is provided
+        link_col = label_list_or_none(link_col)
+        if link_col is not None:
+            # Get link values and positional indices for non-NaN rows
+            valid_data = self.df.reset_index()[link_col].dropna(how='any')
+            valid_idx = valid_data.index.to_numpy()
+            values = valid_data.to_numpy().astype(str) # Convert to string for consistent hashing of mixed types
+            # Encode valid values to integer group codes
+            _, codes = np.unique(values, axis=0, return_inverse=True)
+            # Sort by group code, find adjacent same-group pairs
+            order = np.argsort(codes, kind='stable')
+            sorted_codes = codes[order]
+            same_group = sorted_codes[:-1] == sorted_codes[1:]
+            if same_group.any():
+                rows = valid_idx[order[:-1][same_group]]
+                cols = valid_idx[order[1:][same_group]]
+                n = arr.shape[0]
+                link_edges = sp.coo_matrix(
+                    (np.ones(len(rows), dtype=bool), (rows, cols)),
+                    shape=(n, n)
+                )
+                arr = arr + link_edges
+
+        # Extract connected components from combined graph
+        n_clusters, labels = _connected_components(arr, directed=False)
 
         # Apply cluster labels to the DataFrame
         df = self.df if inplace else self.copy_df()

@@ -1729,6 +1729,60 @@ class TestCluster(unittest.TestCase):
         result = df.lr.cluster(max_gap=0.0, enforce_edges=False)
         np.testing.assert_array_equal(result['cluster'].values, [0, 1])
 
+    def test_link_col_cross_group(self):
+        """Test link_col bridges clusters across different route groups."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'B', 'B'],
+            'mp': [1.0, 1.01, 2.0, 2.01],
+            'int_id': [10, 11, 10, 11],
+        }).lr.set_lrs(key_col=['route'], loc_col='mp')
+
+        # Without link_col: two separate clusters per route
+        result = df.lr.cluster(max_gap=0.02)
+        np.testing.assert_array_equal(result['cluster'].values, [0, 0, 1, 1])
+
+        # With link_col: shared int_id bridges routes into one cluster
+        result = df.lr.cluster(max_gap=0.02, link_col='int_id')
+        # All four should be in the same cluster
+        np.testing.assert_array_equal(result['cluster'].values, [0, 0, 0, 0])
+
+    def test_link_col_nan_excluded(self):
+        """Test that NaN values in link_col do not create links."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'B', 'B'],
+            'mp': [1.0, 5.0, 1.0, 5.0],
+            'int_id': [10, np.nan, 10, np.nan],
+        }).lr.set_lrs(key_col=['route'], loc_col='mp')
+
+        result = df.lr.cluster(max_gap=0.02, link_col='int_id')
+        # Only rows with int_id=10 are linked (row 0 and row 2)
+        np.testing.assert_array_equal(result['cluster'].values, [0, 1, 0, 2])
+
+    def test_link_col_multi_column(self):
+        """Test link_col with multiple columns as composite key."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'B', 'B'],
+            'mp': [1.0, 5.0, 1.0, 5.0],
+            'int_id': [10, 10, 10, 10],
+            'zone': ['X', 'Y', 'X', 'Y'],
+        }).lr.set_lrs(key_col=['route'], loc_col='mp')
+
+        result = df.lr.cluster(max_gap=0.02, link_col=['int_id', 'zone'])
+        # (10, 'X') links row 0 and row 2; (10, 'Y') links row 1 and row 3
+        np.testing.assert_array_equal(result['cluster'].values, [0, 1, 0, 1])
+
+    def test_link_col_no_shared_values(self):
+        """Test link_col with all unique values has no linking effect."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'A'],
+            'mp': [1.0, 5.0, 9.0],
+            'int_id': [10, 20, 30],
+        }).lr.set_lrs(key_col=['route'], loc_col='mp')
+
+        result = df.lr.cluster(max_gap=0.02, link_col='int_id')
+        # All unique link values → no edges added → 3 separate clusters
+        np.testing.assert_array_equal(result['cluster'].values, [0, 1, 2])
+
 
 # Run tests
 if __name__ == '__main__':
