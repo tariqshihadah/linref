@@ -1468,7 +1468,7 @@ class LRS_Accessor(object):
     @_method_deprecates_geometry
     def extend(
         self,
-        length: float | tuple = 0,
+        distance: float | tuple = 0,
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
@@ -1477,7 +1477,7 @@ class LRS_Accessor(object):
 
         Parameters
         ----------
-        length : float or tuple, default 0
+        distance : float or tuple, default 0
             Amount to extend the event ranges. If a scalar is provided, it is 
             applied equally to both the beginning and end of each event range. 
             If a tuple of two values is provided, the first value extends the 
@@ -1499,7 +1499,7 @@ class LRS_Accessor(object):
             obj.point_to_linear(inplace=True)
         # Extend events
         events = self.events.extend(
-            length=length,
+            distance=distance,
             inplace=False
         )
         # Apply changes to the DataFrame
@@ -1510,7 +1510,7 @@ class LRS_Accessor(object):
     @_method_deprecates_geometry
     def shift(
         self,
-        length: float = 0,
+        distance: float = 0,
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
@@ -1518,7 +1518,7 @@ class LRS_Accessor(object):
 
         Parameters
         ----------
-        length : float
+        distance : float
             The amount to shift the events by.
         inplace : bool, default False
             Whether to apply changes to the DataFrame in place.
@@ -1529,7 +1529,7 @@ class LRS_Accessor(object):
             A copy of the current DataFrame with shifted events.
         """
         # Shift events
-        events = self.events.shift(length, inplace=False)
+        events = self.events.shift(distance, inplace=False)
         # Apply changes to the DataFrame
         obj = self if inplace else self.copy(deep=True)
         if self.is_located:
@@ -2559,7 +2559,7 @@ class LRS_Accessor(object):
         # Buffer event locations into linear ranges (skip if max_gap is zero)
         if max_gap > 0:
             buffered = events.extend(
-                length=max_gap,
+                distance=max_gap,
                 inplace=False
             )
         elif max_gap < 0:

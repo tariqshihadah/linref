@@ -1196,14 +1196,14 @@ class EventsData:
             chunksize=chunksize
         )
     
-    def extend(self, length: float | tuple | np.ndarray = 0, inplace: bool = False) -> EventsData | None:
+    def extend(self, distance: float | tuple | np.ndarray = 0, inplace: bool = False) -> EventsData | None:
         """
         Extend the range of events by a specified amount in either or both 
         directions.
 
         Parameters
         ----------
-        length : float, array-like, or tuple, optional
+        distance : float, array-like, or tuple, optional
             Amount to extend the event ranges. If a scalar or array-like is 
             provided, it is applied equally to both the beginning and end of 
             each event range. If a tuple of two values is provided, the first 
@@ -1215,17 +1215,17 @@ class EventsData:
         """
         return modify.extend(
             self,
-            length=length,
+            distance=distance,
             inplace=inplace
         )
     
-    def shift(self, length: float | np.ndarray = 0, inplace: bool = False) -> EventsData | None:
+    def shift(self, distance: float | np.ndarray = 0, inplace: bool = False) -> EventsData | None:
         """
         Shift the range of events by a specified amount.
 
         Parameters
         ----------
-        length : float or array-like
+        distance : float or array-like
             Amount to shift all events. If an array-like is provided, it must
             be the same length as the number of events in the collection. Positive
             values shift events to the right, negative values to the left.
@@ -1234,7 +1234,7 @@ class EventsData:
         """
         return modify.shift(
             self,
-            length=length,
+            distance=distance,
             inplace=inplace
         )
     

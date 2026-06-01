@@ -179,7 +179,7 @@ def concatenate(objs, ignore_index=False, closed=None):
         closed=closed if closed is not None else objs[0].closed
     )
 
-def extend(events, length=0, inplace=False):
+def extend(events, distance=0, inplace=False):
     """
     Extend the range of events by a specified amount in either or both directions.
 
@@ -187,7 +187,7 @@ def extend(events, length=0, inplace=False):
     ----------
     events : EventsData
         Input range of events.
-    length : float, array-like, or tuple, optional
+    distance : float, array-like, or tuple, optional
         Amount to extend the event ranges. If a scalar or array-like is provided,
         it is applied equally to both the beginning and end of each event range. 
         If a tuple of two values is provided, the first value extends the beginning 
@@ -200,15 +200,15 @@ def extend(events, length=0, inplace=False):
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
     
-    # Parse length parameter
-    if isinstance(length, tuple):
-        extend_begs, extend_ends = length
+    # Parse distance parameter
+    if isinstance(distance, tuple):
+        extend_begs, extend_ends = distance
     else:
-        extend_begs = length
-        extend_ends = length
+        extend_begs = distance
+        extend_ends = distance
     
-    extend_begs = utility._validate_scalar_or_array_input(events, extend_begs, 'length')
-    extend_ends = utility._validate_scalar_or_array_input(events, extend_ends, 'length')
+    extend_begs = utility._validate_scalar_or_array_input(events, extend_begs, 'distance')
+    extend_ends = utility._validate_scalar_or_array_input(events, extend_ends, 'distance')
 
     # Select object to modify
     events = events if inplace else events.copy()
@@ -224,7 +224,7 @@ def extend(events, length=0, inplace=False):
     # Return results
     return None if inplace else events
 
-def shift(events, length, inplace=False):
+def shift(events, distance, inplace=False):
     """
     Shift the range of events by a specified amount.
 
@@ -232,7 +232,7 @@ def shift(events, length, inplace=False):
     ----------
     events : EventsData
         Input range of events.
-    length : float or array-like
+    distance : float or array-like
         Amount to shift all events. If an array-like is provided, it must
         be the same length as the number of events in the collection. Positive
         values shift events to the right, negative values to the left.
@@ -242,17 +242,17 @@ def shift(events, length, inplace=False):
     # Validate input
     if not isinstance(events, base.EventsData):
         raise TypeError("Input object must be a EventsData class instance.")
-    length = utility._validate_scalar_or_array_input(events, length, 'length')
+    distance = utility._validate_scalar_or_array_input(events, distance, 'distance')
 
     # Select object to modify
     events = events if inplace else events.copy()
 
     # Select methodology
     if events.is_located:
-        events._locs = events._locs + length
+        events._locs = events._locs + distance
     if events.is_linear:
-        events._begs = events._begs + length
-        events._ends = events._ends + length
+        events._begs = events._begs + distance
+        events._ends = events._ends + distance
     
     # Return results
     return None if inplace else events
