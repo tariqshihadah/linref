@@ -673,7 +673,7 @@ class EventsData:
         rc._begs, rc._ends = begs, ends
         return None if inplace else rc
     
-    def argsort(self, by: str | list[str]) -> np.ndarray:
+    def argsort(self, by: str | list[str], ascending: bool | list[bool] = True) -> np.ndarray:
         f"""
         Get the indices which would sort the events by a selected event data
         anchor.
@@ -683,6 +683,9 @@ class EventsData:
         by : {common.keys_all}
             The event data property or list of properties by which all events 
             should be sorted.
+        ascending : bool or list of bool, default True
+            Whether to sort in ascending order. If a single bool, applied to 
+            all keys. If a list, must be the same length as `by`.
         """
         # Determine sorting parameters
         if not type(by) is list:
@@ -698,13 +701,33 @@ class EventsData:
             raise ValueError(
                 "Sorting by 'locs' is not available for unlocated events.")
         
+        # Validate ascending parameter
+        if isinstance(ascending, bool):
+            ascending = [ascending] * len(by)
+        elif len(ascending) != len(by):
+            raise ValueError(
+                "'ascending' must be a single bool or a list of the same "
+                "length as 'by'.")
+        
         # Get the arrays for lexsort (reverse order per numpy lexsort)
-        by = [getattr(self, x) for x in by[::-1]]
+        # For descending: negate numeric arrays, rank-invert non-numeric
+        keys = []
+        for key_name, asc in zip(by[::-1], ascending[::-1]):
+            arr = getattr(self, key_name)
+            if not asc:
+                if np.issubdtype(arr.dtype, np.number):
+                    arr = -arr
+                else:
+                    # For non-numeric (e.g. groups): rank and negate
+                    _, inv = np.unique(arr, return_inverse=True)
+                    arr = -inv
+            keys.append(arr)
+        
         # Apply sorting
-        index = np.lexsort(by)
+        index = np.lexsort(keys)
         return index
 
-    def sort(self, by: str | list[str], return_index: bool = False, inplace: bool = False) -> EventsData | tuple[EventsData, np.ndarray] | None:
+    def sort(self, by: str | list[str], ascending: bool | list[bool] = True, return_index: bool = False, inplace: bool = False) -> EventsData | tuple[EventsData, np.ndarray] | None:
         f"""
         Sort the events by a selected event data anchor.
         
@@ -713,6 +736,9 @@ class EventsData:
         by : {common.keys_all}
             The event data property or list of properties by which all events 
             should be sorted.
+        ascending : bool or list of bool, default True
+            Whether to sort in ascending order. If a single bool, applied to 
+            all keys. If a list, must be the same length as `by`.
         return_index : bool, default False
             Whether to return an array of the indices which represent the 
             performed sort in addition to the sorted events.
@@ -720,7 +746,7 @@ class EventsData:
             Whether to perform the operation in place, returning None.
         """
         # Get argsort index
-        index = self.argsort(by)
+        index = self.argsort(by, ascending=ascending)
         
         # Apply changes
         res = self if inplace else self.copy()
@@ -768,6 +794,32 @@ class EventsData:
             Whether to keep the first, last, or none of the duplicated events.
         """
         return analyze.duplicated(self, subset=subset, keep=keep)
+    
+    @utility._method_require(is_linear=True)
+    def find_same(self, keep: str = 'first') -> np.ndarray:
+        """
+        Return a boolean mask of events which have the same begin and end 
+        points as at least one other event in the collection.
+
+        Parameters
+        ----------
+        keep : {'first', 'last', 'none'}, default 'first'
+            Which of the duplicate events to keep (mark as False).
+        """
+        return analyze.find_same(self, keep=keep)
+    
+    @utility._method_require(is_linear=True)
+    def find_inside(self, enforce_edges: bool = False) -> np.ndarray:
+        """
+        Return a boolean mask of events which fall entirely inside at least 
+        one other event in the collection.
+
+        Parameters
+        ----------
+        enforce_edges : bool, default False
+            Whether to consider events touching at a vertex as being inside.
+        """
+        return analyze.find_inside(self, enforce_edges=enforce_edges)
     
     def next_same_group(self, all_: bool = True, when_one: bool = True) -> bool | np.ndarray:
         """
