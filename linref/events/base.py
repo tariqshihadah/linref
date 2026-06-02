@@ -246,11 +246,10 @@ class EventsData:
         Get the anchor references for the events.
         """
         anchors = []
+        if self.is_linear:
+            anchors.extend(['begs', 'ends'])
         if self.is_located:
             anchors.append('locs')
-        else:
-            if self.is_linear:
-                anchors.extend(['begs', 'ends'])
         return anchors
         
     @property

@@ -27,9 +27,11 @@ def duplicated(events, subset=None, keep='first'):
         elif not isinstance(subset, (list, np.ndarray)):
             raise TypeError("Input 'subset' must be an array-like.")
         if not all(anchor in events.anchors for anchor in subset):
+            missing = [a for a in subset if a not in events.anchors]
             raise ValueError(
-                "Input 'subset' contains invalid anchor values. Must be one or "
-                f"more of: {events.anchors}")
+                f"Input 'subset' contains invalid anchor values: {missing}. "
+                f"Valid anchors for this events object are: {events.anchors}."
+            )
     if keep not in ('first', 'last', 'none'):
         raise ValueError("Input 'keep' must be one of: 'first', 'last', 'none'")
 
