@@ -1970,6 +1970,111 @@ class LRS_Accessor(object):
         return (df, relation) if return_relation else df
     
     @_method_require(is_linear=True)
+    def constrain_to(
+        self,
+        other: pd.DataFrame,
+        dissolve: bool = True,
+        cut_geom: bool = False,
+        inverse_col: str = 'constrained_index',
+    ) -> pd.DataFrame:
+        """
+        Constrain events to the coverage domain defined by another linearly 
+        referenced DataFrame. Events are split at the boundaries of the 
+        reference events and any portions that fall outside the reference 
+        coverage are removed. This may change the number of rows in the 
+        output.
+
+        Attributes from the source DataFrame are retained on the output by 
+        joining back on the source index. Geometry columns are excluded from 
+        this join since they would be invalidated by the new bounds; use 
+        ``cut_geom`` to regenerate valid geometries for the constrained events.
+
+        Note that overlapping events in the subject or reference DataFrames 
+        may produce unexpected results. For best results, ensure that events 
+        in both DataFrames are non-overlapping.
+
+        Parameters
+        ----------
+        other : DataFrame
+            Reference DataFrame defining the valid coverage domain. Must have
+            an equivalent linear referencing system.
+        dissolve : bool, default True
+            Whether to merge contiguous segments that originated from the same 
+            source event back into a single event. When True, the output has 
+            at most as many rows per source event as there are discontiguous 
+            covered sections. When False, every boundary edge in the reference 
+            DataFrame produces a split in the output, similar to the behavior of
+            :meth:`integrate`.
+        cut_geom : bool, default True
+            Whether to cut new geometries for the constrained events based on
+            the existing geometries in the dataframe.
+        inverse_col : str, default 'constrained_index'
+            Column name for the inverse index that maps each output row back 
+            to the index of the original source event.
+
+        Returns
+        -------
+        df : DataFrame or GeoDataFrame
+            A new DataFrame with events constrained to the reference coverage.
+            Returns a GeoDataFrame if ``cut_geom`` is used.
+        """
+        other = self._validate_other_dataframe_lrs(other)
+        
+        # Integrate subject events with bounds to get least common intervals
+        integrated = integrate(
+            [self.df, other],
+            fill_gaps=False,
+            inverse_col=['_constrain_src', '_constrain_bnd'],
+        )
+        
+        # Keep only segments covered by both subject and bounds
+        mask = (
+            integrated['_constrain_src'].notna() & 
+            integrated['_constrain_bnd'].notna()
+        )
+        constrained = integrated[mask].copy()
+        
+        # Dissolve contiguous segments from the same source event
+        if dissolve and len(constrained) > 0:
+            constrained.lr.set_lrs(self.lrs, inplace=True)
+            constrained = constrained.lr.dissolve(
+                retain=['_constrain_src'],
+                sort=True,
+                inverse_index=False,
+                merge_geom=False,
+                return_relation=False,
+            )
+        
+        # Finalize inverse index column
+        constrained[inverse_col] = constrained['_constrain_src'].astype(
+            self.df.index.dtype
+        )
+        constrained = constrained.drop(
+            columns=['_constrain_src', '_constrain_bnd'],
+            errors='ignore',
+        )
+        
+        # Join back source attributes (excluding LRS and geometry columns)
+        attr_cols = self.other_cols
+        if attr_cols:
+            attrs = self.df[attr_cols]
+            constrained = constrained.merge(
+                attrs,
+                left_on=inverse_col,
+                right_index=True,
+                how='left',
+            )
+        
+        # Set LRS
+        constrained = constrained.lr.lrs_like(self)
+        
+        # Cut geometries if requested
+        if cut_geom:
+            constrained = constrained.lr.cut_from(self.df, inplace=False)
+        
+        return constrained
+
+    @_method_require(is_linear=True)
     def integrate(
         self,
         objs: pd.DataFrame | list[pd.DataFrame],

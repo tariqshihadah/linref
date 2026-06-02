@@ -1784,6 +1784,140 @@ class TestCluster(unittest.TestCase):
         np.testing.assert_array_equal(result['cluster'].values, [0, 1, 2])
 
 
+class TestConstrainTo(unittest.TestCase):
+    """Test the constrain_to method for constraining events to a reference domain."""
+
+    def setUp(self):
+        """Set up test DataFrames."""
+        self.subject = pd.DataFrame({
+            'route': ['A', 'A', 'A', 'B'],
+            'beg': [-5.0, 3.0, 8.0, -2.0],
+            'end': [4.0, 7.0, 15.0, 12.0],
+            'value': [10, 20, 30, 40],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+        self.bounds = pd.DataFrame({
+            'route': ['A', 'A', 'B'],
+            'beg': [0.0, 5.0, 0.0],
+            'end': [5.0, 10.0, 10.0],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+
+    def test_basic_constrain(self):
+        """Test clipping, attribute retention, and LRS preservation."""
+        result = self.subject.lr.constrain_to(self.bounds)
+
+        # No events extend beyond bounds
+        self.assertTrue((result['beg'] >= 0).all())
+        self.assertTrue((result['end'] <= 10).all())
+        # Attributes retained
+        self.assertIn('value', result.columns)
+        mask = result['constrained_index'] == 2
+        self.assertEqual(result.loc[mask, 'value'].iloc[0], 30)
+        # LRS preserved
+        self.assertTrue(result.lr.lrs == self.subject.lr.lrs)
+
+    def test_event_spanning_gap(self):
+        """Test event split at gap and attributes propagated to both pieces."""
+        bounds_gap = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 8.0],
+            'end': [5.0, 12.0],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+        subject = pd.DataFrame({
+            'route': ['A'],
+            'beg': [3.0],
+            'end': [10.0],
+            'label': ['x'],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+
+        result = subject.lr.constrain_to(bounds_gap)
+
+        # Two segments: [3, 5] and [8, 10]
+        np.testing.assert_array_equal(result['beg'].values, [3.0, 8.0])
+        np.testing.assert_array_equal(result['end'].values, [5.0, 10.0])
+        np.testing.assert_array_equal(result['label'].values, ['x', 'x'])
+
+    def test_no_overlap_and_group_mismatch_dropped(self):
+        """Test events outside bounds or in missing groups are removed."""
+        subject = pd.DataFrame({
+            'route': ['A', 'C'],
+            'beg': [20.0, 0.0],
+            'end': [25.0, 5.0],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+        result = subject.lr.constrain_to(self.bounds)
+        self.assertEqual(result.shape[0], 0)
+
+    def test_dissolve_true(self):
+        """Test dissolve=True merges adjacent segments after splitting at bounds."""
+        # Use non-overlapping subject to avoid integration ambiguity
+        subject = pd.DataFrame({
+            'route': ['A'],
+            'beg': [3.0],
+            'end': [7.0],
+            'value': [20],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+        result = subject.lr.constrain_to(self.bounds, dissolve=True)
+        # Event [3, 7] crosses bound edge at 5 → should be merged back to [3,7]
+        mask = result['constrained_index'] == 0
+        np.testing.assert_array_equal(result.loc[mask, 'beg'].values, [3.0])
+        np.testing.assert_array_equal(result.loc[mask, 'end'].values, [7.0])
+
+    def test_dissolve_false(self):
+        """Test dissolve=False keeps boundary-edge splits."""
+        # Use non-overlapping subject to avoid integration ambiguity
+        subject = pd.DataFrame({
+            'route': ['A'],
+            'beg': [3.0],
+            'end': [7.0],
+            'value': [20],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='left_mod'
+        )
+        result = subject.lr.constrain_to(self.bounds, dissolve=False)
+        # Event [3, 7] crosses bound edge at 5 → split into [3,5] and [5,7]
+        mask = result['constrained_index'] == 0
+        np.testing.assert_array_equal(result.loc[mask, 'beg'].values, [3.0, 5.0])
+        np.testing.assert_array_equal(result.loc[mask, 'end'].values, [5.0, 7.0])
+
+    def test_cut_geom(self):
+        """Test cut_geom regenerates geometries from source DataFrame."""
+        from linref.geometry import LineStringM
+
+        geom = LineString([(0, 0), (10, 0)])
+        geom_m = LineStringM(geom, [-3.0, 7.0])
+        subject = gpd.GeoDataFrame({
+            'route': ['A'],
+            'beg': [-3.0],
+            'end': [7.0],
+            'geometry': [geom],
+            'geometry_m': [geom_m],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m', closed='left_mod'
+        )
+
+        result = subject.lr.constrain_to(self.bounds, cut_geom=True)
+        # Event [-3, 7] constrained to [0, 7], geometry should be cut accordingly
+        self.assertIsInstance(result, gpd.GeoDataFrame)
+        self.assertAlmostEqual(result['beg'].iloc[0], 0.0)
+        self.assertAlmostEqual(result['end'].iloc[0], 7.0)
+        self.assertIsNotNone(result['geometry_m'].iloc[0])
+        # Geometry M-values should match constrained bounds
+        result_m = result['geometry_m'].iloc[0]
+        self.assertAlmostEqual(result_m.m[0], 0.0)
+        self.assertAlmostEqual(result_m.m[-1], 7.0)
+
 # Run tests
 if __name__ == '__main__':
     unittest.main()
