@@ -2632,6 +2632,7 @@ class LRS_Accessor(object):
         crosses: bool = True,
         project: bool = True,
         expand: bool = True,
+        tolerance: float = 1e-9,
     ) -> gpd.GeoDataFrame:
         """
         Find unique intersection locations between line geometries in the 
@@ -2665,6 +2666,10 @@ class LRS_Accessor(object):
             location on every line. If False, each node produces a single 
             row projected onto an arbitrary coincident line. Only used when 
             ``project=True``.
+        tolerance : float, default 1e-9
+            The tolerance distance for snapping intersection points to the LRS
+            when projecting. In units of the spatial reference system. Only 
+            used when ``project=True``.
 
         Returns
         -------
@@ -2699,7 +2704,7 @@ class LRS_Accessor(object):
         # Optionally project onto LRS
         if project:
             result = self.dissolve().lr.project(
-                result, buffer=1e-10, nearest=not expand, replace=True,
+                result, buffer=tolerance, nearest=not expand, replace=True,
             )
         return result
 
