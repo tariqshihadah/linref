@@ -75,7 +75,8 @@ def integrate(objs, fill_gaps=False, split_at_locs=False, return_index=False) ->
         for obj in objs:
             if not obj.is_linear:
                 # If not linear, skip intersection
-                index = np.full((integrated.num_events,), np.nan)
+                index = np.full((integrated.num_events,), -1, dtype=int)
+                mask = np.zeros(integrated.num_events, dtype=bool)
             else:
                 # Get index of original events that intersect with new events
                 arr = relate.intersect_linear_linear(

@@ -1167,17 +1167,39 @@ class TestIntegrateMethod(unittest.TestCase):
         # Result should match the input structure
         self.assertEqual(len(integrated), 1)
 
-    def test_integrate_incompatible_lrs(self):
-        """Test that incompatible LRS raises error."""
+    def test_integrate_split_at_locs_true(self):
+        """Test integrate with split_at_locs=True accepts point events."""
+        df_linear = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 5.0],
+            'end': [5.0, 10.0],
+            'attr': ['x', 'y']
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        
+        df_point = pd.DataFrame({
+            'route': ['A', 'A'],
+            'loc': [3.0, 7.0],
+            'attr': [1, 2]
+        }).lr.set_lrs(key_col=['route'], loc_col='loc')
+        
+        # With split_at_locs=True, point locations should split linear events
+        integrated = integrate([df_linear, df_point], split_at_locs=True)
+        
+        np.testing.assert_array_equal(integrated['route'].values, ['A', 'A', 'A', 'A'])
+        np.testing.assert_array_almost_equal(integrated['beg'].values, [0, 3, 5, 7])
+        np.testing.assert_array_almost_equal(integrated['end'].values, [3, 5, 7, 10])
+
+    def test_integrate_incompatible_keys(self):
+        """Test that incompatible key columns raise error."""
         df_incompatible = pd.DataFrame({
-            'route': ['A'],
-            'start': [0.0],
-            'finish': [10.0]
+            'corridor': ['A'],
+            'beg': [0.0],
+            'end': [10.0]
         }).lr.set_lrs(
-            key_col=['route'],
-            beg_col='start',
-            end_col='finish',
-            closed='right'  # Different closed parameter
+            key_col=['corridor'],
+            beg_col='beg',
+            end_col='end',
+            closed='left_mod'
         )
         
         with self.assertRaises(LRSCompatibilityError):
@@ -1917,6 +1939,193 @@ class TestConstrainTo(unittest.TestCase):
         result_m = result['geometry_m'].iloc[0]
         self.assertAlmostEqual(result_m.m[0], 0.0)
         self.assertAlmostEqual(result_m.m[-1], 7.0)
+
+
+class TestSplitMethod(unittest.TestCase):
+    """Test the split method for splitting events at geometry intersections."""
+
+    def setUp(self):
+        """Set up a simple route with M-enabled geometries."""
+        from linref.geometry import LineStringM
+        from shapely.geometry import Polygon
+
+        # Single route: 3 segments [0,5], [5,10], [10,15] along x-axis
+        self.roads = gpd.GeoDataFrame({
+            'route': ['A', 'A', 'A'],
+            'beg': [0.0, 5.0, 10.0],
+            'end': [5.0, 10.0, 15.0],
+            'attr': ['x', 'y', 'z'],
+            'geometry': [
+                LineString([(0, 0), (5, 0)]),
+                LineString([(5, 0), (10, 0)]),
+                LineString([(10, 0), (15, 0)]),
+            ],
+            'geometry_m': [
+                LineStringM(LineString([(0, 0), (5, 0)]), m=[0.0, 5.0]),
+                LineStringM(LineString([(5, 0), (10, 0)]), m=[5.0, 10.0]),
+                LineStringM(LineString([(10, 0), (15, 0)]), m=[10.0, 15.0]),
+            ],
+        }, geometry='geometry').lr.set_lrs(
+            key_col=['route'],
+            loc_col='milepost',
+            beg_col='beg',
+            end_col='end',
+            geom_col='geometry',
+            geom_m_col='geometry_m',
+            closed='left_mod',
+        )
+
+        # Polygon mask crossing at x=3 and x=12
+        self.polygon = Polygon([(3, -1), (12, -1), (12, 1), (3, 1)])
+
+    def test_split_polygon_basic(self):
+        """Split events at polygon boundary produces correct segments."""
+        result = self.roads.lr.split(self.polygon)
+
+        # Polygon boundary crosses at x=3 and x=12, splitting:
+        #   [0,5] → [0,3] + [3,5]
+        #   [5,10] unchanged (no boundary crossing)
+        #   [10,15] → [10,12] + [12,15]
+        np.testing.assert_array_almost_equal(
+            result['beg'].values, [0, 3, 5, 10, 12]
+        )
+        np.testing.assert_array_almost_equal(
+            result['end'].values, [3, 5, 10, 12, 15]
+        )
+
+    def test_split_cuts_geometry(self):
+        """Split with cut_geom=True produces valid geometries."""
+        result = self.roads.lr.split(self.polygon, cut_geom=True)
+
+        # Each geometry length should match beg/end difference
+        for _, row in result.iterrows():
+            expected_len = row['end'] - row['beg']
+            self.assertAlmostEqual(row['geometry'].length, expected_len, places=6)
+
+    def test_split_no_cut_geom(self):
+        """Split with cut_geom=False omits geometry cutting."""
+        result = self.roads.lr.split(self.polygon, cut_geom=False)
+
+        # Should still have the split segments
+        self.assertEqual(len(result), 5)
+        # But no geometry column (or geometry is not re-cut)
+        self.assertNotIn('geometry', result.columns)
+
+    def test_split_no_intersection_returns_copy(self):
+        """Mask that doesn't intersect events returns unchanged copy."""
+        from shapely.geometry import Polygon
+        far_poly = Polygon([(100, 100), (200, 100), (200, 200), (100, 200)])
+        result = self.roads.lr.split(far_poly)
+
+        np.testing.assert_array_almost_equal(result['beg'].values, [0, 5, 10])
+        np.testing.assert_array_almost_equal(result['end'].values, [5, 10, 15])
+
+    def test_split_line_mask(self):
+        """Split with a LineString mask crossing events."""
+        line_mask = LineString([(7, -1), (7, 1)])
+        result = self.roads.lr.split(line_mask)
+
+        # Line crosses second segment at x=7
+        np.testing.assert_array_almost_equal(
+            result['beg'].values, [0, 5, 7, 10]
+        )
+        np.testing.assert_array_almost_equal(
+            result['end'].values, [5, 7, 10, 15]
+        )
+
+    def test_split_invalid_mask_type(self):
+        """Invalid mask type raises TypeError."""
+        with self.assertRaises(TypeError):
+            self.roads.lr.split("not a geometry")
+
+class TestClipMethod(unittest.TestCase):
+    """Test the clip method for clipping events to polygon boundaries."""
+
+    def setUp(self):
+        """Set up a simple route with M-enabled geometries."""
+        from linref.geometry import LineStringM
+        from shapely.geometry import Polygon
+
+        # Single route: 3 segments [0,5], [5,10], [10,15] along x-axis
+        self.roads = gpd.GeoDataFrame({
+            'route': ['A', 'A', 'A'],
+            'beg': [0.0, 5.0, 10.0],
+            'end': [5.0, 10.0, 15.0],
+            'attr': ['x', 'y', 'z'],
+            'geometry': [
+                LineString([(0, 0), (5, 0)]),
+                LineString([(5, 0), (10, 0)]),
+                LineString([(10, 0), (15, 0)]),
+            ],
+            'geometry_m': [
+                LineStringM(LineString([(0, 0), (5, 0)]), m=[0.0, 5.0]),
+                LineStringM(LineString([(5, 0), (10, 0)]), m=[5.0, 10.0]),
+                LineStringM(LineString([(10, 0), (15, 0)]), m=[10.0, 15.0]),
+            ],
+        }, geometry='geometry').lr.set_lrs(
+            key_col=['route'],
+            loc_col='milepost',
+            beg_col='beg',
+            end_col='end',
+            geom_col='geometry',
+            geom_m_col='geometry_m',
+            closed='left_mod',
+        )
+
+        # Polygon covering x=[3,12]
+        self.polygon = Polygon([(3, -1), (12, -1), (12, 1), (3, 1)])
+
+    def test_clip_inside(self):
+        """Clip keep='inside' retains only segments inside the polygon."""
+        result = self.roads.lr.clip(self.polygon, keep='inside')
+
+        # Inside segments: [3,5], [5,10], [10,12]
+        np.testing.assert_array_almost_equal(
+            result['beg'].values, [3, 5, 10]
+        )
+        np.testing.assert_array_almost_equal(
+            result['end'].values, [5, 10, 12]
+        )
+
+    def test_clip_outside(self):
+        """Clip keep='outside' retains only segments outside the polygon."""
+        result = self.roads.lr.clip(self.polygon, keep='outside')
+
+        # Outside segments: [0,3], [12,15]
+        np.testing.assert_array_almost_equal(
+            result['beg'].values, [0, 12]
+        )
+        np.testing.assert_array_almost_equal(
+            result['end'].values, [3, 15]
+        )
+
+    def test_clip_invalid_keep(self):
+        """Invalid keep value raises ValueError."""
+        with self.assertRaises(ValueError):
+            self.roads.lr.clip(self.polygon, keep='middle')
+
+    def test_clip_invalid_predicate(self):
+        """Invalid predicate raises ValueError or AttributeError."""
+        with self.assertRaises((ValueError, AttributeError)):
+            self.roads.lr.clip(self.polygon, predicate='not_a_predicate')
+
+    def test_clip_non_polygon_mask(self):
+        """Non-polygon mask raises TypeError."""
+        with self.assertRaises(TypeError):
+            self.roads.lr.clip(LineString([(0, 0), (10, 0)]))
+
+    def test_clip_total_mileage_conservation(self):
+        """Inside + outside mileage equals original total."""
+        inside = self.roads.lr.clip(self.polygon, keep='inside')
+        outside = self.roads.lr.clip(self.polygon, keep='outside')
+
+        orig_miles = (self.roads['end'] - self.roads['beg']).sum()
+        clip_miles = (
+            (inside['end'] - inside['beg']).sum() +
+            (outside['end'] - outside['beg']).sum()
+        )
+        self.assertAlmostEqual(orig_miles, clip_miles, places=6)
+
 
 # Run tests
 if __name__ == '__main__':

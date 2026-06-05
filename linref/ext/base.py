@@ -2074,6 +2074,225 @@ class LRS_Accessor(object):
         
         return constrained
 
+    @_method_require(is_linear=True, is_spatial=True, is_spatial_m=True)
+    def split(
+        self,
+        mask,
+        cut_geom: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Split linearly-referenced events at geometry intersections. Events
+        are split at every point where the mask geometry intersects an event
+        geometry.
+
+        For polygon masks, events are split at the polygon boundary. For
+        line masks, events are split at intersection points with the mask
+        lines.
+
+        Parameters
+        ----------
+        mask : shapely.Geometry, gpd.GeoSeries, or gpd.GeoDataFrame
+            The geometry or collection of geometries to split against.
+            Polygon geometries split at their boundary rings. LineString
+            geometries split at intersection points with event geometries.
+            Point geometries split at their exact locations (must be on or
+            very near the event geometries).
+        cut_geom : bool, default True
+            Whether to cut new geometries for the split events from the
+            original M-enabled geometries. When True, the result is a
+            GeoDataFrame with valid geometries for each segment.
+
+        Returns
+        -------
+        df : DataFrame or GeoDataFrame
+            A new DataFrame with events split at mask intersections. Returns
+            a GeoDataFrame if ``cut_geom`` is True.
+        """
+        # Resolve mask to an array of geometries
+        if isinstance(mask, gpd.GeoDataFrame):
+            mask_geom = mask.geometry.values
+        elif isinstance(mask, gpd.GeoSeries):
+            mask_geom = mask.values
+        elif isinstance(mask, shapely.Geometry):
+            mask_geom = np.array([mask])
+        else:
+            raise TypeError(
+                "Input `mask` must be a shapely Geometry, GeoSeries, or "
+                "GeoDataFrame."
+            )
+
+        # Remove null/empty geometries
+        mask_geom = mask_geom[~shapely.is_missing(mask_geom) & ~shapely.is_empty(mask_geom)]
+        if len(mask_geom) == 0:
+            raise ValueError("No valid geometries found in mask.")
+
+        # Extract boundaries from polygons, keep lines and points as-is
+        type_ids = shapely.get_type_id(mask_geom)
+        is_polygon = np.isin(type_ids, [3, 6])  # Polygon, MultiPolygon
+        split_geoms = np.where(is_polygon, shapely.boundary(mask_geom), mask_geom)
+
+        # Compute intersection of event geometries with the combined boundary
+        intersections = shapely.intersection(
+            np.asarray(self.df[self.geom_col].values),
+            shapely.union_all(split_geoms),
+        )
+
+        # Extract split points from intersection results
+        non_empty = ~(shapely.is_missing(intersections) | shapely.is_empty(intersections))
+        if not non_empty.any():
+            return self.copy_df()
+
+        # Convert line parts to their boundary points (endpoints for splitting)
+        parts = shapely.get_parts(intersections[non_empty])
+        part_types = shapely.get_type_id(parts)
+        is_line_part = np.isin(part_types, [1, 5])  # LineString, MultiLineString
+        parts = np.where(is_line_part, shapely.boundary(parts), parts)
+
+        # Extract individual points from all parts
+        split_points = shapely.get_parts(parts)
+
+        # Build GeoDataFrame of intersection points for projection
+        points_gdf = gpd.GeoDataFrame(
+            geometry=split_points,
+            crs=getattr(self.df, 'crs', None),
+        )
+
+        # Project intersection points onto the LRS to get M-values
+        projected = self.project(
+            points_gdf,
+            buffer=1e-9,
+            nearest=False,
+            replace=True,
+            dropna=True,
+        ).lr.lrs_like(self)
+
+        # If no points projected successfully, return a copy unchanged
+        if len(projected) == 0:
+            return self.copy_df()
+
+        # Integrate: split linear events at projected point locations
+        integrated_df = self.integrate(
+            [projected],
+            fill_gaps=False,
+            split_at_locs=True,
+            inverse_col=['_split_source_index', '_split_points_index'],
+        )
+
+        # Join back source attributes (excluding LRS and geometry columns)
+        attr_cols = self.other_cols
+        if attr_cols:
+            attrs = self.df[attr_cols]
+            integrated_df = integrated_df.merge(
+                attrs,
+                left_on='_split_source_index',
+                right_index=True,
+                how='left',
+            ).lr.lrs_like(self)
+
+        # Cut geometries if requested
+        if cut_geom:
+            integrated_df = integrated_df.lr.cut_from(self.df, inplace=False)
+
+        # Drop internal columns and return
+        integrated_df = integrated_df.drop(
+            columns=['_split_source_index', '_split_points_index'], errors='ignore'
+        )
+        return integrated_df.reset_index(drop=True)
+
+    @_method_require(is_linear=True, is_spatial=True, is_spatial_m=True)
+    def clip(
+        self,
+        mask,
+        keep: str = 'inside',
+        predicate: str = 'covered_by',
+        cut_geom: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Clip linearly-referenced events to a polygon boundary. Events are
+        split where the polygon boundary intersects event geometries, then
+        filtered by their spatial relationship to the polygon.
+
+        Parameters
+        ----------
+        mask : shapely.Geometry, gpd.GeoSeries, or gpd.GeoDataFrame
+            The polygon geometry or collection of polygon geometries to clip
+            against. Must be Polygon or MultiPolygon type.
+        keep : {'inside', 'outside'}, default 'inside'
+            Which split segments to retain:
+            - 'inside' : Keep segments that satisfy the predicate against the
+              mask geometry.
+            - 'outside' : Keep segments that do not satisfy the predicate.
+        predicate : str, default 'covered_by'
+            The spatial predicate used to classify segments as "inside" the
+            mask. Common choices:
+            - 'covered_by' : Segment is inside or on the boundary of the mask.
+            - 'within' : Segment is strictly inside the mask (boundary-
+              coincident segments are excluded).
+        cut_geom : bool, default True
+            Whether to cut new geometries for the split events from the
+            original M-enabled geometries. When True, the result is a
+            GeoDataFrame with valid geometries for each segment.
+
+        Returns
+        -------
+        df : DataFrame or GeoDataFrame
+            A new DataFrame with events clipped to the mask boundary. Returns
+            a GeoDataFrame if ``cut_geom`` is True.
+        """
+        # Validate keep parameter
+        if keep not in ('inside', 'outside'):
+            raise ValueError(
+                f"Invalid value for `keep`: '{keep}'. "
+                "Must be 'inside' or 'outside'."
+            )
+
+        # Validate mask is polygon type
+        if isinstance(mask, gpd.GeoDataFrame):
+            mask_geom = mask.geometry.values
+        elif isinstance(mask, gpd.GeoSeries):
+            mask_geom = mask.values
+        elif isinstance(mask, shapely.Geometry):
+            mask_geom = np.array([mask])
+        else:
+            raise TypeError(
+                "Input `mask` must be a shapely Geometry, GeoSeries, or "
+                "GeoDataFrame."
+            )
+        mask_geom = mask_geom[~shapely.is_missing(mask_geom) & ~shapely.is_empty(mask_geom)]
+        if len(mask_geom) == 0:
+            raise ValueError("No valid geometries found in mask.")
+        type_ids = shapely.get_type_id(mask_geom)
+        if not np.isin(type_ids, [3, 6]).all():
+            raise TypeError(
+                "Clip mask must contain only Polygon or MultiPolygon "
+                "geometries. Use `split()` for LineString masks."
+            )
+
+        # Split events at polygon boundaries
+        result = self.split(mask, cut_geom=cut_geom)
+
+        # Build the filter polygon
+        filter_geom = shapely.union_all(mask_geom)
+
+        # Filter by spatial predicate on event geometries
+        geom_col = self.geom_col
+        geom_series = gpd.GeoSeries(
+            result[geom_col].values,
+            crs=getattr(self.df, 'crs', None),
+        )
+        try:
+            mask_test = getattr(geom_series, predicate)(filter_geom)
+        except AttributeError:
+            raise ValueError(
+                f"Invalid value for `predicate`: '{predicate}'. "
+                "Must be a valid spatial predicate method of GeoSeries."
+            )
+        if keep == 'outside':
+            mask_test = ~mask_test
+        result = result[mask_test].reset_index(drop=True)
+
+        return result
+
     @_method_require(is_linear=True)
     def integrate(
         self,
@@ -3037,6 +3256,11 @@ def integrate(
         raise ValueError(
             "Input `dfs` must contain at least one DataFrame."
         )
+    if not dfs[0].lr.lrs.is_linear:
+        raise LRSCompatibilityError(
+            "First input DataFrame must have a linear LRS (defines the "
+            "output structure)."
+        )
     for i, df in enumerate(dfs):
         if not isinstance(df, pd.DataFrame):
             raise TypeError(
@@ -3047,16 +3271,22 @@ def integrate(
                 f"Input DataFrame at index {i - adj} has no LRS set."
             )
         if not df.lr.lrs.is_linear:
+            if df.lr.lrs.is_located and not split_at_locs:
+                raise LRSCompatibilityError(
+                    f"Input DataFrame at index {i - adj} has a point LRS. "
+                    "Set split_at_locs=True to integrate point events."
+                )
+            elif not df.lr.lrs.is_located:
+                raise LRSCompatibilityError(
+                    f"Input DataFrame at index {i - adj} LRS has no linear "
+                    "or located events defined."
+                )
+        # Validate that key columns are compatible
+        if (df.lr.lrs.key_col != dfs[0].lr.lrs.key_col) or \
+                (df.lr.lrs.chain_col != dfs[0].lr.lrs.chain_col):
             raise LRSCompatibilityError(
-                f"Input DataFrame at index {i - adj} LRS has no linear events."
-            )
-        # Validate that all LRS have compatible linear referencing params
-        # (geometry columns are not used by integrate and are ignored)
-        if df.lr.lrs.set_params(geom_col=None, geom_m_col=None) != \
-                dfs[0].lr.lrs.set_params(geom_col=None, geom_m_col=None):
-            raise LRSCompatibilityError(
-                f"Input DataFrame at index {i - adj} has an incompatible "
-                "linear referencing system."
+                f"Input DataFrame at index {i - adj} has incompatible "
+                "key columns."
             )
     # Validate inverse column names
     if inverse_col is None:
@@ -3092,8 +3322,8 @@ def integrate(
     for i, df in enumerate(dfs):
         selection = indices[:, i]
         index = np.where(
-            selection != -1,
-            df.index.values[selection],
+            selection >= 0,
+            df.index.values[np.clip(selection, 0, None)],
             np.nan
         )
         # Append indices from each input dataframe
