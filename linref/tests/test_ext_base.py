@@ -1266,6 +1266,95 @@ class TestIntegrateMethod(unittest.TestCase):
         self.assertGreater(len(overlap_segs), 0)
 
 
+class TestIntegrateExpand(unittest.TestCase):
+    """Test the expand parameter for integrate with overlapping events."""
+
+    def test_expand_false_picks_first_match(self):
+        """Without expand, overlapping source events get argmax (first match)."""
+        # Two overlapping events: [0,10] and [5,15]
+        df1 = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 5.0],
+            'end': [10.0, 15.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        # Single bounds event
+        df2 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [20.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+
+        result = integrate([df1, df2], expand=False, inverse_col=['src', 'bnd'])
+        # Overlap region [5,10] should map to only ONE source event
+        overlap = result[(result['beg'] == 5.0) & (result['end'] == 10.0)]
+        self.assertEqual(len(overlap), 1)
+
+    def test_expand_true_duplicates_overlap(self):
+        """With expand, overlapping source events each get their own intervals."""
+        # Two overlapping events: [0,10] and [5,15]
+        df1 = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 5.0],
+            'end': [10.0, 15.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        # Single bounds event
+        df2 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [20.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+
+        result = integrate([df1, df2], expand=True, inverse_col=['src', 'bnd'])
+        # Overlap region [5,10] should now appear TWICE (once per source)
+        overlap = result[(result['beg'] == 5.0) & (result['end'] == 10.0)]
+        self.assertEqual(len(overlap), 2)
+        # Each should map to a different source index
+        np.testing.assert_array_equal(overlap['src'].values, [0.0, 1.0])
+
+    def test_expand_non_overlapping_same_as_default(self):
+        """Expand has no effect when events don't overlap."""
+        df1 = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [0.0, 10.0],
+            'end': [10.0, 20.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        df2 = pd.DataFrame({
+            'route': ['A'],
+            'beg': [5.0],
+            'end': [15.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+
+        result_default = integrate([df1, df2], expand=False, inverse_col=['s', 'b'])
+        result_expand = integrate([df1, df2], expand=True, inverse_col=['s', 'b'])
+        # Same number of rows
+        self.assertEqual(len(result_default), len(result_expand))
+        # Same intervals
+        pd.testing.assert_frame_equal(result_default, result_expand)
+
+    def test_expand_multiple_groups(self):
+        """Expand works correctly across multiple groups."""
+        df1 = pd.DataFrame({
+            'route': ['A', 'A', 'B', 'B'],
+            'beg': [0.0, 3.0, 0.0, 2.0],
+            'end': [8.0, 10.0, 6.0, 8.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        df2 = pd.DataFrame({
+            'route': ['A', 'B'],
+            'beg': [0.0, 0.0],
+            'end': [20.0, 20.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+
+        result = integrate([df1, df2], expand=True, inverse_col=['src', 'bnd'])
+        # Route A: overlap [3,8] → 2 rows; [0,3] → 1 row; [8,10] → 1 row = 5
+        route_a = result[result['route'] == 'A']
+        overlap_a = route_a[(route_a['beg'] == 3.0) & (route_a['end'] == 8.0)]
+        self.assertEqual(len(overlap_a), 2)
+        # Route B: overlap [2,6] → 2 rows; [0,2] → 1 row; [6,8] → 1 row = 5
+        route_b = result[result['route'] == 'B']
+        overlap_b = route_b[(route_b['beg'] == 2.0) & (route_b['end'] == 6.0)]
+        self.assertEqual(len(overlap_b), 2)
+
+
 class TestAccessorStatePersistence(unittest.TestCase):
     """Test that accessor state persists across re-instantiation (pandas 3.0+)."""
 
@@ -1939,6 +2028,29 @@ class TestConstrainTo(unittest.TestCase):
         result_m = result['geometry_m'].iloc[0]
         self.assertAlmostEqual(result_m.m[0], 0.0)
         self.assertAlmostEqual(result_m.m[-1], 7.0)
+
+    def test_overlapping_sources_retained(self):
+        """constrain_to correctly retains overlapping source events."""
+        subject = pd.DataFrame({
+            'route': ['A', 'A'],
+            'beg': [5.0, 6.0],
+            'end': [15.0, 16.0],
+            'value': [1, 2],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+        bounds = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [20.0],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='left_mod')
+
+        result = subject.lr.constrain_to(bounds)
+        # Both events retained with original extents
+        self.assertEqual(len(result), 2)
+        np.testing.assert_array_almost_equal(
+            sorted(result['beg'].values), [5.0, 6.0])
+        np.testing.assert_array_almost_equal(
+            sorted(result['end'].values), [15.0, 16.0])
+        self.assertEqual(set(result['value'].values), {1, 2})
 
 
 class TestSplitMethod(unittest.TestCase):

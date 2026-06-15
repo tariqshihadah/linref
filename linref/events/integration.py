@@ -1,8 +1,9 @@
 from __future__ import annotations
+import itertools
 import numpy as np
 from linref.events import base, utility, relate, common
 
-def integrate(objs, fill_gaps=False, split_at_locs=False, return_index=False) -> base.EventsData:
+def integrate(objs, fill_gaps=False, split_at_locs=False, expand=False, return_index=False) -> base.EventsData:
     """
     Combine multiple sets of events into a single collection, creating new 
     linear events based on least common intervals among all input events. If 
@@ -21,6 +22,13 @@ def integrate(objs, fill_gaps=False, split_at_locs=False, return_index=False) ->
         Whether to split events at location points within the input events.
         This allows for breaking events at point events as well as linear 
         events.
+    expand : bool, default False
+        Whether to expand intervals that match multiple events in any input
+        layer. When True, each interval is duplicated for every combination
+        of matching indices across all layers, ensuring that overlapping 
+        source events each receive their own copy of intersecting intervals.
+        When False, each interval is assigned to only the first matching 
+        event per layer (via argmax).
     return_index : bool, default False
         Whether to return the inverse index of the integrated events as a list
         of arrays of indices to the original events.
@@ -70,31 +78,78 @@ def integrate(objs, fill_gaps=False, split_at_locs=False, return_index=False) ->
 
     # Relate new events to original events
     if return_index or not fill_gaps:
-        indices = []
-        masks = []
+        # Compute intersection arrays for each layer
+        arrs = []
         for obj in objs:
             if not obj.is_linear:
-                # If not linear, skip intersection
-                index = np.full((integrated.num_events,), -1, dtype=int)
-                mask = np.zeros(integrated.num_events, dtype=bool)
+                arrs.append(None)
             else:
-                # Get index of original events that intersect with new events
-                arr = relate.intersect_linear_linear(
-                    integrated,
-                    obj,
-                    enforce_edges=False,
+                arrs.append(relate.intersect_linear_linear(
+                    integrated, obj, enforce_edges=False,
+                ))
+        
+        if not expand:
+            # Default path: assign each interval to one event per layer
+            indices = []
+            masks = []
+            for i, obj in enumerate(objs):
+                if arrs[i] is None: # E.g., point events
+                    index = np.full((integrated.num_events,), -1, dtype=int)
+                    mask = np.zeros(integrated.num_events, dtype=bool)
+                else:
+                    arr = arrs[i]
+                    mask = arr.sum(axis=1) > 0
+                    index = np.where(
+                        mask,
+                        obj.generic_index[arr.argmax(axis=1)],
+                        -1
+                    )
+                indices.append(index)
+                masks.append(mask)
+            indices = np.array(indices, dtype=int).T
+            masks = np.any(masks, axis=0)
+        else:
+            # Expand path: duplicate intervals for all matching combinations
+            # Build per-interval lists of matching indices per layer
+            match_lists = []
+            for i, obj in enumerate(objs):
+                if arrs[i] is None:
+                    match_lists.append(
+                        [np.array([-1])] * integrated.num_events
+                    )
+                else:
+                    arr = arrs[i].tocsr()
+                    layer_matches = []
+                    generic_index = obj.generic_index
+                    for row in range(integrated.num_events):
+                        hits = arr.indices[arr.indptr[row]:arr.indptr[row+1]]
+                        if len(hits) > 0:
+                            layer_matches.append(generic_index[hits])
+                        else:
+                            layer_matches.append(np.array([-1]))
+                    match_lists.append(layer_matches)
+            
+            # Expand via cross-product across layers for each interval
+            expanded_row_idx = []
+            expanded_indices = []
+            any_match = []
+            for row in range(integrated.num_events):
+                per_layer = [match_lists[i][row] for i in range(len(objs))]
+                # Check if at least one layer has a real match
+                has_match = any(
+                    not (len(m) == 1 and m[0] == -1) for m in per_layer
                 )
-                mask = arr.sum(axis=1) > 0
-                index = np.where(
-                    mask,
-                    obj.generic_index[arr.argmax(axis=1)],
-                    -1
-                )
-            indices.append(index)
-            masks.append(mask)
-        # Combine indices from all input events
-        indices = np.array(indices, dtype=int).T
-        masks = np.any(masks, axis=0)
+                any_match.append(has_match)
+                for combo in itertools.product(*per_layer):
+                    expanded_row_idx.append(row)
+                    expanded_indices.append(combo)
+            
+            expanded_row_idx = np.array(expanded_row_idx, dtype=int)
+            indices = np.array(expanded_indices, dtype=int)
+            # Expand the integrated events to match
+            integrated = integrated[expanded_row_idx]
+            # Build masks from expanded data
+            masks = np.any(indices >= 0, axis=1)
     
     # Remove gaps if needed
     if not fill_gaps:

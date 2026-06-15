@@ -1989,9 +1989,11 @@ class LRS_Accessor(object):
         this join since they would be invalidated by the new bounds; use 
         ``cut_geom`` to regenerate valid geometries for the constrained events.
 
-        Note that overlapping events in the subject or reference DataFrames 
-        may produce unexpected results. For best results, ensure that events 
-        in both DataFrames are non-overlapping.
+        For overlapping events in the subject DataFrame, each source event is 
+        independently constrained to the reference coverage. Overlapping events
+        in the reference DataFrame may produce unexpected results. For best 
+        results, ensure that events in the reference DataFrame are non-
+        overlapping.
 
         Parameters
         ----------
@@ -2024,6 +2026,7 @@ class LRS_Accessor(object):
         integrated = integrate(
             [self.df, other],
             fill_gaps=False,
+            expand=True,
             inverse_col=['_constrain_src', '_constrain_bnd'],
         )
         
@@ -2299,6 +2302,7 @@ class LRS_Accessor(object):
         objs: pd.DataFrame | list[pd.DataFrame],
         fill_gaps: bool = False,
         split_at_locs: bool = False,
+        expand: bool = False,
         inverse_col: str | list[str] | None = None
     ):
         """
@@ -2320,6 +2324,12 @@ class LRS_Accessor(object):
             Whether to split events at location points within the input events.
             This allows for breaking events at point events as well as linear
             events.
+        expand : bool, default False
+            Whether to expand intervals that match multiple events in any
+            input layer. When True, each interval is duplicated for every
+            combination of matching indices across all layers. When False,
+            each interval is assigned to only the first matching event per
+            layer.
         inverse_col : str or list of str, optional
             The label or list of labels for the inverse index columns that map
             integrated events to the original events from each input dataframe.
@@ -2333,6 +2343,7 @@ class LRS_Accessor(object):
             ([self.df] + objs) if isinstance(objs, list) else [self.df, objs],
             fill_gaps=fill_gaps,
             split_at_locs=split_at_locs,
+            expand=expand,
             inverse_col=inverse_col,
             index_adjustment=1
         )
@@ -3213,6 +3224,7 @@ def integrate(
         dfs: list[pd.DataFrame],
         fill_gaps: bool = False,
         split_at_locs: bool = False,
+        expand: bool = False,
         inverse_col: str | list[str] | None = None,
         **kwargs
     ) -> pd.DataFrame:
@@ -3234,6 +3246,13 @@ def integrate(
         Whether to split events at location points within the input events.
         This allows for breaking events at point events as well as linear
         events.
+    expand : bool, default False
+        Whether to expand intervals that match multiple events in any input
+        layer. When True, each interval is duplicated for every combination
+        of matching indices across all layers, ensuring that overlapping
+        source events each receive their own copy of intersecting intervals.
+        When False, each interval is assigned to only the first matching
+        event per layer.
     inverse_col : str or list of str, optional
         The label or list of labels for the inverse index columns that map
         integrated events to the original events from each input dataframe.
@@ -3309,6 +3328,7 @@ def integrate(
         [df.lr.events for df in dfs],
         fill_gaps=fill_gaps,
         split_at_locs=split_at_locs,
+        expand=expand,
         return_index=True
     )
     # Convert events to dataframe
