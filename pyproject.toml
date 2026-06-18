@@ -7,7 +7,8 @@ name = "linref"
 version = "1.0.0"
 description = "Linearly referenced data management, manipulation, and operations"
 requires-python = ">=3.10"
-license = {file = "LICENSE.rst"}
+license = "MIT"
+license-files = ["LICENSE.rst"]
 keywords=["python", "geospatial", "linear", "data", "event", "dissolve", "overlay", "range", "numeric", "interval"]
 authors = [
     {name = "Tariq Shihadah", email = "tariq.shihadah@gmail.com"}
@@ -23,7 +24,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Unix",
     "Operating System :: MacOS :: MacOS X",
     "Operating System :: Microsoft :: Windows",

@@ -54,7 +54,7 @@ new v1.0 reality.
   - verify sample dataset loading
   - verify at least one basic accessor workflow
 - [x] Update Sphinx / ReadTheDocs config and source files to reflect the redesign API and current versioning
-- [ ] Add release date to the v1.0 entry in `CHANGELOG.md`
+- [x] Add release date to the v1.0 entry in `CHANGELOG.md`
 
 ### Strongly recommended before release
 
