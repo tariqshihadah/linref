@@ -64,16 +64,18 @@ class LRS(object):
         return self.__str__()
 
     def __str__(self) -> str:
+        def _fmt(val):
+            return repr(val) if isinstance(val, str) else val
         return (
             "LRS("
             f"key_col={self.key_col}, "
-            f"chain_col={"'" + self.chain_col + "'" if isinstance(self.chain_col, str) else self.chain_col}, "
-            f"loc_col={"'" + self.loc_col + "'" if isinstance(self.loc_col, str) else self.loc_col}, "
-            f"beg_col={"'" + self.beg_col + "'" if isinstance(self.beg_col, str) else self.beg_col}, "
-            f"end_col={"'" + self.end_col + "'" if isinstance(self.end_col, str) else self.end_col}, "
-            f"geom_col={"'" + self.geom_col + "'" if isinstance(self.geom_col, str) else self.geom_col}, "
-            f"geom_m_col={"'" + self.geom_m_col + "'" if isinstance(self.geom_m_col, str) else self.geom_m_col}, "
-            f"closed={"'" + self.closed + "'" if isinstance(self.closed, str) else self.closed})"
+            f"chain_col={_fmt(self.chain_col)}, "
+            f"loc_col={_fmt(self.loc_col)}, "
+            f"beg_col={_fmt(self.beg_col)}, "
+            f"end_col={_fmt(self.end_col)}, "
+            f"geom_col={_fmt(self.geom_col)}, "
+            f"geom_m_col={_fmt(self.geom_m_col)}, "
+            f"closed={_fmt(self.closed)})"
         )
     
     def __eq__(self, other) -> bool:
