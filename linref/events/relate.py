@@ -522,21 +522,21 @@ class EventsRelation(object):
             raise ValueError("No selector set. Set a selector with indexing.")
         if isinstance(self._selector, str):
             try:
-                return df.loc[:, self._selector].values
+                return df.loc[:, self._selector].to_numpy()
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column label '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, list):
             try:
-                return df.loc[:, self._selector].values
+                return df.loc[:, self._selector].to_numpy()
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column labels '{self._selector}' "
                     f"not found in the {'left' if axis==0 else 'right'} dataframe.")
         elif isinstance(self._selector, slice):
             try:
-                return df.loc[:, self._selector].values
+                return df.loc[:, self._selector].to_numpy()
             except KeyError:
                 raise KeyError(
                     f"Invalid selector provided. Column slice '{self._selector}' "
