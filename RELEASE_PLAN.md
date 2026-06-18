@@ -224,10 +224,10 @@ If time is tight, execute in this order:
 1. ~~Packaging correctness~~ — done
 2. ~~Artifact smoke tests and CI~~ — done
 3. ~~Docs / RTD correctness~~ — done
-4. Migration guide (v0.1.x → v1.0)
+4. ~~Migration guide (v0.1.x → v1.0)~~ — done
 5. ~~Integration tests~~ — done (8 tests in `test_integration.py`)
 6. ~~Secondary docs and cleanup~~ — done
 7. ~~Branch transition (phase 1)~~ — done: `maint/0.1`, `release/1.0.0` created and pushed (2026-04-16)
-8. Add release date to `CHANGELOG.md` and finalize version bump
-9. Branch transition (phase 2): `release/1.0.0` → `main` → tag `v1.0.0` → `develop`
+8. ~~Add release date to `CHANGELOG.md` and finalize version bump~~ — done (2026-06-18): date set to 2026-07-10, license metadata modernized, docs warnings resolved, `np.in1d` deprecation fixed, CI triggers expanded to cover `release/*`
+9. Branch transition (phase 2): `release/1.0.0` → `main` → tag `v1.0.0` → `develop` — planned for release day (2026-07-10)
 10. Retire `redesign` and triage old topic branches
