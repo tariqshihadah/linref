@@ -1,11 +1,6 @@
 linref.ext
 ==========
 
-.. automodule:: linref.ext
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 linref.ext.base
 ---------------
 

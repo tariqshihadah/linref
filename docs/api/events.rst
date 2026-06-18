@@ -1,11 +1,6 @@
 linref.events
 =============
 
-.. automodule:: linref.events
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 linref.events.base
 ------------------
 

@@ -1,6 +1,7 @@
 # Expose core classes
 from linref.events.base import EventsData
-from linref.ext.base import LRS, LRS_Accessor
+from linref.ext.lrs import LRS
+from linref.ext.base import LRS_Accessor
 
 # Expose additional features
 from linref.ext.base import integrate

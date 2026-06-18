@@ -588,6 +588,7 @@ def generate_intersection_pairs(
     -------
     tuple of (ndarray, ndarray, ndarray)
         A tuple of three arrays:
+
         - intersections : Array of intersection geometries (shapely objects).
         - index_left : Array of index labels of the first geometry in each 
           pair.
@@ -700,6 +701,7 @@ def generate_intersection_nodes(
     -------
     tuple of (ndarray, list of list)
         A tuple of two elements:
+
         - geometries : Array of unique intersection geometries.
         - indices : List of lists, where each inner list contains the sorted
           source geometry index labels participating at that location.

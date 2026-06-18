@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 1.0.0 (redesign branch) - Major Architectural Overhaul
+## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 
 **Breaking Changes:**
 

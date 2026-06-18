@@ -5,14 +5,6 @@ API Reference
    :local:
    :depth: 1
 
-Top-Level Exports
------------------
-
-.. automodule:: linref
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 LRS Configuration
 -----------------
 

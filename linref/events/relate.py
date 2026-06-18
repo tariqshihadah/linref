@@ -597,6 +597,7 @@ class EventsRelation(object):
         norm_by : str, default 'right'
             How overlapping lengths should be normalized. Only applied if
             `normalize` is True.
+
             - 'right' : Normalize by the length of the right events.
             - 'left' : Normalize by the length of the left events.
         profile : str, EventProfile, or None, default None
@@ -604,6 +605,7 @@ class EventsRelation(object):
             event's length. When provided, overlay weights reflect the
             proportion of the event's profiled value that is overlapped
             rather than simple length proportion.
+
             - None : No profiling (default, current behavior).
             - str : Name of a built-in profile ('uniform', 'triangular',
               'parabolic', 'trapezoidal').
@@ -1969,6 +1971,7 @@ def overlay(left, right, normalize=True, norm_by='right', profile=None, chunksiz
     norm_by : str, default 'right'
         How overlapping lengths should be normalized. Only applied if
         `normalize` is True.
+
         - 'right' : Normalize by the length of the right events.
         - 'left' : Normalize by the length of the left events.
     profile : str, EventProfile, or None, default None
@@ -1977,6 +1980,7 @@ def overlay(left, right, normalize=True, norm_by='right', profile=None, chunksiz
         proportion of the event's profiled value that is overlapped
         rather than simple length proportion. Only applied when
         `normalize` is True.
+
         - None : No profiling (default, simple length-based normalization).
         - str : Name of a built-in profile ('uniform', 'triangular',
           'parabolic', 'trapezoidal').

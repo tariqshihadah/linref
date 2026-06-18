@@ -126,6 +126,7 @@ def find_inside(events, enforce_edges=False):
         The events object to analyze.
     enforce_edges : bool, default False
         Whether to consider events touching at a vertex as being inside.
+
         - False (strict): beg > other_beg AND end < other_end
         - True (inclusive): (beg >= other_beg AND end < other_end) OR
           (beg > other_beg AND end <= other_end)

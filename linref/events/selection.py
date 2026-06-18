@@ -74,7 +74,7 @@ def _validate_index_selector(events, selector, ignore=False):
     # Apply to index values
     if not ignore:
         # Ensure that all values are present in the index
-        selector_test = np.in1d(selector, events._index)
+        selector_test = np.isin(selector, events._index)
         if not np.all(selector_test):
             missing_values = selector[~selector_test]
             raise ValueError(

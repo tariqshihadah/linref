@@ -318,7 +318,7 @@ Projecting Points onto a Network (Spatial)
    print(projected[['route_id', 'loc', 'project_distance']])
 
 Projecting Linear Geometries onto a Network (Spatial Parallel Projection)
--------------------------------------------------------------
+-------------------------------------------------------------------------
 
 **v0.1.x:**
 
