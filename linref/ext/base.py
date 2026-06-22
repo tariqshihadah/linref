@@ -88,9 +88,9 @@ class LRS_Accessor(object):
         self._df = df
 
     @property
-    def lrs_cols(self) -> list[str]:
+    def event_cols(self) -> list[str]:
         """
-        Return a list of all LRS event-related columns in the dataframe, 
+        Return a list of all event-defining columns in the dataframe, 
         including key, location, begin, and end columns as defined in the LRS.
         """
         cols = []
@@ -103,11 +103,10 @@ class LRS_Accessor(object):
         return cols
     
     @property
-    def target_cols(self) -> list[str]:
+    def lrs_cols(self) -> list[str]:
         """
-        Return a list of all LRS event and geometry-related columns in the
-        dataframe, including key, location, begin, end, and geometry columns
-        as defined in the LRS.
+        Return a list of all LRS-managed columns in the dataframe, including
+        key, location, begin, end, and geometry columns as defined in the LRS.
         """
         cols = []
         if self.is_grouped:
@@ -125,11 +124,10 @@ class LRS_Accessor(object):
     @property
     def other_cols(self) -> list[str]:
         """
-        Return a list of all non-LRS event and geometry-related columns in the
-        dataframe.
+        Return a list of all non-LRS-managed columns in the dataframe.
         """
         # Get all restricted columns
-        remove = self.target_cols
+        remove = self.lrs_cols
         cols = self._df.columns.to_list()
         for col in remove:
             cols.remove(col)

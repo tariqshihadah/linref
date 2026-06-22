@@ -377,13 +377,13 @@ class TestLRSAccessorProperties(unittest.TestCase):
         
         self.assertEqual(self.df_point.lr.loc_col, 'loc')
 
-    def test_lrs_cols_property(self):
-        """Test lrs_cols property."""
-        lrs_cols = self.df_linear.lr.lrs_cols
-        self.assertIn('route', lrs_cols)
-        self.assertIn('beg', lrs_cols)
-        self.assertIn('end', lrs_cols)
-        self.assertNotIn('attr', lrs_cols)
+    def test_event_cols_property(self):
+        """Test event_cols property."""
+        event_cols = self.df_linear.lr.event_cols
+        self.assertIn('route', event_cols)
+        self.assertIn('beg', event_cols)
+        self.assertIn('end', event_cols)
+        self.assertNotIn('attr', event_cols)
 
     def test_other_cols_property(self):
         """Test other_cols property."""
