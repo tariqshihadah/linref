@@ -103,21 +103,21 @@ class EventsData:
     @property
     def locs(self) -> np.ndarray | None:
         """
-        Event reference positions.
+        Event location measures.
         """
         return self._locs
     
     @property
     def begs(self) -> np.ndarray | None:
         """
-        Event begin positions.
+        Event begin measures.
         """
         return self._begs
     
     @property
     def ends(self) -> np.ndarray | None:
         """
-        Event end positions.
+        Event end measures.
         """
         return self._ends
     
@@ -423,11 +423,11 @@ class EventsData:
         group_name : str, optional
             Name for the group column in the DataFrame.
         loc_name : str, default 'loc'
-            Name for the location column in the DataFrame.
+            Name for the location measure column in the DataFrame.
         beg_name : str, default 'beg'
-            Name for the begin position column in the DataFrame.
+            Name for the begin measure column in the DataFrame.
         end_name : str, default 'end'
-            Name for the end position column in the DataFrame.
+            Name for the end measure column in the DataFrame.
 
         Returns
         -------

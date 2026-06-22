@@ -467,7 +467,7 @@ class ParallelProjector(object):
         elif choose < 1:
             raise ValueError("Integer choose parameter must be >= 1")
         
-        # Get target event bound labels
+        # Get target event measure labels
         labels = [self.target.lr.beg_col, self.target.lr.end_col]
 
         # Group unique pairs of targets and projectors

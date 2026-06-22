@@ -1674,7 +1674,7 @@ class EventsRelation(object):
         arr = self._get_intersect_data(**kwargs)
         arr = (arr if axis == 1 else arr.T).tocsr()
 
-        # Pull event bounds
+        # Pull event measures
         begs = self.left.begs if axis == 1 else self.right.begs
         ends = self.left.ends if axis == 1 else self.right.ends
 

@@ -35,11 +35,12 @@ class LRS(object):
             grouping operations alongside the key columns and functionally
             operates as an additional key level.
         loc_col : str, optional
-            Column name for point event locations.
+            Column name for the location measure of point events or located
+            linear events.
         beg_col : str, optional
-            Column name for the begin milepost of linear events.
+            Column name for the begin measure of linear events.
         end_col : str, optional
-            Column name for the end milepost of linear events.
+            Column name for the end measure of linear events.
         geom_col : str, optional
             Column name for the geometry geometry objects.
         geom_m_col : str, optional
@@ -210,11 +211,11 @@ class LRS(object):
         key_col : label or array-like, optional
             The key column or array-like of key columns to set.
         loc_col : label, optional
-            The location column to set.
+            The location measure column to set.
         beg_col : label, optional
-            The begin location column to set.
+            The begin measure column to set.
         end_col : label, optional
-            The end location column to set.
+            The end measure column to set.
         geom_col : label, optional
             The geometry column to set.
         geom_m_col : label, optional

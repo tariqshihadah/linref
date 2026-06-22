@@ -545,7 +545,7 @@ class TestEventOperations(unittest.TestCase):
         }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', geom_col='geometry', closed='right')
 
     def test_extend(self):
-        """Test extending event bounds."""
+        """Test extending event measures."""
         df_extended = self.df.lr.extend(distance=0.1, inplace=False, geometry_sync='ignore')
         
         # Check that events were extended
@@ -601,7 +601,7 @@ class TestEventOperations(unittest.TestCase):
         route_a = df_dissolved[df_dissolved['route'] == 'A']
         # First two events in route A have attr='x' and should be merged
         self.assertEqual(route_a['attr'].iloc[0], 'x')
-        # Check merged event bounds
+        # Check merged event measures
         self.assertEqual(df_dissolved.iloc[0]['beg'], 0.0)
         self.assertEqual(df_dissolved.iloc[0]['end'], 2.0)
 

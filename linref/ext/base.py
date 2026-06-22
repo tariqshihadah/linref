@@ -91,7 +91,7 @@ class LRS_Accessor(object):
     def event_cols(self) -> list[str]:
         """
         Return a list of all event-defining columns in the dataframe, 
-        including key, location, begin, and end columns as defined in the LRS.
+        including key and measure columns as defined in the LRS.
         """
         cols = []
         if self.is_grouped:
@@ -103,10 +103,23 @@ class LRS_Accessor(object):
         return cols
     
     @property
+    def measure_cols(self) -> list[str]:
+        """
+        Return a list of all measure columns in the dataframe as defined in 
+        the LRS (i.e., location, begin, and end columns).
+        """
+        cols = []
+        if self.is_located:
+            cols.append(self.loc_col)
+        if self.is_linear:
+            cols.extend([self.beg_col, self.end_col])
+        return cols
+    
+    @property
     def lrs_cols(self) -> list[str]:
         """
         Return a list of all LRS-managed columns in the dataframe, including
-        key, location, begin, end, and geometry columns as defined in the LRS.
+        key, measure, and geometry columns as defined in the LRS.
         """
         cols = []
         if self.is_grouped:
@@ -176,7 +189,7 @@ class LRS_Accessor(object):
     def is_lrs_empty(self) -> bool:
         """
         Whether the currently set LRS object is empty (i.e., has no key, 
-        location, begin, end, or geometry columns defined).
+        measure, or geometry columns defined).
         """
         if not self.is_lrs_set:
             return True
@@ -214,7 +227,7 @@ class LRS_Accessor(object):
     @property
     def loc_col(self) -> str:
         """
-        Return the location column in the set LRS if defined.
+        Return the location measure column in the set LRS if defined.
         """
         try:
             return self.lrs.loc_col
@@ -224,7 +237,7 @@ class LRS_Accessor(object):
     @property
     def beg_col(self) -> str:
         """
-        Return the begin column in the set LRS if defined.
+        Return the begin measure column in the set LRS if defined.
         """
         try:
             return self.lrs.beg_col
@@ -234,7 +247,7 @@ class LRS_Accessor(object):
     @property
     def end_col(self) -> str:
         """
-        Return the end column in the set LRS if defined.
+        Return the end measure column in the set LRS if defined.
         """
         try:
             return self.lrs.end_col
@@ -289,8 +302,8 @@ class LRS_Accessor(object):
     @property
     def locs(self) -> np.ndarray:
         """
-        Return the location values from the dataframe as an array. If no
-        location column is defined in the LRS, returns None.
+        Return the location measure values from the dataframe as an array. 
+        If no location column is defined in the LRS, returns None.
         """
         # Select data from the dataframe if locations are present
         col = self.loc_col
@@ -302,18 +315,18 @@ class LRS_Accessor(object):
     @locs.setter
     def locs(self, values) -> None:
         if self.loc_col is None:
-            raise ValueError("No locations column in the LRS.")
-        # Set location values in the DataFrame
+            raise ValueError("No location measure column in the LRS.")
+        # Set location measure values in the DataFrame
         col = self.loc_col
         self._df[col] = values
                 
     @property
     def begs(self) -> np.ndarray:
         """
-        Return the begin location values from the dataframe as an array. If no
+        Return the begin measure values from the dataframe as an array. If no
         begin column is defined in the LRS, returns None.
         """
-        # Select data from the dataframe if begin locations are present
+        # Select data from the dataframe if begin measures are present
         col = self.beg_col
         try:
             return self._df[col].values
@@ -323,18 +336,18 @@ class LRS_Accessor(object):
     @begs.setter
     def begs(self, values) -> None:
         if self.beg_col is None:
-            raise ValueError("No begins column in the LRS.")
-        # Set begin location values in the DataFrame
+            raise ValueError("No begin measure column in the LRS.")
+        # Set begin measure values in the DataFrame
         col = self.beg_col
         self._df[col] = values
         
     @property
     def ends(self) -> np.ndarray:
         """
-        Return the end location values from the dataframe as an array. If no
+        Return the end measure values from the dataframe as an array. If no
         end column is defined in the LRS, returns None.
         """
-        # Select data from the dataframe if end locations are present
+        # Select data from the dataframe if end measures are present
         col = self.end_col
         try:
             return self._df[col].values
@@ -344,8 +357,8 @@ class LRS_Accessor(object):
     @ends.setter
     def ends(self, values) -> None:
         if self.end_col is None:
-            raise ValueError("No ends column in the LRS.")
-        # Set end location values in the DataFrame
+            raise ValueError("No end measure column in the LRS.")
+        # Set end measure values in the DataFrame
         col = self.end_col
         self._df[col] = values
 
@@ -585,14 +598,14 @@ class LRS_Accessor(object):
         """
         Return a boolean Series indicating which events in the dataframe are
         valid according to the active LRS, e.g., have populated key columns 
-        and event bounds.
+        and event measures.
         """
         # Identify valid events
         valid = pd.Series(np.ones(self._df.shape[0], dtype=bool), index=self.index)
         # Check key columns
         for col in self.key_col:
             valid &= self._df[col].notna()
-        # Check event bounds
+        # Check event measures
         if self.is_located:
             valid &= self._df[self.loc_col].notna()
         if self.is_linear:
@@ -605,7 +618,7 @@ class LRS_Accessor(object):
         """
         Return a boolean Series indicating which events in the dataframe are
         invalid according to the active LRS, e.g., have missing key columns 
-        or event bounds.
+        or event measures.
         """
         return ~self.valid_events
     
@@ -613,7 +626,7 @@ class LRS_Accessor(object):
         """
         Drop invalid events from the dataframe according to the active LRS.
         Invalid events are those with missing data in key columns or event 
-        bounds.
+        measures.
 
         Returns
         -------
@@ -1233,32 +1246,32 @@ class LRS_Accessor(object):
         inplace: bool = False
     ) -> pd.DataFrame | None:
         """
-        Convert point-based locations in the dataframe to linear begin and 
-        end locations, adding new begin and end columns to the dataframe.
+        Convert point-based measures in the dataframe to linear begin and 
+        end measures, adding new begin and end columns to the dataframe.
 
         Parameters
         ----------
         beg_col : str, optional
-            The name of the begin location column to add. If None, uses the
+            The name of the begin measure column to add. If None, uses the
             existing begin column name in the LRS, or 'beg' if no begin column
             is defined.
         end_col : str, optional
-            The name of the end location column to add. If None, uses the
+            The name of the end measure column to add. If None, uses the
             existing end column name in the LRS, or 'end' if no end column is
             defined.
         replace : bool, default False
             Whether to replace existing begin or end columns in the dataframe. 
             If False, an error will be raised if the columns already exist.
         drop_loc : bool, default False
-            Whether to drop the original location column from the dataframe
-            after conversion.
+            Whether to drop the original location measure column from the 
+            dataframe after conversion.
         inplace : bool, default False
             Whether to apply changes to the dataframe in place.
 
         Returns
         -------
         df : DataFrame
-            A copy of the current DataFrame with begin and end location columns 
+            A copy of the current DataFrame with begin and end measure columns 
             added.
         """
         # Validate column names
@@ -1309,18 +1322,17 @@ class LRS_Accessor(object):
         replace: bool = False
     ) -> pd.DataFrame | None:
         """
-        Add begin and end location columns to the dataframe based on the 
-        lengths of contiguous linear geometries within each group, adding new
-        columns to the dataframe for begin and end locations.
+        Add begin and end measure columns to the dataframe based on the 
+        lengths of contiguous linear geometries within each group.
 
         Parameters
         ----------
         beg_col : str, optional
-            The name of the begin location column to add. If None, uses the
+            The name of the begin measure column to add. If None, uses the
             existing begin column name in the LRS, or 'beg' if no begin column
             is defined.
         end_col : str, optional
-            The name of the end location column to add. If None, uses the
+            The name of the end measure column to add. If None, uses the
             existing end column name in the LRS, or 'end' if no end column is
             defined.
         chain_col : str, optional
@@ -1337,15 +1349,15 @@ class LRS_Accessor(object):
             Whether to add an M-enabled geometry column to the dataframe.
         scale : float, default 1.0
             A scale factor to apply to computed lengths when generating begin
-            and end locations. This can be used to convert units from the 
+            and end measures. This can be used to convert units from the 
             dataframe's CRS units to desired linear units, e.g., from feet to
             miles using a scale factor of 1/5280.
         decimals : int, optional
             The number of decimal places to round computed lengths to when
-            generating begin and end locations. If None, no rounding is applied.
+            generating begin and end measures. If None, no rounding is applied.
         allow_disjoint : bool, default True
             Whether to allow disjoint geometries within each group when
-            generating begin and end locations. If False, an error will be
+            generating begin and end measures. If False, an error will be
             raised if geometries within a group are not contiguous. If True,
             disjoint geometries will be treated as separate chains.
         inplace : bool, default False
@@ -1615,7 +1627,7 @@ class LRS_Accessor(object):
             raise LRSCompatibilityError("Input DataFrame has no LRS set.")
         if not other.lr.is_located and not other.lr.is_linear:
             raise LRSCompatibilityError(
-                "Other dataframe contains no valid event bounds."
+                "Other dataframe contains no valid event measures."
             )
         # Define keys to impute
         if keys is None:
