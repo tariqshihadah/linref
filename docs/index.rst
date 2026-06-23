@@ -9,6 +9,7 @@ Linear Referencing with linref
    :maxdepth: 2
    :caption: Contents
 
+   concepts/index
    examples/index
    api/index
    migration
