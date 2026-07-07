@@ -21,3 +21,9 @@ class GeometrySyncWarning(Warning):
 
 class GeometryMeasureError(LinrefError):
     """Exception raised for errors related to M-enabled geometries."""
+
+class LinrefDeprecationWarning(FutureWarning):
+    """Warning for deprecated linref features (shown by default)."""
+
+class RemovedFeatureError(LinrefError):
+    """Error raised when accessing features removed in v1.0."""
