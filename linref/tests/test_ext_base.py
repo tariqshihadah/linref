@@ -792,6 +792,28 @@ class TestGeometrySyncBehavior(unittest.TestCase):
         df.lr.geometry_sync = 'error'
         self.assertEqual(df.lr.geometry_sync, 'error')
 
+    def test_default_geometry_sync_is_drop(self):
+        """Test that the default geometry sync behavior is 'drop'."""
+        df = pd.DataFrame({'a': [1]})
+        self.assertEqual(df.lr.geometry_sync, 'drop')
+
+    def test_extend_drops_geometry_by_default(self):
+        """Test that de-synchronizing methods drop geometry by default."""
+        df = pd.DataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [1.0],
+            'geometry': [LineString([(0, 0), (1, 0)])],
+        }).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end',
+            geom_col='geometry', closed='right'
+        )
+        df_extended = df.lr.extend(distance=0.1, inplace=False)
+        # Geometry column should be dropped from the result by default
+        self.assertNotIn('geometry', df_extended.columns)
+        # Original DataFrame should be unaffected
+        self.assertIn('geometry', df.columns)
+
 
 class TestStudyMethod(unittest.TestCase):
     """Test the study method."""

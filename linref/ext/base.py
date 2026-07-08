@@ -156,7 +156,7 @@ class LRS_Accessor(object):
 
     @geometry_sync.setter
     def geometry_sync(self, value: str) -> None:
-        valid_behaviors = ['none', 'warn', 'error', 'remove']
+        valid_behaviors = ['none', 'warn', 'error', 'drop']
         if value not in valid_behaviors:
             raise ValueError(
                 f"Invalid geometry synchronization behavior '{value}'. "

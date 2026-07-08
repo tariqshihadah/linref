@@ -10,7 +10,7 @@ def _method_deprecates_geometry(func) -> callable:
     """
     Decorator for LRS_Accessor methods that may de-synchronize the geometry
     of the underlying GeoDataFrame. Deals with this by raising an error,
-    raising a warning, or removing the geometry column, depending on the
+    raising a warning, or dropping the geometry column, depending on the
     user's preference.
 
     Parameters
@@ -29,7 +29,7 @@ def _method_deprecates_geometry(func) -> callable:
                     f"The `{func.__name__}` method may de-synchronize the "
                     "geometry of the underlying GeoDataFrame with event data. "
                     "To proceed anyway, set the `LRS.geometry_sync` attribute "
-                    "to 'warn' or 'remove'."
+                    "to 'warn' or 'drop'."
                 )
             elif geometry_sync == 'warn':
                 warnings.warn(
@@ -37,10 +37,10 @@ def _method_deprecates_geometry(func) -> callable:
                     "geometry of the underlying GeoDataFrame with event data.",
                     GeometrySyncWarning
                 )
-            elif geometry_sync == 'ignore':
+            elif geometry_sync in ('none', 'ignore'):
                 pass
-            elif geometry_sync == 'remove':
-                # Remove geometry column
+            elif geometry_sync == 'drop':
+                # Drop geometry column
                 if self.is_spatial:
                     self.df = self.df.drop(columns=self.lrs.geom_col)
                 if self.is_spatial_m:

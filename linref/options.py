@@ -2,7 +2,7 @@ from __future__ import annotations
 from linref.ext.lrs import LRS
 
 
-_VALID_GEOMETRY_SYNC = ['none', 'warn', 'error', 'remove']
+_VALID_GEOMETRY_SYNC = ['none', 'warn', 'error', 'drop']
 
 
 class _Options:
@@ -15,7 +15,7 @@ class _Options:
         The default LRS applied to new DataFrames when no LRS has been set.
     default_geometry_sync : str
         The default geometry synchronization behavior. Must be one of
-        'none', 'warn', 'error', or 'remove'.
+        'none', 'warn', 'error', or 'drop'.
     """
 
     def __init__(self):
@@ -47,7 +47,7 @@ class _Options:
     def reset(self):
         """Reset all options to their default values."""
         self._default_lrs = LRS()
-        self._default_geometry_sync = 'warn'
+        self._default_geometry_sync = 'drop'
 
     def __repr__(self) -> str:
         return (

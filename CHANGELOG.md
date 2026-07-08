@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 * Redesign of M-enabled geometry handling
 * Enhanced performance through optimized EventsData implementation
 * Simplified, pandas-like method chaining API
+* Geometry synchronization control via `geometry_sync` (per-call parameter and `linref.options.default_geometry_sync`) for methods that de-synchronize geometry from event measures (`extend`, `shift`, `round`). Accepted values are `'none'`, `'warn'`, `'error'`, and `'drop'`. The default is `'drop'`, which removes the now-stale geometry column from the result.
 
 **Note:** This is a complete redesign. Users of v0.1.x will need to update their code.
 
