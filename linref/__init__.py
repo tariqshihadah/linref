@@ -1,3 +1,10 @@
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("linref")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
 # Expose core classes
 from linref.events.base import EventsData
 from linref.ext.lrs import LRS
