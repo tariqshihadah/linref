@@ -1,4 +1,5 @@
 from __future__ import annotations
+import functools
 import warnings
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ def _method_deprecates_geometry(func) -> callable:
     func : callable
         The LRS_Accessor method to decorate.
     """
+    @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         # Check if the dataframe is spatial
         if self.is_spatial or self.is_spatial_m:

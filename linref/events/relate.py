@@ -1,4 +1,5 @@
 from __future__ import annotations
+import functools
 import numpy as np
 import pandas as pd
 from linref.events import base
@@ -17,6 +18,7 @@ def _require_agg_data(func) -> callable:
     """
     Decorator for requiring aggregation data input.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         data = kwargs.pop('data', None)
         if data is None:
@@ -30,6 +32,7 @@ def _get_selector_data_wrapper(func) -> callable:
     """
     Decorator for getting selector data.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         axis = kwargs.get('axis', 1)
         data = kwargs.pop('data', None)
@@ -45,6 +48,7 @@ def _get_linestring_m_data_wrapper(func) -> callable:
     """
     Decorator for getting linestring M data.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         axis = kwargs.get('axis', 1)
         data = kwargs.pop('data', None)
@@ -87,6 +91,7 @@ def _validate_agg_axis_wrapper(func) -> callable:
     """
     Decorator for validating aggregation axis input.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         axis = kwargs.get('axis', 1)
         if axis not in {0, 1}:
@@ -98,6 +103,7 @@ def _validate_agg_2d_data_wrapper(func) -> callable:
     """
     Decorator for validating aggregation data input.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         axis = kwargs.get('axis', 1)
         data = kwargs.pop('data', None)
@@ -140,6 +146,7 @@ def _validate_agg_1d_data_wrapper(func) -> callable:
     """
     Decorator for validating aggregation data input.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         axis = kwargs.get('axis', 1)
         data = kwargs.pop('data', None)
@@ -182,6 +189,7 @@ def _squeeze_output_wrapper(func) -> callable:
     """
     Decorator for squeezing output arrays.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         squeeze = kwargs.get('squeeze', True)
         arr = func(*args, **kwargs)
@@ -1825,6 +1833,7 @@ def _grouped_operation_wrapper(func) -> callable:
     Performance optimization: Uses sorted group iteration with boundary lookups
     instead of repeated np.isin calls for significant speedup without memory overhead.
     """
+    @functools.wraps(func)
     def wrapper(left, right, *args, **kwargs):
         # Validate inputs
         if not isinstance(left, base.EventsData) or not isinstance(right, base.EventsData):
@@ -1922,6 +1931,7 @@ def _chunked_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on chunks of data.
     """
+    @functools.wraps(func)
     def wrapper(left, right, *args, **kwargs):
         # Validate chunksize
         chunksize = kwargs.pop('chunksize', None)

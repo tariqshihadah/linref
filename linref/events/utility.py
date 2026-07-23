@@ -1,3 +1,4 @@
+import functools
 import numpy as np
 from linref.events import common, base
 
@@ -7,6 +8,7 @@ def _method_require(**requirements):
     property requirements.
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(obj, *args, **kwargs):
             for key, value in requirements.items():
                 if getattr(obj, key) != value:
