@@ -3169,7 +3169,75 @@ class LRS_Accessor(object):
             )
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
-    
+
+    @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
+    def parallel_project_hausdorff(
+        self,
+        other: gpd.GeoDataFrame,
+        buffer: float = 0,
+        max_distance: float | None = None,
+        match: int = 1,
+        densify: float | None = None,
+        replace: bool = False,
+    ) -> gpd.GeoDataFrame:
+        """
+        Project linear geometries from ``other`` onto the active DataFrame's
+        LRS using a matching algorithm based on the Hausdorff distance metric.
+
+        This is the accessor equivalent of
+        :func:`linref.ext.spatial.parallel_project_hausdorff`, where the active
+        DataFrame serves as the projection ``target``.
+
+        Parameters
+        ----------
+        other : GeoDataFrame
+            The GeoDataFrame containing geometries to be projected. These
+            geometries must be singlepart.
+        buffer : float, default 0
+            The buffer distance (in the units of the CRS) to use when
+            identifying candidate target geometries.
+        max_distance : float, optional
+            The maximum allowable Hausdorff distance (in the units of the CRS)
+            for a candidate target geometry to be considered a valid match.
+            Geometries with a Hausdorff distance exceeding this value will not
+            be matched. If not specified, will default to be equal to the
+            buffer value.
+        match : int, default 1
+            The number of closest matching target geometries to return for
+            each projected geometry based on the Hausdorff distance metric. If
+            set to 1, only the closest match is returned. If set to a value
+            greater than 1, the specified number of closest matches are
+            returned. If set to 0, all candidate matches within the
+            max_distance are returned.
+        densify : float, optional
+            A value between 0 and 1 indicating the fraction of each geometry's
+            length to use for densification when computing the Hausdorff
+            distance. Densification adds additional vertices along the geometry
+            to improve the accuracy of the distance calculation. If not
+            specified, no densification is applied.
+        replace : bool, default False
+            If True, will replace any existing linear referencing columns in
+            ``other`` with the newly computed values. If False, will raise an
+            error if ``other`` already contains linear referencing columns from
+            the active DataFrame's system.
+
+        Returns
+        -------
+        GeoDataFrame
+            A new GeoDataFrame containing the projected geometries with linear
+            referencing information based on the active DataFrame's system.
+        """
+        from linref.ext.spatial import parallel_project_hausdorff
+        return parallel_project_hausdorff(
+            self.df,
+            other,
+            buffer=buffer,
+            max_distance=max_distance,
+            match=match,
+            densify=densify,
+            replace=replace,
+        )
+
 
 # Helper functions for event operations
 

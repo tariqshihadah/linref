@@ -388,6 +388,87 @@ class TestLRSAccessorGenerateIntersections(unittest.TestCase):
         self.assertAlmostEqual(result['beg'].iloc[0], 5.0)
 
 
+class TestLRSAccessorParallelProjectHausdorff(unittest.TestCase):
+    """Test the LRS_Accessor.parallel_project_hausdorff method."""
+
+    def setUp(self):
+        """Create a target GeoDataFrame with M-enabled geometries."""
+        from linref.geometry import LineStringM
+        self.target = gpd.GeoDataFrame(
+            {
+                'route_id': ['A', 'B'],
+                'beg': [0.0, 0.0],
+                'end': [10.0, 10.0],
+                'geometry': [
+                    LineString([(0, 0), (10, 0)]),
+                    LineString([(0, 5), (10, 5)]),
+                ],
+                'geometry_m': [
+                    LineStringM(LineString([(0, 0), (10, 0)]), m=[0.0, 10.0]),
+                    LineStringM(LineString([(0, 5), (10, 5)]), m=[0.0, 10.0]),
+                ],
+            },
+            crs='EPSG:3857',
+        )
+        self.target.lr.set_lrs(
+            key_col='route_id', beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m', inplace=True,
+        )
+        self.projected = gpd.GeoDataFrame(
+            {
+                'segment_id': ['X', 'Y'],
+                'geometry': [
+                    LineString([(2, 0.1), (6, 0.1)]),   # matches route A
+                    LineString([(3, 5.1), (7, 5.1)]),   # matches route B
+                ],
+            },
+            crs='EPSG:3857',
+        )
+
+    def test_matches_standalone_function(self):
+        """Accessor method result equals the standalone function result."""
+        from linref.ext.spatial import parallel_project_hausdorff
+        via_method = self.target.lr.parallel_project_hausdorff(
+            self.projected, buffer=2,
+        )
+        via_function = parallel_project_hausdorff(
+            self.target, self.projected, buffer=2,
+        )
+        pd.testing.assert_frame_equal(via_method, via_function)
+
+    def test_projects_lrs_columns(self):
+        """Result contains the target's LRS columns with correct matches."""
+        result = self.target.lr.parallel_project_hausdorff(
+            self.projected, buffer=2,
+        )
+        self.assertIn('route_id', result.columns)
+        self.assertIn('beg', result.columns)
+        self.assertIn('end', result.columns)
+        result = result.set_index('segment_id')
+        self.assertEqual(result.loc['X', 'route_id'], 'A')
+        self.assertEqual(result.loc['Y', 'route_id'], 'B')
+        self.assertAlmostEqual(result.loc['X', 'beg'], 2.0)
+        self.assertAlmostEqual(result.loc['X', 'end'], 6.0)
+
+    def test_requires_spatial_m_lrs(self):
+        """Method raises when the LRS lacks M-enabled geometries."""
+        gdf = gpd.GeoDataFrame(
+            {
+                'route_id': ['A'],
+                'beg': [0.0],
+                'end': [10.0],
+                'geometry': [LineString([(0, 0), (10, 0)])],
+            },
+            crs='EPSG:3857',
+        )
+        gdf.lr.set_lrs(
+            key_col='route_id', beg_col='beg', end_col='end',
+            geom_col='geometry', inplace=True,
+        )
+        with self.assertRaises(ValueError):
+            gdf.lr.parallel_project_hausdorff(self.projected, buffer=2)
+
+
 # Run tests
 if __name__ == '__main__':
     unittest.main()

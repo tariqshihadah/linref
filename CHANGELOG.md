@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+**New Features:**
+
+* Added `linref.__version__` attribute, resolved at import time from the installed package metadata via `importlib.metadata.version()`. Falls back to `"unknown"` when the package metadata cannot be found.
+* Added `DataFrame.lr.parallel_project_hausdorff()` accessor method, exposing the existing `linref.ext.spatial.parallel_project_hausdorff()` function through the `.lr` accessor. The active DataFrame serves as the projection target. Also updated documentation example 04 to reflect this simplified pattern.
+
 ## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 
 **Breaking Changes:**
