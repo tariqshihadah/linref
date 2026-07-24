@@ -723,7 +723,15 @@ class EventsData:
             keys.append(arr)
         
         # Apply sorting
-        index = np.lexsort(keys)
+        try:
+            index = np.lexsort(keys)
+        except TypeError as e:
+            raise TypeError(
+                f"Unable to sort events by {by} because the data contains "
+                "a mix of incomparable types (e.g. strings alongside "
+                "NaN/float values). Please ensure that data is complete and "
+                "properly typed."
+            ) from e
         return index
 
     def sort(self, by: str | list[str], ascending: bool | list[bool] = True, return_index: bool = False, inplace: bool = False) -> EventsData | tuple[EventsData, np.ndarray] | None:
