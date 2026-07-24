@@ -1291,5 +1291,75 @@ class TestSum(unittest.TestCase):
         self.assertAlmostEqual(float(result), 0.0)
 
 
+class TestNullGroupHandling(unittest.TestCase):
+    """Test cases for relations between events with null group keys."""
+
+    def test_overlay_with_null_group(self):
+        """Events with a null group produce an empty row and match dropping."""
+        left = base.EventsData(
+            begs=np.array([0.0, 0.0, 5.0]),
+            ends=np.array([10.0, 10.0, 15.0]),
+            groups=np.array(['A', np.nan, 'A'], dtype=object)
+        )
+        right = base.EventsData(
+            begs=np.array([0.0, 5.0]),
+            ends=np.array([10.0, 15.0]),
+            groups=np.array(['A', 'A'], dtype=object)
+        )
+        result = relate.EventsRelation(left, right).overlay(normalize=False)
+
+        # Output preserves full shape (3 left events x 2 right events)
+        self.assertEqual(result.shape, (3, 2))
+        # The null-group event (row 1) has no overlap with anything
+        np.testing.assert_array_equal(result.toarray()[1], [0.0, 0.0])
+        # Valid rows are unaffected: left[0] (0-10, A) overlaps right[0] (0-10)
+        # fully and right[1] (5-15) by 5 units
+        self.assertAlmostEqual(result[0, 0], 10.0)
+        self.assertAlmostEqual(result[0, 1], 5.0)
+
+    def test_mode_with_null_group(self):
+        """Mode aggregation over string data succeeds despite null groups."""
+        left = base.EventsData(
+            begs=np.array([0.0, 0.0, 0.0, 5.0]),
+            ends=np.array([10.0, 10.0, 10.0, 15.0]),
+            groups=np.array(['A', 'B', np.nan, 'A'], dtype=object)
+        )
+        right = base.EventsData(
+            begs=np.array([0.0, 0.0, 5.0]),
+            ends=np.array([10.0, 10.0, 15.0]),
+            groups=np.array(['A', 'B', 'A'], dtype=object)
+        )
+        relation = relate.EventsRelation(left, right)
+        data = np.array(['x', 'y', 'z'], dtype=object)
+
+        result = relation.mode(data=data, axis=1)
+
+        # The null-group left event (index 2) has no intersections -> None
+        self.assertIsNone(result[2])
+        # Valid events resolve to the expected modes
+        self.assertEqual(result[0], 'x')
+        self.assertEqual(result[1], 'y')
+        self.assertEqual(result[3], 'z')
+
+    def test_null_groups_do_not_match_each_other(self):
+        """Null-group events on both sides must not intersect one another."""
+        left = base.EventsData(
+            begs=np.array([0.0, 0.0]),
+            ends=np.array([10.0, 10.0]),
+            groups=np.array(['A', np.nan], dtype=object)
+        )
+        right = base.EventsData(
+            begs=np.array([0.0, 0.0]),
+            ends=np.array([10.0, 10.0]),
+            groups=np.array(['A', np.nan], dtype=object)
+        )
+        result = relate.EventsRelation(left, right).intersect()
+
+        # The two null-group events (row 1, col 1) must not match
+        self.assertFalse(bool(result.toarray()[1, 1]))
+        # The valid pair (A <-> A) does intersect
+        self.assertTrue(bool(result.toarray()[0, 0]))
+
+
 if __name__ == '__main__':
     unittest.main()

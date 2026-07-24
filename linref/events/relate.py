@@ -1826,6 +1826,20 @@ class EventsRelation(object):
 # Events relation core methods
 # -----------------------------------------------------------------------------
 
+def _valid_group_mask(groups: np.ndarray) -> np.ndarray:
+    """
+    Return a boolean mask of events whose group key is fully non-null. Handles
+    both plain arrays and structured/record arrays (multi-column keys), where
+    an event is invalid if any key field is null.
+    """
+    if groups.dtype.names is not None:
+        mask = np.ones(len(groups), dtype=bool)
+        for name in groups.dtype.names:
+            mask &= ~pd.isnull(groups[name])
+        return mask
+    return ~pd.isnull(groups)
+
+
 def _grouped_operation_wrapper(func) -> callable:
     """
     Decorator for wrapping functions that operate on grouped data.
@@ -1847,6 +1861,34 @@ def _grouped_operation_wrapper(func) -> callable:
             # Return group-less operation
             return func(left, right, *args, **kwargs)
         else:
+            # Exclude events with null group keys: they belong to no group and
+            # so have no intersection/overlap. We compute on the null-free
+            # subset and scatter results back, leaving their rows/columns empty.
+            # Skipped entirely when no nulls are present (common case).
+            left_valid = _valid_group_mask(left.groups)
+            right_valid = _valid_group_mask(right.groups)
+            if not (left_valid.all() and right_valid.all()):
+                # Original positions of valid events, used to scatter results.
+                left_map = np.flatnonzero(left_valid)
+                right_map = np.flatnonzero(right_valid)
+                if left_map.size == 0 or right_map.size == 0:
+                    # One side is entirely null -> no possible relations.
+                    sub = sp.coo_matrix((left_map.size, right_map.size))
+                else:
+                    # Recurse on the null-free subset. On re-entry both sides
+                    # are valid, so this branch is skipped and the normal
+                    # computation below runs in full (one-level recursion).
+                    sub = sp.coo_matrix(wrapper(
+                        left.select(left_valid, inplace=False),
+                        right.select(right_valid, inplace=False),
+                        *args, grouped=True, **kwargs
+                    ))
+                # Remap compacted (row, col) back to original positions.
+                return sp.csr_matrix(
+                    (sub.data, (left_map[sub.row], right_map[sub.col])),
+                    shape=(left.num_events, right.num_events)
+                )
+
             # Sort both datasets and get group boundaries
             # This avoids repeated np.isin calls while keeping memory usage low
             left_sorted = left.reset_index().sort_standard(inplace=False)
