@@ -11,7 +11,6 @@ Tests cover:
 
 import unittest
 import os
-import warnings
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -22,6 +21,7 @@ from linref import LRS, LRS_Accessor, integrate
 from linref.options import options, set_default_lrs
 from linref.ext.base import check_compatibility
 from linref.errors import LRSConfigurationError, LRSCompatibilityError
+from linref.geometry import LineStringM
 
 
 class TestLRSInit(unittest.TestCase):
@@ -910,9 +910,7 @@ class TestProjectMethod(unittest.TestCase):
 
     def test_project_basic(self):
         """Test basic projection of points onto lines."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)  # Ignore geographic CRS warning
-            projected = self.roads.lr.project(self.points, buffer=1.0)
+        projected = self.roads.lr.project(self.points, buffer=1.0)
         
         # Check that all points were projected
         self.assertEqual(len(projected), 3)
@@ -933,15 +931,11 @@ class TestProjectMethod(unittest.TestCase):
 
     def test_project_replace_false(self):
         """Test that replace=False raises error when columns exist."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            projected = self.roads.lr.project(self.points, buffer=1.0, replace=False)
+        projected = self.roads.lr.project(self.points, buffer=1.0, replace=False)
         
         # Try to project again with replace=False (should fail)
         with self.assertRaises(ValueError) as context:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                self.roads.lr.project(projected, buffer=1.0, replace=False)
+            self.roads.lr.project(projected, buffer=1.0, replace=False)
         
         # Check that error mentions protected columns
         error_msg = str(context.exception)
@@ -950,17 +944,15 @@ class TestProjectMethod(unittest.TestCase):
 
     def test_project_replace_true(self):
         """Test that replace=True successfully replaces existing columns."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            projected = self.roads.lr.project(self.points, buffer=1.0)
-            
-            # Modify the projected data
-            projected_modified = projected.copy()
-            projected_modified['route'] = 'FAKE_ROUTE'
-            projected_modified['milepost'] = 999.0
-            
-            # Re-project with replace=True
-            reprojected = self.roads.lr.project(projected_modified, buffer=1.0, replace=True)
+        projected = self.roads.lr.project(self.points, buffer=1.0)
+
+        # Modify the projected data
+        projected_modified = projected.copy()
+        projected_modified['route'] = 'FAKE_ROUTE'
+        projected_modified['milepost'] = 999.0
+
+        # Re-project with replace=True
+        reprojected = self.roads.lr.project(projected_modified, buffer=1.0, replace=True)
         
         # Verify columns were replaced
         self.assertNotIn('FAKE_ROUTE', reprojected['route'].values)
@@ -978,9 +970,7 @@ class TestProjectMethod(unittest.TestCase):
             ]
         }, crs='EPSG:3857')
         
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=False)
+        projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=False)
         
         # Should keep all 3 rows
         self.assertEqual(len(projected), 3)
@@ -1000,12 +990,70 @@ class TestProjectMethod(unittest.TestCase):
             ]
         }, crs='EPSG:3857')
         
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=True)
+        projected = self.roads.lr.project(points_with_far, buffer=1.0, dropna=True)
         
         # Should only have 2 rows (matched points)
         self.assertEqual(len(projected), 2)
+
+    def test_project_match_on_nearest(self):
+        """Test that match_on restricts projection to attribute matches."""
+        # Two overlapping routes with a point whose nearest event is the
+        # wrong route but whose known route is the correct, farther one.
+        roads = gpd.GeoDataFrame({
+            'route': ['A', 'B'],
+            'beg': [0.0, 0.0],
+            'end': [10.0, 10.0],
+            'geometry': [
+                LineString([(0, 0), (10, 0)]),
+                LineString([(0, 0.2), (10, 0.2)]),
+            ],
+        }, geometry='geometry', crs='EPSG:3857')
+        roads['geometry_m'] = [
+            LineStringM(LineString([(0, 0), (10, 0)]), m=[0.0, 10.0]),
+            LineStringM(LineString([(0, 0.2), (10, 0.2)]), m=[0.0, 10.0]),
+        ]
+        roads = roads.lr.set_lrs(
+            key_col=['route'], loc_col='milepost', beg_col='beg', end_col='end',
+            geom_col='geometry', geom_m_col='geometry_m', closed='left_mod')
+
+        points = gpd.GeoDataFrame({
+            'point_id': [1],
+            'known_route': ['B'],
+            'geometry': [Point(5, 0.05)],  # nearest to A, but known to be B
+        }, crs='EPSG:3857')
+
+        # Without match_on the point snaps to the nearer route A
+        unmatched = roads.lr.project(points, buffer=1.0)
+        # With match_on the point is forced onto its known route B
+        matched = roads.lr.project(
+            points, buffer=1.0, match_on={'known_route': 'route'})
+
+        self.assertEqual(unmatched.iloc[0]['route'], 'A')
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched.iloc[0]['route'], 'B')
+
+    def test_project_match_on_dropna(self):
+        """Test match_on keeps/drops points with no attribute match."""
+        points = gpd.GeoDataFrame({
+            'point_id': [1, 2],
+            'known_route': ['US-101', 'NOPE'],  # second has no matching route
+            'geometry': [Point(5, 0.05), Point(15, 0.02)],
+        }, crs='EPSG:3857')
+
+        kept = self.roads.lr.project(
+            points, buffer=1.0, match_on={'known_route': 'route'},
+            dropna=False)
+        dropped = self.roads.lr.project(
+            points, buffer=1.0, match_on={'known_route': 'route'},
+            dropna=True)
+
+        # dropna=False retains the unmatched point as a NaN row
+        self.assertEqual(len(kept), 2)
+        row = kept.loc[kept['point_id'] == 2].iloc[0]
+        self.assertTrue(pd.isna(row['route']))
+        # dropna=True removes the unmatched point
+        self.assertEqual(len(dropped), 1)
+        self.assertEqual(dropped.iloc[0]['route'], 'US-101')
 
 
 class TestIntegrateMethod(unittest.TestCase):
