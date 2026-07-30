@@ -572,23 +572,8 @@ class LineStringM:
             warnings.warn('Zero-length geometry created', RuntimeWarning)
             new_geom = LineString([new_geom_coords[0], new_geom_coords[0]])
         
-        # Identify and address cases where number of M values does not match
-        # number of vertices (due to the substring operation producing zero-
-        # length chords)
         if new_geom_m is not None:
-            if len(new_geom_m) < len(new_geom_coords):
-                # Warn for now
-                warnings.warn(
-                    "M values length does not match number of vertices in cut "
-                    "geometry; adjusting to match", RuntimeWarning)
-                chord_lengths = get_chord_lengths(new_geom, normalized=False)
-                if chord_lengths[0] == 0:
-                    new_geom = LineString(new_geom_coords[1:])
-                elif chord_lengths[-1] == 0:
-                    new_geom = LineString(new_geom_coords[:-1])
-                else:
-                    raise ValueError(
-                        f"M values length of {len(new_geom_m)} does not match number "
-                        f"of vertices in cut geometry of {len(new_geom_coords)}."
-                    )
+            # Pin the terminal M values to the exact requested boundary measures.
+            new_geom_m[0] = beg_m
+            new_geom_m[-1] = end_m
         return LineStringM(new_geom, m=new_geom_m)
