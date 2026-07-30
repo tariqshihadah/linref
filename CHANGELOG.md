@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 **Bug Fixes:**
 
 * Fixed internal method decorators to preserve wrapped function metadata via `functools.wraps`, so decorated methods now render with proper signatures and docstrings in the API documentation.
+* Fixed `LineStringM.cut()` to pin the terminal M values of the cut geometry to the exact requested begin/end measures instead of re-interpolating them. Re-interpolation could introduce sub-ULP drift between adjacent segments' shared borders during the dissolve → resegment workflow, causing `DataFrame.lr.dissolve()` to incorrectly report contiguous geometries as disjointed. Also removed a now-unreachable M/coordinate length-reconciliation branch, since `substring_m_coords()` always returns equal-length arrays.
 
 ## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 
