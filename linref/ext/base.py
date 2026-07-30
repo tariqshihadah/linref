@@ -3061,8 +3061,8 @@ class LRS_Accessor(object):
         nearest: bool = True,
         distance_col: str = 'project_distance',
         replace: bool = False,
-        dropna: bool = True,
         match_on: str | list[str] | dict | None = None,
+        dropna: bool = True,
     ) -> gpd.GeoDataFrame:
         """
         Project the input DataFrame of point events onto the active DataFrame
@@ -3080,17 +3080,12 @@ class LRS_Accessor(object):
             Whether to choose only the nearest match within the defined buffer. 
             If False, all matches will be returned. If True, when multiple 
             equidistant points exist, choose the first result that appears.
-        dist_label : str, default 'project_distance'
+        distance_col : str, default 'project_distance'
             The label for the distance column in the returned DataFrame.
         replace : bool, default False
             Whether to replace the existing key and location columns in the 
             dataframe. If False, an error will be raised if the columns 
             already exist.
-        dropna : bool, default True
-            Whether to drop rows from the returned DataFrame where no matching
-            linear event was found within the defined buffer. Events with no
-            match will have NaN values for LRS columns which may produce 
-            unexpected results in subsequent operations.
         match_on : str, list of str, or dict, optional
             One or more attributes that must agree between ``other`` and the
             linear events for a projection to be considered valid. This is
@@ -3102,6 +3097,11 @@ class LRS_Accessor(object):
             or list of strings when the columns share the same name in both
             frames. When provided, candidates are restricted to attribute
             matches before the nearest event (if ``nearest=True``) is selected.
+        dropna : bool, default True
+            Whether to drop rows from the returned DataFrame where no matching
+            linear event was found within the defined buffer. Events with no
+            match will have NaN values for LRS columns which may produce 
+            unexpected results in subsequent operations.
 
         Returns
         -------
@@ -3186,10 +3186,12 @@ class LRS_Accessor(object):
                 max_distance=buffer,
                 distance_col=distance_col,
             )
+
             # Drop duplicates for cases of equidistant matches
             joined = joined[~joined.index.duplicated(keep='first')]
         else:
-            joined = other.drop(columns=protected_cols, errors='ignore').sjoin(
+            joined = other.drop(columns=protected_cols, errors='ignore') \
+                .sjoin(
                 right,
                 how='left',
                 predicate='dwithin',
@@ -3203,6 +3205,7 @@ class LRS_Accessor(object):
                 crs=getattr(self.df, 'crs', None),
             )
             joined[distance_col] = left_geoms.distance(right_geoms)
+
             # Restrict candidates to those whose requested attributes agree,
             # preserving unmatched (no candidate) rows so that dropna=False
             # continues to yield a row per input feature.
