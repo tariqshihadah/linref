@@ -669,6 +669,68 @@ class TestEventOperations(unittest.TestCase):
         self.assertTrue(result.lr.lrs == df_eclipsed.lr.lrs)
 
 
+class TestDistanceToNext(unittest.TestCase):
+    """Test the distance_to_next method."""
+
+    def setUp(self):
+        """Set up linear and point test DataFrames."""
+        # Linear events with a gap in group A and an overlap in group A
+        self.df_linear = pd.DataFrame({
+            'route': ['A', 'A', 'A', 'B', 'B'],
+            'beg': [0.0, 6.0, 9.0, 0.0, 5.0],
+            'end': [5.0, 10.0, 12.0, 4.0, 8.0],
+        }).lr.set_lrs(key_col='route', beg_col='beg', end_col='end', closed='right')
+        # Point events
+        self.df_point = pd.DataFrame({
+            'route': ['A', 'A', 'A', 'B'],
+            'loc': [0.0, 3.0, 10.0, 2.0],
+        }).lr.set_lrs(key_col='route', loc_col='loc')
+
+    def test_default_linear_gap(self):
+        """Default anchor measures the ends->begs gap, last-in-group is NaN."""
+        result = self.df_linear.lr.distance_to_next()
+        self.assertIsInstance(result, pd.Series)
+        np.testing.assert_array_equal(
+            result.values, [1.0, -1.0, np.nan, 1.0, np.nan])
+
+    def test_default_point_locs(self):
+        """Point events default to locs->locs distance."""
+        result = self.df_point.lr.distance_to_next()
+        np.testing.assert_array_equal(result.values, [3.0, 7.0, np.nan, np.nan])
+
+    def test_direction_backward(self):
+        """Backward attributes the gap to the later event, first-in-group NaN."""
+        result = self.df_linear.lr.distance_to_next(direction='backward')
+        np.testing.assert_array_equal(
+            result.values, [np.nan, 1.0, -1.0, np.nan, 1.0])
+
+    def test_negatives_zero(self):
+        """Overlaps (negative distances) are clamped to zero."""
+        result = self.df_linear.lr.distance_to_next(negatives='zero')
+        np.testing.assert_array_equal(
+            result.values, [1.0, 0.0, np.nan, 1.0, np.nan])
+
+    def test_negatives_raise(self):
+        """Negative distances raise when negatives='raise'."""
+        with self.assertRaises(ValueError):
+            self.df_linear.lr.distance_to_next(negatives='raise')
+
+    def test_anchor_tuple(self):
+        """A single anchor string applies to both events."""
+        result = self.df_linear.lr.distance_to_next(anchor='begs')
+        np.testing.assert_array_equal(
+            result.values, [6.0, 3.0, np.nan, 5.0, np.nan])
+
+    def test_sort_realignment(self):
+        """Unsorted input with sort=True realigns to original DataFrame order."""
+        shuffled = self.df_linear.iloc[[2, 0, 4, 1, 3]]
+        result = shuffled.lr.distance_to_next()
+        # Values align to original rows regardless of input order
+        expected = pd.Series(
+            [np.nan, 1.0, np.nan, -1.0, 1.0], index=[2, 0, 4, 1, 3])
+        np.testing.assert_array_equal(result.values, expected.values)
+
+
 class TestCompatibilityFunctions(unittest.TestCase):
     """Test compatibility checking functions."""
 

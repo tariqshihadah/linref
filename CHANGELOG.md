@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 **Improvements:**
 
+* Added `DataFrame.lr.distance_to_next()` accessor method (and the underlying `EventsData.distance_to_next()`) for computing the linear distance between each event and its adjacent event within the same group, e.g., the gap between consecutive events along a reference line. Supports configurable measurement anchors (`anchor`, defaulting to the end-to-begin gap for linear events and location-to-location for point events), forward/backward attribution (`direction`), negative-distance handling for overlaps (`negatives={'keep','zero','absolute','raise'}`), and standard-order sorting with realignment to the original event order (`sort`). The accessor returns a `pd.Series` aligned to the DataFrame index.
 * Added `linref.__version__` attribute, resolved at import time from the installed package metadata via `importlib.metadata.version()`. Falls back to `"unknown"` when the package metadata cannot be found.
 * Added `DataFrame.lr.parallel_project_hausdorff()` accessor method, exposing the existing `linref.ext.spatial.parallel_project_hausdorff()` function through the `.lr` accessor. The active DataFrame serves as the projection target. Also updated documentation example 04 to reflect this simplified pattern.
 

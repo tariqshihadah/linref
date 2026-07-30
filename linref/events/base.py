@@ -937,6 +937,119 @@ class EventsData:
         res[1:] = np.cumsum(~self.next_consecutive(all_=False))
         return res
 
+    def distance_to_next(
+            self,
+            anchor: str | tuple[str, str] | None = None,
+            direction: str = 'forward',
+            negatives: str = 'keep',
+            sort: bool = True
+        ) -> np.ndarray:
+        """
+        Compute the linear distance between each event and its adjacent event
+        within the same group, e.g., the gap between consecutive events along
+        a reference line.
+
+        Parameters
+        ----------
+        anchor : str or tuple of str, optional
+            The event anchor point(s) used to measure distance. A single anchor
+            name is applied to both events; a tuple ``(from_anchor, to_anchor)``
+            measures from ``from_anchor`` on the earlier event to ``to_anchor``
+            on the later event. Valid anchors are {'begs', 'ends', 'centers', 
+            'locs'}, subject to event type. If None, defaults to 
+            ('ends', 'begs') for linear events (the gap between consecutive 
+            events) and ('locs', 'locs') for point events.
+        direction : {'forward', 'backward'}, default 'forward'
+            Whether each distance is attributed to the earlier event (forward,
+            the distance to the next event, with the last event in each group
+            set to NaN) or the later event (backward, the distance from the
+            previous event, with the first event in each group set to NaN).
+        negatives : {'keep', 'zero', 'absolute', 'raise'}, default 'keep'
+            How to treat negative distances, which arise from overlapping or
+            out-of-order events. 'keep' returns signed values, 'zero' clamps
+            negatives to zero, 'absolute' returns magnitudes, and 'raise'
+            raises an error if any negative distance is encountered.
+        sort : bool, default True
+            Whether to sort the events by their standard order before computing
+            distances, realigning the results to the original event order. If
+            False, distances are computed on the current event order.
+
+        Returns
+        -------
+        np.ndarray
+            An array of distances aligned to the events, with NaN where no
+            adjacent event exists within the group.
+        """
+        # Validate parameters
+        if direction not in common.distance_directions:
+            raise ValueError(
+                f"Invalid direction '{direction}'. Must be one of "
+                f"{sorted(common.distance_directions)}.")
+        if negatives not in common.distance_negatives:
+            raise ValueError(
+                f"Invalid negatives '{negatives}'. Must be one of "
+                f"{sorted(common.distance_negatives)}.")
+        
+        # Resolve and validate anchors, defaulting to the gap between events
+        if anchor is None:
+            anchor = ('locs', 'locs') if self.is_point else ('ends', 'begs')
+        elif isinstance(anchor, str):
+            anchor = (anchor, anchor)
+        try:
+            from_anchor, to_anchor = anchor
+        except ValueError:
+            raise ValueError(
+                f"Invalid anchor format '{anchor}'. Must be a string or a tuple of two strings.")
+        valid = set(self.anchors) | {'centers'} # centers is derivable for all
+        for a in (from_anchor, to_anchor):
+            if a not in valid:
+                raise ValueError(
+                    f"Invalid anchor '{a}' for these events. Must be one of "
+                    f"{sorted(valid)}.")
+
+        # Optionally sort by standard order, computing on the sorted order
+        n = self.num_events
+        if sort:
+            target, sorter = self.sort_standard(return_index=True)
+        else:
+            target = self
+
+        # Compute distances between consecutive event pairs. For n < 2, the
+        # slices are empty, yielding an empty pair array and an all-NaN result.
+        from_arr = getattr(target, from_anchor)
+        to_arr = getattr(target, to_anchor)
+        pair_dist = np.asarray(to_arr[1:] - from_arr[:-1], dtype=float)
+        # Mask pairs that cross group boundaries
+        if target.is_grouped:
+            same_group = target.groups[1:] == target.groups[:-1]
+            pair_dist[~same_group] = np.nan
+
+        # Attribute distances to rows based on direction
+        result = np.full(n, np.nan, dtype=float)
+        if direction == 'forward':
+            result[:-1] = pair_dist
+        else:
+            result[1:] = pair_dist
+
+        # Realign to the original event order if sorted
+        if sort:
+            inverse = np.empty_like(sorter)
+            inverse[sorter] = np.arange(n)
+            result = result[inverse]
+
+        # Handle negative values from overlapping or out-of-order events
+        if negatives == 'zero':
+            result[result < 0] = 0.0
+        elif negatives == 'absolute':
+            result = np.abs(result)
+        elif negatives == 'raise':
+            if np.any(result < 0):
+                raise ValueError(
+                    "Negative distances encountered due to overlapping or "
+                    "out-of-order events. Set `negatives` to 'keep', 'zero', "
+                    "or 'absolute' to handle these values.")
+        return result
+
     @utility._method_require(is_grouped=True)
     def iter_groups(self, ungroup: bool = True) -> Iterator[tuple]:
         """
