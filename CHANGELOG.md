@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 * Added `linref.__version__` attribute, resolved at import time from the installed package metadata via `importlib.metadata.version()`. Falls back to `"unknown"` when the package metadata cannot be found.
 * Added `DataFrame.lr.parallel_project_hausdorff()` accessor method, exposing the existing `linref.ext.spatial.parallel_project_hausdorff()` function through the `.lr` accessor. The active DataFrame serves as the projection target. Also updated documentation example 04 to reflect this simplified pattern.
-* Added a `match_on` parameter to `DataFrame.lr.project()` to restrict projections to candidate events whose attributes agree with the input points. Accepts a dict mapping columns in the projected DataFrame to columns in the events collection (e.g. `{'Known_Route_ID': 'Route_ID'}`), or a string or list of strings when the columns share the same name. Candidates are filtered to attribute matches before the nearest event is selected (for `nearest=True`), and points with no attribute match are preserved as unmatched rows when `dropna=False`.
+* Added a `match_on` parameter to `DataFrame.lr.project()` to restrict projections to candidate events whose attributes agree with the input points. Accepts a dict mapping columns in the events collection to columns in the projected DataFrame, mirroring the `events.project(other)` call order (e.g. `{'Route_ID': 'Known_Route_ID'}`), or a string or list of strings when the columns share the same name. Candidates are filtered to attribute matches before the nearest event is selected (for `nearest=True`), and points with no attribute match are preserved as unmatched rows when `dropna=False`.
 
 **Bug Fixes:**
 

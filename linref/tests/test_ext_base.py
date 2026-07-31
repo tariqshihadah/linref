@@ -1026,7 +1026,7 @@ class TestProjectMethod(unittest.TestCase):
         unmatched = roads.lr.project(points, buffer=1.0)
         # With match_on the point is forced onto its known route B
         matched = roads.lr.project(
-            points, buffer=1.0, match_on={'known_route': 'route'})
+            points, buffer=1.0, match_on={'route': 'known_route'})
 
         self.assertEqual(unmatched.iloc[0]['route'], 'A')
         self.assertEqual(len(matched), 1)
@@ -1041,10 +1041,10 @@ class TestProjectMethod(unittest.TestCase):
         }, crs='EPSG:3857')
 
         kept = self.roads.lr.project(
-            points, buffer=1.0, match_on={'known_route': 'route'},
+            points, buffer=1.0, match_on={'route': 'known_route'},
             dropna=False)
         dropped = self.roads.lr.project(
-            points, buffer=1.0, match_on={'known_route': 'route'},
+            points, buffer=1.0, match_on={'route': 'known_route'},
             dropna=True)
 
         # dropna=False retains the unmatched point as a NaN row

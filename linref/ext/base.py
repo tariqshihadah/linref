@@ -3087,16 +3087,19 @@ class LRS_Accessor(object):
             dataframe. If False, an error will be raised if the columns 
             already exist.
         match_on : str, list of str, or dict, optional
-            One or more attributes that must agree between ``other`` and the
-            linear events for a projection to be considered valid. This is
+            One or more attributes that must agree between the linear events
+            and ``other`` for a projection to be considered valid. This is
             useful when the correct linear event is already known for each
             point (e.g. a known route identifier), preventing points from
             being projected onto a nearer but incorrect event. Provide a
-            dict mapping columns in ``other`` to columns in the events
-            collection (e.g. ``{'Known_Route_ID': 'Route_ID'}``), or a string
-            or list of strings when the columns share the same name in both
-            frames. When provided, candidates are restricted to attribute
-            matches before the nearest event (if ``nearest=True``) is selected.
+            dict mapping columns in the events collection to columns in
+            ``other``, mirroring the call order ``events.project(other)``,
+            with the events-collection column as the key and the ``other``
+            column as the value (e.g. ``{'Route_ID': 'Known_Route_ID'}``).
+            Alternatively, provide a string or list of strings when the
+            columns share the same name in both frames. When provided,
+            candidates are restricted to attribute matches before the nearest
+            event (if ``nearest=True``) is selected.
         dropna : bool, default True
             Whether to drop rows from the returned DataFrame where no matching
             linear event was found within the defined buffer. Events with no
@@ -3138,7 +3141,7 @@ class LRS_Accessor(object):
                     f"{', '.join(overlapping_cols)}"
                 )
 
-        # Normalize attribute matching into a mapping of {other_col: events_col}
+        # Normalize attribute matching into a mapping of {events_col: other_col}
         if match_on is None:
             match_map = {}
         elif isinstance(match_on, dict):
@@ -3150,18 +3153,18 @@ class LRS_Accessor(object):
         else:
             raise TypeError(
                 "`match_on` must be None, a string, a list of strings, or a "
-                "dict mapping columns in `other` to columns in the events "
-                "collection."
+                "dict mapping columns in the events collection to columns in "
+                "`other`."
             )
-        for other_col, events_col in match_map.items():
-            if other_col not in other.columns:
-                raise KeyError(
-                    f"`match_on` column '{other_col}' not found in `other`."
-                )
+        for events_col, other_col in match_map.items():
             if events_col not in self.df.columns:
                 raise KeyError(
                     f"`match_on` column '{events_col}' not found in the events "
                     "collection dataframe."
+                )
+            if other_col not in other.columns:
+                raise KeyError(
+                    f"`match_on` column '{other_col}' not found in `other`."
                 )
 
         # Spatial join points to lines. Attribute match columns are copied to
@@ -3171,7 +3174,7 @@ class LRS_Accessor(object):
         match_pairs = []
         if match_map:
             right = right.copy()
-            for i, (other_col, events_col) in enumerate(match_map.items()):
+            for i, (events_col, other_col) in enumerate(match_map.items()):
                 tmp = f'__match_{i}__'
                 right[tmp] = self.df[events_col]
                 match_pairs.append((other_col, tmp))
