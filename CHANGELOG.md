@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 * Added `linref.__version__` attribute, resolved at import time from the installed package metadata via `importlib.metadata.version()`. Falls back to `"unknown"` when the package metadata cannot be found.
 * Added `DataFrame.lr.parallel_project_hausdorff()` accessor method, exposing the existing `linref.ext.spatial.parallel_project_hausdorff()` function through the `.lr` accessor. The active DataFrame serves as the projection target. Also updated documentation example 04 to reflect this simplified pattern.
+* Added an optional `match_groups` parameter to `DataFrame.lr.generate_intersections()`, `generate_intersection_pairs()`, and `generate_intersection_nodes()`. When specified, an intersection is only created between two geometries when they share the same value across all named columns, e.g. a road level or layer field (such as OSM `layer`) so that roads on different levels do not create intersection points. The specified columns must not contain null values; a clear `ValueError` is raised otherwise.
 
 **Bug Fixes:**
 

@@ -104,6 +104,52 @@ class TestGenerateIntersectionPairs(unittest.TestCase):
         with self.assertRaises(ValueError):
             generate_intersection_pairs(self.gdf, exclude_groups='bad_col')
 
+    def test_match_groups(self):
+        """match_groups keeps only pairs sharing the same value."""
+        gdf = self.gdf.copy()
+        # A1 and B1 cross at (5,0) but on different levels; A2 and B2 match
+        gdf['level'] = [0, 0, 1, 0]
+        intersections, index_left, index_right = generate_intersection_pairs(
+            gdf, match_groups='level'
+        )
+        # A1×A2 (both 0, touch), A2×B2 (both 0, cross) kept; A1×B1 dropped
+        self.assertEqual(len(intersections), 2)
+        self.assertEqual(list(intersections), [Point(10, 0), Point(15, 0)])
+
+    def test_match_groups_multiple_columns(self):
+        """match_groups with multiple columns requires all to match."""
+        gdf = self.gdf.copy()
+        gdf['level'] = [0, 0, 0, 0]
+        gdf['deck'] = ['x', 'x', 'y', 'x']
+        intersections, _, _ = generate_intersection_pairs(
+            gdf, match_groups=['level', 'deck']
+        )
+        # A1×B1 dropped (deck differs); A1×A2 and A2×B2 kept
+        self.assertEqual(len(intersections), 2)
+
+    def test_match_groups_with_exclude_groups(self):
+        """match_groups and exclude_groups compose together."""
+        gdf = self.gdf.copy()
+        gdf['level'] = [0, 0, 1, 0]
+        intersections, _, _ = generate_intersection_pairs(
+            gdf, exclude_groups='route_id', match_groups='level'
+        )
+        # A1×A2 excluded (same route); A1×B1 dropped (level); A2×B2 kept
+        self.assertEqual(len(intersections), 1)
+        self.assertEqual(list(intersections), [Point(15, 0)])
+
+    def test_match_groups_missing_column_raises(self):
+        """Nonexistent match_groups column raises ValueError."""
+        with self.assertRaises(ValueError):
+            generate_intersection_pairs(self.gdf, match_groups='bad_col')
+
+    def test_match_groups_null_values_raise(self):
+        """Null values in match_groups columns raise ValueError."""
+        gdf = self.gdf.copy()
+        gdf['level'] = [0, None, 1, 0]
+        with self.assertRaises(ValueError):
+            generate_intersection_pairs(gdf, match_groups='level')
+
     def test_invalid_input_raises(self):
         """Non-GeoDataFrame input raises TypeError."""
         with self.assertRaises(TypeError):
