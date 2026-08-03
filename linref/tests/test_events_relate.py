@@ -1334,8 +1334,8 @@ class TestNullGroupHandling(unittest.TestCase):
 
         result = relation.mode(data=data, axis=1)
 
-        # The null-group left event (index 2) has no intersections -> None
-        self.assertIsNone(result[2])
+        # The null-group left event (index 2) has no intersections -> NaN
+        self.assertTrue(pd.isna(result[2]))
         # Valid events resolve to the expected modes
         self.assertEqual(result[0], 'x')
         self.assertEqual(result[1], 'y')

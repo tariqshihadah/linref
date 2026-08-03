@@ -1275,12 +1275,12 @@ class EventsRelation(object):
             # Convert to CSC for efficient column access and find mode per column
             scores_csc = scores_sparse.tocsc()
             
-            # Initialize mode array with appropriate dtype and fill value
-            # For numeric types, use np.nan; for object/string types, use None
+            # Fill empties with np.nan (dtype=object holds strings) for a
+            # consistent null across numeric and object outputs.
             if np.issubdtype(unique.dtype, np.number):
                 mode = np.full(scores_sparse.shape[1], np.nan, dtype=float)
             else:
-                mode = np.full(scores_sparse.shape[1], None, dtype=object)
+                mode = np.full(scores_sparse.shape[1], np.nan, dtype=object)
             
             # Process only non-empty columns
             non_empty = scores_sum > 0
