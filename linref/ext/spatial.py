@@ -562,6 +562,7 @@ class ParallelProjector(object):
 def generate_intersection_pairs(
     gdf: gpd.GeoDataFrame,
     exclude_groups: str | list[str] | None = None,
+    match_groups: str | list[str] | None = None,
     touches: bool = True,
     crosses: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -579,6 +580,11 @@ def generate_intersection_pairs(
         Column name(s) used for group exclusion. Pairs where both geometries
         share the same value in these columns are excluded from results. 
         Useful for excluding intersections between segments of the same route.
+    match_groups : str or list of str, optional
+        Column name(s) that must match for an intersection to be created. 
+        Pairs are kept only when both geometries share the same value across 
+        all of these columns, such as a road level or layer. The specified 
+        columns must not contain null values.
     touches : bool, default True
         If True, include pairs that share boundary points (endpoints) only.
     crosses : bool, default True
@@ -598,7 +604,9 @@ def generate_intersection_pairs(
     Raises
     ------
     ValueError
-        If both `touches` and `crosses` are False.
+        If both `touches` and `crosses` are False, if columns specified in
+        `exclude_groups` or `match_groups` are not found in the GeoDataFrame,
+        or if any `match_groups` column contains null values.
     """
     # Validate inputs
     if not isinstance(gdf, gpd.GeoDataFrame):
@@ -614,6 +622,23 @@ def generate_intersection_pairs(
             raise ValueError(
                 f"Columns {missing} specified in exclude_groups are not "
                 f"found in the GeoDataFrame."
+            )
+
+    # Normalize match_groups to list or None
+    match_groups = label_list_or_none(match_groups)
+    if match_groups is not None:
+        missing = [c for c in match_groups if c not in gdf.columns]
+        if missing:
+            raise ValueError(
+                f"Columns {missing} specified in match_groups are not "
+                f"found in the GeoDataFrame."
+            )
+        null_cols = [c for c in match_groups if gdf[c].isna().any()]
+        if null_cols:
+            raise ValueError(
+                f"Columns {null_cols} specified in match_groups contain null "
+                f"values. Null values are ambiguous for matching and must be "
+                f"resolved before calling this function."
             )
 
     # Extract geometry array and index
@@ -663,6 +688,21 @@ def generate_intersection_pairs(
     if len(left_idx) == 0:
         return empty
 
+    # Keep only pairs that match across all required columns
+    if match_groups is not None:
+        match_values = gdf[match_groups].values
+        left_match = match_values[left_idx]
+        right_match = match_values[right_idx]
+        if left_match.ndim == 1:
+            same_match = left_match == right_match
+        else:
+            same_match = np.all(left_match == right_match, axis=1)
+        left_idx = left_idx[same_match]
+        right_idx = right_idx[same_match]
+
+    if len(left_idx) == 0:
+        return empty
+
     # Compute intersection geometries
     intersections = shapely.intersection(geoms[left_idx], geoms[right_idx])
     index_left = idx[left_idx]
@@ -673,6 +713,7 @@ def generate_intersection_pairs(
 def generate_intersection_nodes(
     gdf: gpd.GeoDataFrame,
     exclude_groups: str | list[str] | None = None,
+    match_groups: str | list[str] | None = None,
     touches: bool = True,
     crosses: bool = True,
 ) -> tuple[np.ndarray, list[list]]:
@@ -692,6 +733,15 @@ def generate_intersection_nodes(
         Column name(s) used for group exclusion. Pairs where both geometries
         share the same value in these columns are excluded from results.
         Useful for excluding intersections between segments of the same route.
+    match_groups : str or list of str, optional
+        Column name(s) that must match for an intersection to be created.
+        Pairs are kept only when both geometries share the same value across
+        all of these columns. Useful for fields that indicate whether two
+        geometries are physically connected, such as a road level or layer
+        field (e.g. OSM ``layer``): roads on different levels do not create
+        intersection points, while roads on the same level do. The specified
+        columns must not contain null values; missing values are ambiguous
+        for matching and must be resolved before calling this function.
     touches : bool, default True
         If True, include pairs that share boundary points (endpoints) only.
     crosses : bool, default True
@@ -708,7 +758,8 @@ def generate_intersection_nodes(
     """
     # Get pairwise intersection arrays
     intersections, index_left, index_right = generate_intersection_pairs(
-        gdf, exclude_groups=exclude_groups, touches=touches, crosses=crosses
+        gdf, exclude_groups=exclude_groups, match_groups=match_groups,
+        touches=touches, crosses=crosses,
     )
 
     # Empty result
