@@ -1904,6 +1904,15 @@ class LRS_Accessor(object):
                     f"remove_key()."
                 )
             key_col = retain
+        # Enforce non-null key columns (LRS keys and retained columns); null
+        # values make groups incomparable when sorting during dissolve.
+        null_cols = [c for c in key_col if self.df[c].isna().any()]
+        if null_cols:
+            raise ValueError(
+                f"Key columns {null_cols} contain null values, which cannot be "
+                f"used to group and sort events during dissolve. Please resolve "
+                f"missing values before dissolving."
+            )
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
         data, index, relation = events.dissolve(sort=sort, return_index=True, return_relation=True)
