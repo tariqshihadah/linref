@@ -1071,6 +1071,33 @@ class TestProjectMethod(unittest.TestCase):
         self.assertEqual(len(dropped), 1)
         self.assertEqual(dropped.iloc[0]['route'], 'US-101')
 
+    def test_project_match_on_missing_value(self):
+        """Test match_on treats a missing match value as a non-match."""
+        # A missing (NaN) match value never equals any candidate, so the
+        # point fails to match and is handled like one with no candidate:
+        # dropped by default, retained with NaN LRS columns when dropna=False.
+        points = gpd.GeoDataFrame({
+            'point_id': [1, 2],
+            'known_route': ['US-101', np.nan],  # second has no match value
+            'geometry': [Point(5, 0.05), Point(5, 0.05)],
+        }, crs='EPSG:3857')
+
+        kept = self.roads.lr.project(
+            points, buffer=1.0, match_on={'route': 'known_route'},
+            dropna=False)
+        dropped = self.roads.lr.project(
+            points, buffer=1.0, match_on={'route': 'known_route'},
+            dropna=True)
+
+        # dropna=False retains the null-match point as a NaN row
+        self.assertEqual(len(kept), 2)
+        row = kept.loc[kept['point_id'] == 2].iloc[0]
+        self.assertTrue(pd.isna(row['route']))
+        # dropna=True drops it, leaving only the valid match
+        self.assertEqual(len(dropped), 1)
+        self.assertEqual(dropped.iloc[0]['point_id'], 1)
+        self.assertEqual(dropped.iloc[0]['route'], 'US-101')
+
 
 class TestIntegrateMethod(unittest.TestCase):
     """Test the integrate method for combining multiple DataFrames."""
