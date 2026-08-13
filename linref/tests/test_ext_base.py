@@ -615,6 +615,22 @@ class TestEventOperations(unittest.TestCase):
             LineString([(0, 0), (1, 0), (2, 0)])
         ))
 
+    def test_dissolve_null_retain_column_raises(self):
+        """Dissolving with a null-containing retain column raises ValueError."""
+        df = self.df.copy()
+        df.loc[0, 'attr'] = None
+        with self.assertRaises(ValueError) as ctx:
+            df.lr.dissolve(retain=['attr'])
+        self.assertIn('attr', str(ctx.exception))
+
+    def test_dissolve_null_key_column_raises(self):
+        """Dissolving with a null-containing LRS key column raises ValueError."""
+        df = self.df.copy()
+        df.loc[0, 'route'] = None
+        with self.assertRaises(ValueError) as ctx:
+            df.lr.dissolve(retain=['attr'])
+        self.assertIn('route', str(ctx.exception))
+
     def test_resegment(self):
         """Test resegmenting events."""
         df_resegmented = self.df.lr.resegment(length=0.5, fill='cut', cut_geom=False)

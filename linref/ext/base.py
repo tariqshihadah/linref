@@ -1904,6 +1904,15 @@ class LRS_Accessor(object):
                     f"remove_key()."
                 )
             key_col = retain
+        # Enforce non-null key columns (LRS keys and retained columns); null
+        # values make groups incomparable when sorting during dissolve.
+        null_cols = [c for c in key_col if self.df[c].isna().any()]
+        if null_cols:
+            raise ValueError(
+                f"Key columns {null_cols} contain null values, which cannot be "
+                f"used to group and sort events during dissolve. Please resolve "
+                f"missing values before dissolving."
+            )
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)
         data, index, relation = events.dissolve(sort=sort, return_index=True, return_relation=True)
@@ -2973,6 +2982,7 @@ class LRS_Accessor(object):
     def generate_intersections(
         self,
         exclude_groups: bool | str | list[str] = True,
+        match_groups: str | list[str] | None = None,
         touches: bool = True,
         crosses: bool = True,
         project: bool = True,
@@ -2995,6 +3005,16 @@ class LRS_Accessor(object):
               intersections between segments of the same route.
             - str or list of str : Use the specified column name(s).
             - False : No group exclusion; all intersecting pairs are included.
+        match_groups : str or list of str, optional
+            Column name(s) that must match for an intersection to be created.
+            Pairs are kept only when both geometries share the same value
+            across all of these columns. Useful for fields that indicate
+            whether two geometries are physically connected, such as a road
+            level or layer field (e.g. OSM ``layer``): roads on different
+            levels do not create intersection points, while roads on the same
+            level do. The specified columns must not contain null values;
+            missing values are ambiguous for matching and must be resolved
+            before calling this method.
         touches : bool, default True
             If True, include pairs that share boundary points (endpoints) only.
         crosses : bool, default True
@@ -3038,7 +3058,8 @@ class LRS_Accessor(object):
             cols = exclude_groups
         # Generate intersection nodes (tuple of arrays)
         geoms, indices = generate_intersection_nodes(
-            self.df, exclude_groups=cols, touches=touches, crosses=crosses
+            self.df, exclude_groups=cols, match_groups=match_groups,
+            touches=touches, crosses=crosses,
         )
         # Construct GeoDataFrame from arrays
         result = gpd.GeoDataFrame(
