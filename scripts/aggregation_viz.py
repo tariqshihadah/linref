@@ -21,6 +21,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import MultipleLocator
 
 from linref.events.base import EventsData
 from linref.events.relate import overlay
@@ -273,8 +274,15 @@ def plot_aggregation(
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8, lw=0.5),
     )
 
+    # Lock ticks onto the segment grid so they always line up with the
+    # segment squares, regardless of segment_length (a multiple of
+    # segment_length keeps every tick on a segment edge).
+    span = x_hi - x_lo
+    stride = max(1, int(round((span / 11) / segment_length)))
+    tick_step = stride * segment_length
     for ax in axes:
         ax.set_xlim(x_lo, x_hi)
+        ax.xaxis.set_major_locator(MultipleLocator(tick_step))
 
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
