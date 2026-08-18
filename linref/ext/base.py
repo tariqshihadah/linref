@@ -1059,6 +1059,58 @@ class LRS_Accessor(object):
         groups, counts = self.events.group_counts()
         return pd.Series(data=counts, index=groups)
 
+    def distance_to_next(
+        self,
+        anchor: str | tuple[str, str] | None = None,
+        direction: str = 'forward',
+        negatives: str = 'keep',
+        sort: bool = True
+    ) -> pd.Series:
+        """
+        Compute the linear distance between each event and its adjacent event
+        within the same group based on the LRS key columns, e.g., the gap
+        between consecutive events along a reference line.
+
+        Parameters
+        ----------
+        anchor : str or tuple of str, optional
+            The event anchor point(s) used to measure distance. A single anchor
+            name is applied to both events; a tuple ``(from_anchor, to_anchor)``
+            measures from ``from_anchor`` on the earlier event to ``to_anchor``
+            on the later event. Valid anchors are {'begs', 'ends', 'centers', 
+            'locs'}, subject to event type. If None, defaults to 
+            ('ends', 'begs') for linear events (the gap between consecutive 
+            events) and ('locs', 'locs') for point events.
+        direction : {'forward', 'backward'}, default 'forward'
+            Whether each distance is attributed to the earlier event (forward,
+            the distance to the next event, with the last event in each group
+            set to NaN) or the later event (backward, the distance from the
+            previous event, with the first event in each group set to NaN).
+        negatives : {'keep', 'zero', 'absolute', 'raise'}, default 'keep'
+            How to treat negative distances, which arise from overlapping or
+            out-of-order events. 'keep' returns signed values, 'zero' clamps
+            negatives to zero, 'absolute' returns magnitudes, and 'raise'
+            raises an error if any negative distance is encountered.
+        sort : bool, default True
+            Whether to sort the events by their standard order before computing
+            distances, realigning the results to the original DataFrame order.
+            If False, distances are computed on the current DataFrame order.
+
+        Returns
+        -------
+        distances : pd.Series
+            A series of distances aligned to the DataFrame, with NaN where no
+            adjacent event exists within the group.
+        """
+        distances = self.events.distance_to_next(
+            anchor=anchor,
+            direction=direction,
+            negatives=negatives,
+            sort=sort
+        )
+        return pd.Series(
+            data=distances, index=self.index, name='distance_to_next')
+
     def sort_standard(
         self,
         return_index: bool = False,

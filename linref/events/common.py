@@ -9,3 +9,5 @@ anchors_locs = {'begs', 'ends', 'centers'}
 closed_all = {'left', 'left_mod', 'right', 'right_mod', 'both', 'neither'}
 closed_base = {'left', 'right', 'both', 'neither'}
 segment_fill_all = {'none','cut','left','right','extend','balance'}
+distance_directions = {'forward', 'backward'}
+distance_negatives = {'keep', 'zero', 'absolute', 'raise'}
