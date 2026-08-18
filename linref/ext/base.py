@@ -3082,7 +3082,8 @@ class LRS_Accessor(object):
         nearest: bool = True,
         distance_col: str = 'project_distance',
         replace: bool = False,
-        dropna: bool = True
+        match_on: str | list[str] | dict | None = None,
+        dropna: bool = True,
     ) -> gpd.GeoDataFrame:
         """
         Project the input DataFrame of point events onto the active DataFrame
@@ -3100,12 +3101,26 @@ class LRS_Accessor(object):
             Whether to choose only the nearest match within the defined buffer. 
             If False, all matches will be returned. If True, when multiple 
             equidistant points exist, choose the first result that appears.
-        dist_label : str, default 'project_distance'
+        distance_col : str, default 'project_distance'
             The label for the distance column in the returned DataFrame.
         replace : bool, default False
             Whether to replace the existing key and location columns in the 
             dataframe. If False, an error will be raised if the columns 
             already exist.
+        match_on : str, list of str, or dict, optional
+            One or more attributes that must agree between the linear events
+            and ``other`` for a projection to be considered valid. This is
+            useful when the correct linear event is already known for each
+            point (e.g. a known route identifier), preventing points from
+            being projected onto a nearer but incorrect event. Provide a
+            dict mapping columns in the events collection to columns in
+            ``other``, mirroring the call order ``events.project(other)``,
+            with the events-collection column as the key and the ``other``
+            column as the value (e.g. ``{'Route_ID': 'Known_Route_ID'}``).
+            Alternatively, provide a string or list of strings when the
+            columns share the same name in both frames. When provided,
+            candidates are restricted to attribute matches before the nearest
+            event (if ``nearest=True``) is selected.
         dropna : bool, default True
             Whether to drop rows from the returned DataFrame where no matching
             linear event was found within the defined buffer. Events with no
@@ -3147,21 +3162,61 @@ class LRS_Accessor(object):
                     f"{', '.join(overlapping_cols)}"
                 )
 
-        # Spatial join points to lines
+        # Normalize attribute matching into a mapping of {events_col: other_col}
+        if match_on is None:
+            match_map = {}
+        elif isinstance(match_on, dict):
+            match_map = dict(match_on)
+        elif isinstance(match_on, str):
+            match_map = {match_on: match_on}
+        elif isinstance(match_on, (list, tuple)):
+            match_map = {col: col for col in match_on}
+        else:
+            raise TypeError(
+                "`match_on` must be None, a string, a list of strings, or a "
+                "dict mapping columns in the events collection to columns in "
+                "`other`."
+            )
+        for events_col, other_col in match_map.items():
+            if events_col not in self.df.columns:
+                raise KeyError(
+                    f"`match_on` column '{events_col}' not found in the events "
+                    "collection dataframe."
+                )
+            if other_col not in other.columns:
+                raise KeyError(
+                    f"`match_on` column '{other_col}' not found in `other`."
+                )
+
+        # Spatial join points to lines. Attribute match columns are copied to
+        # collision-safe temporary columns so they can be compared post-join.
         select_cols = self.key_col + [self.geom_col, self.geom_m_col]
-        if nearest:
+        right = self.df[select_cols]
+        match_pairs = []
+        if match_map:
+            right = right.copy()
+            for i, (events_col, other_col) in enumerate(match_map.items()):
+                tmp = f'__match_{i}__'
+                right[tmp] = self.df[events_col]
+                match_pairs.append((other_col, tmp))
+
+        # Attribute matching requires evaluating every candidate within the
+        # buffer, so it always uses the dwithin-based join.
+        if nearest and not match_map:
             joined = other.drop(columns=protected_cols, errors='ignore') \
                 .sjoin_nearest(
-                self.df[select_cols],
+                right,
                 how='left',
                 max_distance=buffer,
                 distance_col=distance_col,
             )
+
             # Drop duplicates for cases of equidistant matches
             joined = joined[~joined.index.duplicated(keep='first')]
         else:
-            joined = other.sjoin(
-                self.df[select_cols],
+            joined = other.drop(columns=protected_cols, errors='ignore') \
+                .sjoin(
+                right,
                 how='left',
                 predicate='dwithin',
                 distance=buffer,
@@ -3174,7 +3229,29 @@ class LRS_Accessor(object):
                 crs=getattr(self.df, 'crs', None),
             )
             joined[distance_col] = left_geoms.distance(right_geoms)
-        
+
+            # Restrict candidates to those whose requested attributes agree,
+            # preserving unmatched (no candidate) rows so that dropna=False
+            # continues to yield a row per input feature.
+            if match_map:
+                keep = joined[index_right_name].isna().values
+                attr_match = np.ones(len(joined), dtype=bool)
+                for other_col, tmp in match_pairs:
+                    attr_match &= joined[other_col].values == joined[tmp].values
+                joined = joined[keep | attr_match].drop(
+                    columns=[tmp for _, tmp in match_pairs])
+                # Reduce to the single nearest matching candidate if requested
+                if nearest:
+                    joined = joined.sort_values(distance_col, kind='stable')
+                    joined = joined[~joined.index.duplicated(keep='first')]
+                # Restore input features that lost all candidates to matching
+                if not dropna:
+                    missing = other.index.difference(joined.index)
+                    if len(missing) > 0:
+                        placeholder = other.loc[missing].drop(
+                            columns=protected_cols, errors='ignore')
+                        joined = pd.concat([joined, placeholder])
+
         # Project input points onto event geometries (vectorized)
         locs = geometry.line_locate_point_m(
             joined[self.geom_m_col].values,
