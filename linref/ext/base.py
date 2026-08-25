@@ -16,7 +16,7 @@ from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, integration
 from linref import geometry
-from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError, LinrefDeprecationWarning
 from linref.ext.validation import _method_deprecates_geometry
 from linref.ext.lrs import LRS
 from linref.options import options, set_default_lrs
@@ -2278,13 +2278,15 @@ class LRS_Accessor(object):
         self,
         mask,
         keep: str = 'inside',
-        predicate: str = 'covered_by',
+        predicate: str | None = None,
         cut_geom: bool = True,
     ) -> pd.DataFrame:
         """
-        Clip linearly-referenced events to a polygon boundary. Events are
-        split where the polygon boundary intersects event geometries, then
-        filtered by their spatial relationship to the polygon.
+        Clip linearly-referenced events to a polygon boundary. The portion of
+        each event geometry which falls inside (or outside) the mask is
+        retained, and its begin and end measures are recovered by projecting
+        the endpoints of that portion onto the M-enabled geometry of the
+        source event.
 
         Parameters
         ----------
@@ -2292,27 +2294,57 @@ class LRS_Accessor(object):
             The polygon geometry or collection of polygon geometries to clip
             against. Must be Polygon or MultiPolygon type.
         keep : {'inside', 'outside'}, default 'inside'
-            Which split segments to retain:
-            - 'inside' : Keep segments that satisfy the predicate against the
-              mask geometry.
-            - 'outside' : Keep segments that do not satisfy the predicate.
-        predicate : str, default 'covered_by'
-            The spatial predicate used to classify segments as "inside" the
-            mask. Common choices:
-            - 'covered_by' : Segment is inside or on the boundary of the mask.
-            - 'within' : Segment is strictly inside the mask (boundary-
-              coincident segments are excluded).
+            Which clipped portions to retain:
+            - 'inside' : Keep the portions of events covered by the mask.
+            - 'outside' : Keep the portions of events not covered by the mask.
+        predicate : str, optional
+            Deprecated since version 1.1.0 and ignored. Membership is decided
+            by geometric overlay and no spatial predicate is consulted.
         cut_geom : bool, default True
-            Whether to cut new geometries for the split events from the
-            original M-enabled geometries. When True, the result is a
-            GeoDataFrame with valid geometries for each segment.
+            Whether to retain clipped geometries in the result. When True, the
+            result is a GeoDataFrame whose geometries are the clipped
+            geometries themselves, with M-enabled geometries rebuilt to match.
+            When False, the geometry and M-enabled geometry columns are
+            dropped and only the clipped measures are returned.
 
         Returns
         -------
         df : DataFrame or GeoDataFrame
-            A new DataFrame with events clipped to the mask boundary. Returns
-            a GeoDataFrame if ``cut_geom`` is True.
+            A new DataFrame with events clipped to the mask boundary, in
+            standard sort order. Returns a GeoDataFrame if ``cut_geom`` is
+            True.
+
+        Notes
+        -----
+        Membership is decided by geometric overlay, using ``intersection``
+        for ``'inside'`` and ``difference`` for ``'outside'``, rather than by
+        a spatial predicate applied to split segments. Clipping produces
+        endpoints which lie on the mask boundary by construction, and those
+        positions are generally not representable in floating point, so an
+        exact predicate such as ``covered_by`` rejects segments which are
+        geometrically inside the mask. Overlay is self-consistent, so the
+        ``'inside'`` and ``'outside'`` results always tile the input events
+        exactly.
+
+        Events are clipped wherever the mask boundary crosses them, and are
+        also divided at points where the mask boundary grazes them without
+        crossing. A tangency point therefore yields two abutting output events
+        rather than one, matching the behavior of :meth:`split`.
         """
+        # Warn on use of the deprecated predicate parameter. The stacklevel
+        # accounts for the `_method_require` wrapper so the warning is
+        # attributed to the caller.
+        if predicate is not None:
+            warnings.warn(
+                "The `predicate` parameter of `clip` is deprecated since "
+                "linref 1.1.0 and no longer has any effect. Membership is now "
+                "determined by geometric overlay against the mask, which is "
+                "exact at the mask boundary, and no spatial predicate is "
+                "consulted.",
+                LinrefDeprecationWarning,
+                stacklevel=3,
+            )
+
         # Validate keep parameter
         if keep not in ('inside', 'outside'):
             raise ValueError(
@@ -2342,30 +2374,55 @@ class LRS_Accessor(object):
                 "geometries. Use `split()` for LineString masks."
             )
 
-        # Split events at polygon boundaries
-        result = self.split(mask, cut_geom=cut_geom)
-
-        # Build the filter polygon
+        # Build the filter polygon and clip event geometries against it
+        geoms = np.asarray(self.df[self.geom_col].values)
         filter_geom = shapely.union_all(mask_geom)
+        op = shapely.intersection if keep == 'inside' else shapely.difference
+        clipped = op(geoms, filter_geom)
 
-        # Filter by spatial predicate on event geometries
-        geom_col = self.geom_col
-        geom_series = gpd.GeoSeries(
-            result[geom_col].values,
-            crs=getattr(self.df, 'crs', None),
-        )
-        try:
-            mask_test = getattr(geom_series, predicate)(filter_geom)
-        except AttributeError:
-            raise ValueError(
-                f"Invalid value for `predicate`: '{predicate}'. "
-                "Must be a valid spatial predicate method of GeoSeries."
+        # Flatten clipped geometries to their component parts, tracking the
+        # source event each part was clipped from. Overlay returns a Point
+        # where the mask boundary grazes an event without crossing it, and an
+        # empty LineString where nothing of an event is retained; neither is a
+        # valid output event.
+        parts, source_index = shapely.get_parts(clipped, return_index=True)
+        retain = (shapely.get_type_id(parts) == 1) & ~shapely.is_empty(parts)
+        parts, source_index = parts[retain], source_index[retain]
+
+        # Assemble the clipped events, retaining source event attributes
+        result = self.df.iloc[source_index].copy().reset_index(drop=True)
+        if not cut_geom:
+            result = result.drop(
+                columns=[self.geom_col, self.geom_m_col], errors='ignore'
             )
-        if keep == 'outside':
-            mask_test = ~mask_test
-        result = result[mask_test].reset_index(drop=True)
+        result = result.lr.lrs_like(self)
+        if len(result) == 0:
+            return result
 
-        return result
+        # Recover measures by projecting the endpoints of each clipped part
+        # onto the M-enabled geometry of its source event
+        geoms_m = np.asarray(self.geoms_m)[source_index]
+        m_beg = geometry.line_locate_point_m(
+            geoms_m, shapely.get_point(parts, 0), m=True
+        )
+        m_end = geometry.line_locate_point_m(
+            geoms_m, shapely.get_point(parts, -1), m=True
+        )
+        result[self.beg_col] = np.minimum(m_beg, m_end)
+        result[self.end_col] = np.maximum(m_beg, m_end)
+
+        # Apply clipped geometries, rebuilding the inherited M-enabled
+        # geometries which still describe the full source events
+        if cut_geom:
+            result[self.geom_col] = gpd.GeoSeries(
+                parts, crs=getattr(self.df, 'crs', None)
+            )
+            if self.geom_m_col in result.columns:
+                result[self.geom_m_col] = result.lr.build_geom_m()
+
+        # Overlay does not guarantee the ordering of parts along their source
+        # event geometries
+        return result.lr.sort_standard().reset_index(drop=True)
 
     @_method_require(is_linear=True)
     def integrate(
