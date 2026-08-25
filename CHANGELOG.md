@@ -14,11 +14,18 @@ All notable changes to this project will be documented in this file.
 
 **Bug Fixes:**
 
+* Fixed `DataFrame.lr.clip()` to decide membership by geometric overlay against the mask (`intersection` for `keep='inside'`, `difference` for `keep='outside'`) instead of filtering split segments with an exact spatial predicate. Splitting places segment endpoints on the mask boundary, where floating point cannot represent them exactly, so `covered_by` rejected segments which were geometrically inside the mask: `keep='inside'` dropped them and `keep='outside'` returned every segment. Clipped geometries are now the overlay geometries themselves, so the two results tile the input events exactly.
+* Fixed `DataFrame.lr.clip()` raising a `KeyError` when called with `cut_geom=False`, since the predicate filter required the geometry column which the underlying `split()` call had already dropped. The result now drops the geometry and M-enabled geometry columns and returns the clipped measures.
+* `DataFrame.lr.clip()` now returns a result which carries the LRS settings of the input DataFrame, so its output can be chained with further `.lr` methods without re-applying the LRS.
 * Fixed internal method decorators to preserve wrapped function metadata via `functools.wraps`, so decorated methods now render with proper signatures and docstrings in the API documentation.
 * Fixed `LineStringM.cut()` to pin the terminal M values of the cut geometry to the exact requested begin/end measures instead of re-interpolating them. Re-interpolation could introduce sub-ULP drift between adjacent segments' shared borders during the dissolve → resegment workflow, causing `DataFrame.lr.dissolve()` to incorrectly report contiguous geometries as disjointed. Also removed a now-unreachable M/coordinate length-reconciliation branch, since `substring_m_coords()` always returns equal-length arrays.
 * `DataFrame.lr.dissolve()` now validates that its key columns (LRS key columns and any `retain` columns) contain no null values, raising a clear `ValueError` naming the offending column(s) instead of failing later with an opaque sort `TypeError`.
 * Fixed the `mode` aggregator to return `np.nan` instead of `None` for empty values in its object/string branch, matching the null representation used by the other aggregators (`mean`, `single`, `first`, `last`).
 * Improved handling of null-group events in relation operations: events with null group keys are now excluded from grouped relate operations (producing empty rows/columns), null masks are computed robustly for both plain and structured/record key arrays, and mixed-type group keys now raise a clear `TypeError` at the sort boundary.
+
+**Deprecations:**
+
+* The `predicate` parameter of `DataFrame.lr.clip()` is deprecated and no longer has any effect. Membership is now determined by geometric overlay against the mask, so no spatial predicate is consulted. Passing the parameter emits a `LinrefDeprecationWarning`.
 
 ## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 

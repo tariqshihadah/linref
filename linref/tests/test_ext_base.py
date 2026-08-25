@@ -11,6 +11,7 @@ Tests cover:
 
 import unittest
 import os
+import warnings
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -20,7 +21,7 @@ import linref
 from linref import LRS, LRS_Accessor, integrate
 from linref.options import options, set_default_lrs
 from linref.ext.base import check_compatibility
-from linref.errors import LRSConfigurationError, LRSCompatibilityError
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, LinrefDeprecationWarning
 from linref.geometry import LineStringM
 
 
@@ -2391,10 +2392,17 @@ class TestClipMethod(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.roads.lr.clip(self.polygon, keep='middle')
 
-    def test_clip_invalid_predicate(self):
-        """Invalid predicate raises ValueError or AttributeError."""
-        with self.assertRaises((ValueError, AttributeError)):
+    def test_clip_predicate_deprecated(self):
+        """The predicate parameter warns and is otherwise ignored."""
+        # An invalid predicate no longer raises; it is never consulted
+        with self.assertWarns(LinrefDeprecationWarning):
             self.roads.lr.clip(self.polygon, predicate='not_a_predicate')
+
+    def test_clip_no_predicate_does_not_warn(self):
+        """Omitting the predicate parameter raises no deprecation warning."""
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', LinrefDeprecationWarning)
+            self.roads.lr.clip(self.polygon)
 
     def test_clip_non_polygon_mask(self):
         """Non-polygon mask raises TypeError."""
@@ -2412,6 +2420,220 @@ class TestClipMethod(unittest.TestCase):
             (outside['end'] - outside['beg']).sum()
         )
         self.assertAlmostEqual(orig_miles, clip_miles, places=6)
+
+    def test_clip_cuts_geometry(self):
+        """Clipped geometries match their clipped measures."""
+        result = self.roads.lr.clip(self.polygon)
+
+        self.assertIsInstance(result, gpd.GeoDataFrame)
+        for _, row in result.iterrows():
+            self.assertAlmostEqual(
+                row['geometry'].length, row['end'] - row['beg'], places=6
+            )
+            # M-enabled geometries are rebuilt for the clipped part rather
+            # than inherited from the source event
+            self.assertTrue(row['geometry_m'].geom.equals(row['geometry']))
+            self.assertAlmostEqual(row['geometry_m'].beg_m, row['beg'], places=6)
+            self.assertAlmostEqual(row['geometry_m'].end_m, row['end'], places=6)
+
+    def test_clip_no_cut_geom(self):
+        """Clip with cut_geom=False drops the geometry columns."""
+        result = self.roads.lr.clip(self.polygon, cut_geom=False)
+
+        self.assertNotIn('geometry', result.columns)
+        self.assertNotIn('geometry_m', result.columns)
+        np.testing.assert_array_almost_equal(result['beg'].values, [3, 5, 10])
+        np.testing.assert_array_almost_equal(result['end'].values, [5, 10, 12])
+
+    def test_clip_retains_attributes_and_lrs(self):
+        """Clip retains source attributes and LRS settings."""
+        result = self.roads.lr.clip(self.polygon)
+
+        self.assertTrue(result.lr.lrs == self.roads.lr.lrs)
+        self.assertEqual(result['attr'].tolist(), ['x', 'y', 'z'])
+        self.assertEqual(result['route'].tolist(), ['A', 'A', 'A'])
+
+    def test_clip_no_intersection(self):
+        """A mask which misses all events keeps nothing inside, all outside."""
+        from shapely.geometry import Polygon
+        far_poly = Polygon([(100, 100), (200, 100), (200, 200), (100, 200)])
+
+        inside = self.roads.lr.clip(far_poly, keep='inside')
+        self.assertEqual(len(inside), 0)
+        self.assertTrue(inside.lr.lrs == self.roads.lr.lrs)
+
+        outside = self.roads.lr.clip(far_poly, keep='outside')
+        np.testing.assert_array_almost_equal(outside['beg'].values, [0, 5, 10])
+        np.testing.assert_array_almost_equal(outside['end'].values, [5, 10, 15])
+
+    def test_clip_multiple_routes(self):
+        """Clip orders its output by group, as `split` does."""
+        from shapely.geometry import Polygon
+
+        roads = gpd.GeoDataFrame({
+            'route': ['B', 'A'],
+            'beg': [0.0, 0.0],
+            'end': [10.0, 10.0],
+            'geometry': [
+                LineString([(0, 5), (10, 5)]),
+                LineString([(0, 0), (10, 0)]),
+            ],
+        }, geometry='geometry')
+        roads['geometry_m'] = [
+            LineStringM(geom, m=[0.0, 10.0]) for geom in roads.geometry
+        ]
+        roads = roads.lr.set_lrs(
+            key_col=['route'],
+            loc_col='milepost',
+            beg_col='beg',
+            end_col='end',
+            geom_col='geometry',
+            geom_m_col='geometry_m',
+            closed='left_mod',
+        )
+        result = roads.lr.clip(Polygon([(2, -1), (8, -1), (8, 6), (2, 6)]))
+
+        self.assertEqual(result['route'].tolist(), ['A', 'B'])
+        np.testing.assert_array_almost_equal(result['beg'].values, [2, 2])
+        np.testing.assert_array_almost_equal(result['end'].values, [8, 8])
+
+
+class TestClipBoundaryPrecision(unittest.TestCase):
+    """
+    Test clip against masks whose boundary crossings are not exactly
+    representable in floating point.
+
+    Clipping produces endpoints which lie on the mask boundary by
+    construction. An exact spatial predicate such as ``covered_by`` cannot
+    reliably classify such geometry, so membership must be decided by
+    geometric overlay instead. See issue #42.
+    """
+
+    def setUp(self):
+        """Set up a single chord through a circular mask."""
+        # Coordinates chosen so the boundary crossings are not exactly
+        # representable; the mask comes from buffer(), as any real-world
+        # walkshed, catchment, or corridor mask would
+        self.x, self.y = 2035759.1455780738, 1104936.629180962
+        self.line = LineString([
+            (self.x - 12000, self.y - 3000),
+            (self.x + 9000, self.y + 4000),
+        ])
+        self.mask = Point(self.x, self.y).buffer(2640)
+        self.roads = self._build(self.line)
+
+    def _build(self, line):
+        """Build a single-event GeoDataFrame for the given line."""
+        df = gpd.GeoDataFrame({
+            'route': ['A'],
+            'beg': [0.0],
+            'end': [line.length],
+            'geometry': [line],
+        }, geometry='geometry')
+        df['geometry_m'] = [LineStringM(line, m=[0.0, line.length])]
+        return df.lr.set_lrs(
+            key_col=['route'],
+            loc_col='milepost',
+            beg_col='beg',
+            end_col='end',
+            geom_col='geometry',
+            geom_m_col='geometry_m',
+            closed='left_mod',
+        )
+
+    def test_clip_inside_keeps_the_inside_segment(self):
+        """A chord crossing a circular mask yields one inside segment."""
+        result = self.roads.lr.clip(self.mask, keep='inside')
+
+        self.assertEqual(len(result), 1)
+        # The retained geometry lies entirely within the mask
+        self.assertAlmostEqual(
+            result.geometry.iloc[0].difference(self.mask).length, 0.0, places=6
+        )
+
+    def test_clip_outside_drops_the_inside_segment(self):
+        """A chord crossing a circular mask yields two outside segments."""
+        result = self.roads.lr.clip(self.mask, keep='outside')
+
+        self.assertEqual(len(result), 2)
+        # Neither retained geometry lies within the mask
+        for geom in result.geometry:
+            self.assertAlmostEqual(
+                geom.intersection(self.mask).length, 0.0, places=6
+            )
+
+    def test_clip_tiles_the_source_event(self):
+        """Inside and outside results tile the source event exactly."""
+        inside = self.roads.lr.clip(self.mask, keep='inside')
+        outside = self.roads.lr.clip(self.mask, keep='outside')
+
+        measures = (
+            (inside['end'] - inside['beg']).sum() +
+            (outside['end'] - outside['beg']).sum()
+        )
+        lengths = inside.geometry.length.sum() + outside.geometry.length.sum()
+        self.assertAlmostEqual(measures, self.line.length, places=6)
+        self.assertAlmostEqual(lengths, self.line.length, places=6)
+
+        # The inside segment abuts the outside segments with no gap
+        self.assertEqual(len(inside), 1)
+        self.assertEqual(len(outside), 2)
+        self.assertAlmostEqual(
+            outside['end'].iloc[0], inside['beg'].iloc[0], places=6
+        )
+        self.assertAlmostEqual(
+            outside['beg'].iloc[1], inside['end'].iloc[0], places=6
+        )
+
+    def test_clip_random_chords(self):
+        """Chords through a circular mask clip correctly regardless of angle."""
+        rng = np.random.default_rng(0)
+        radius = 20000
+        tested = 0
+        for _ in range(200):
+            a, b = rng.uniform(0, 2 * np.pi, size=2)
+            line = LineString([
+                (self.x + radius * np.cos(a), self.y + radius * np.sin(a)),
+                (self.x + radius * np.cos(b), self.y + radius * np.sin(b)),
+            ])
+            # Only chords which pass through the mask are of interest
+            if not line.crosses(self.mask.boundary):
+                continue
+            if line.intersection(self.mask).length <= 0:
+                continue
+            tested += 1
+
+            roads = self._build(line)
+            inside = roads.lr.clip(self.mask, keep='inside')
+            outside = roads.lr.clip(self.mask, keep='outside')
+
+            self.assertEqual(len(inside), 1)
+            self.assertEqual(len(outside), 2)
+            self.assertAlmostEqual(
+                inside.geometry.iloc[0].difference(self.mask).length,
+                0.0, places=6,
+            )
+            self.assertAlmostEqual(
+                (inside['end'] - inside['beg']).sum() +
+                (outside['end'] - outside['beg']).sum(),
+                line.length, places=6,
+            )
+        # Guard against the sampling filter silently rejecting every chord
+        self.assertGreater(tested, 10)
+
+    def test_clip_tangent_mask(self):
+        """A mask which grazes an event keeps nothing inside."""
+        line = LineString([(-10, 5), (10, 5)])
+        roads = self._build(line)
+        mask = Point(0, 0).buffer(5)
+
+        self.assertEqual(len(roads.lr.clip(mask, keep='inside')), 0)
+        # The tangency point divides the outside result into two segments
+        outside = roads.lr.clip(mask, keep='outside')
+        self.assertEqual(len(outside), 2)
+        self.assertAlmostEqual(
+            (outside['end'] - outside['beg']).sum(), line.length, places=6
+        )
 
 
 # Run tests
