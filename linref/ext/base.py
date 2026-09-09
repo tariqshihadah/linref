@@ -16,7 +16,7 @@ from linref.events.base import EventsData
 from linref.events.utility import _method_require
 from linref.events import modify, relate, integration
 from linref import geometry
-from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError
+from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError, GeometryScaleWarning
 from linref.ext.validation import _method_deprecates_geometry
 from linref.ext.lrs import LRS
 from linref.options import options, set_default_lrs
@@ -592,7 +592,38 @@ class LRS_Accessor(object):
         to not self.is_contiguous.
         """
         return not self.is_contiguous
-    
+
+    @property
+    def geometry_scale(self) -> np.ndarray | None:
+        """
+        Return each event's geometry scale as an array: the ratio of its 
+        measure length (``end - beg``) to its geometry length. A healthy event 
+        has a finite, positive scale; boundary values flag a mismatch: ``0`` is 
+        a collapsed event (zero measure length), ``inf`` is invalid geometry 
+        (zero-length or empty geometry), and ``NaN`` is degenerate (both zero). 
+        Returns None if the LRS is not both linear and spatial.
+        """
+        if not self.is_linear or not self.is_spatial:
+            return None
+        geom_lengths = shapely.length(self.geoms)
+        # Boundary values (inf, nan) are meaningful signals, not errors
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return self.event_lengths / geom_lengths
+
+    @property
+    def invalid_geometry_scale(self) -> pd.Series | None:
+        """
+        Return a boolean Series flagging events whose geometry scale is not 
+        finite and positive, signaling a mismatch between an event's measure 
+        length and its geometry length. Returns None if the LRS is not both 
+        linear and spatial.
+        """
+        scale = self.geometry_scale
+        if scale is None:
+            return None
+        invalid = ~((scale > 0) & np.isfinite(scale))
+        return pd.Series(invalid, index=self.index)
+
     @property
     def valid_events(self) -> pd.Series:
         """
@@ -1451,6 +1482,15 @@ class LRS_Accessor(object):
                     f"Column name '{col_name}' is already in use in the "
                     "DataFrame."
                 )
+        # Reject zero-length geometries, which would produce invalid events
+        geom_lengths = shapely.length(self.geoms)
+        if (geom_lengths == 0).any():
+            n = int((geom_lengths == 0).sum())
+            raise GeometryTopologyError(
+                f"{n} zero-length geometr{'y' if n == 1 else 'ies'} found in "
+                "the geometry column. Remove or repair these geometries before "
+                "generating linear events."
+            )
         
         # Iterate over groups using base keys (without chain column)
         index  = []
@@ -1524,7 +1564,16 @@ class LRS_Accessor(object):
         # Add M-enabled geometries if needed
         if add_geom_m:
             df.lr.add_geom_m(name=geom_m_col, inplace=True)
-        
+
+        # Warn if any events collapsed to a zero measure length (scale of zero)
+        if (df.lr.geometry_scale == 0).any():
+            warnings.warn(
+                "Zero-length events were generated for non-zero-length "
+                "geometries due to the `decimals` rounding parameter. "
+                "Increase the `decimals` parameter to avoid rounding errors.",
+                GeometryScaleWarning
+            )
+
         # Return updated DataFrame
         return None if inplace else df
 
@@ -1964,6 +2013,14 @@ class LRS_Accessor(object):
                 f"Key columns {null_cols} contain null values, which cannot be "
                 f"used to group and sort events during dissolve. Please resolve "
                 f"missing values before dissolving."
+            )
+        # Warn on zero-length events, which can make non-adjacent events share
+        # identical bounds and dissolve into unexpected merges
+        if (self.event_lengths == 0).any():
+            warnings.warn(
+                "Zero-length events were found in the input dataframe. "
+                "Dissolving these may produce errors or unexpected results.",
+                GeometryScaleWarning
             )
         # Dissolve events
         events = self.get_events(key_col=key_col, require=True)

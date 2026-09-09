@@ -20,7 +20,10 @@ import linref
 from linref import LRS, LRS_Accessor, integrate
 from linref.options import options, set_default_lrs
 from linref.ext.base import check_compatibility
-from linref.errors import LRSConfigurationError, LRSCompatibilityError
+from linref.errors import (
+    LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError,
+    GeometryScaleWarning,
+)
 from linref.geometry import LineStringM
 
 
@@ -683,6 +686,98 @@ class TestEventOperations(unittest.TestCase):
         result = df_eclipsed.lr.separate(drop_short=True)
         self.assertEqual(len(result), 1)
         self.assertTrue(result.lr.lrs == df_eclipsed.lr.lrs)
+
+
+class TestGeometryScale(unittest.TestCase):
+    """Test the geometry_scale and invalid_geometry_scale properties."""
+
+    def _spatial_lrs(self, begs, ends, geoms):
+        """Build a spatial, linear LRS from measures and geometries."""
+        df = pd.DataFrame({
+            'route': ['A'] * len(begs),
+            'beg': begs,
+            'end': ends,
+            'geometry': geoms,
+        })
+        return df.lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end',
+            geom_col='geometry', closed='right'
+        )
+
+    def test_scale_healthy(self):
+        """A matching measure and geometry length yields a scale of 1."""
+        df = self._spatial_lrs([0.0], [1.0], [LineString([(0, 0), (1, 0)])])
+        self.assertAlmostEqual(df.lr.geometry_scale[0], 1.0)
+        self.assertFalse(df.lr.invalid_geometry_scale.any())
+
+    def test_scale_collapsed_is_zero(self):
+        """A zero measure length over a non-zero geometry yields scale 0."""
+        df = self._spatial_lrs([0.0], [0.0], [LineString([(0, 0), (1, 0)])])
+        self.assertEqual(df.lr.geometry_scale[0], 0.0)
+        self.assertTrue(df.lr.invalid_geometry_scale.all())
+
+    def test_scale_zero_length_geometry_is_inf(self):
+        """A non-zero measure over a zero-length geometry yields scale inf."""
+        df = self._spatial_lrs([0.0], [1.0], [LineString([(0, 0), (0, 0)])])
+        self.assertTrue(np.isinf(df.lr.geometry_scale[0]))
+        self.assertTrue(df.lr.invalid_geometry_scale.all())
+
+    def test_scale_degenerate_is_nan(self):
+        """A zero measure over a zero-length geometry yields scale NaN."""
+        df = self._spatial_lrs([0.0], [0.0], [LineString([(0, 0), (0, 0)])])
+        self.assertTrue(np.isnan(df.lr.geometry_scale[0]))
+        self.assertTrue(df.lr.invalid_geometry_scale.all())
+
+    def test_scale_none_when_not_spatial(self):
+        """geometry_scale is None when the LRS is not both linear and spatial."""
+        df = pd.DataFrame({
+            'route': ['A'], 'beg': [0.0], 'end': [1.0]
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+        self.assertIsNone(df.lr.geometry_scale)
+        self.assertIsNone(df.lr.invalid_geometry_scale)
+
+
+class TestGenerateLinearEventsScale(unittest.TestCase):
+    """Test geometry-scale guards in generate_linear_events."""
+
+    def test_zero_length_geometry_raises(self):
+        """Zero-length geometries are rejected up front."""
+        df = pd.DataFrame({
+            'route': ['A', 'A'],
+            'geometry': [
+                LineString([(0, 0), (1, 0)]),
+                LineString([(1, 0), (1, 0)]),
+            ],
+        }).lr.set_lrs(key_col=['route'], geom_col='geometry')
+        with self.assertRaises(GeometryTopologyError):
+            df.lr.generate_linear_events()
+
+    def test_rounding_collapse_warns(self):
+        """Rounding a short segment to zero measure length warns."""
+        df = pd.DataFrame({
+            'route': ['A', 'A'],
+            'geometry': [
+                LineString([(0, 0), (1, 0)]),
+                LineString([(1, 0), (1.001, 0)]),
+            ],
+        }).lr.set_lrs(key_col=['route'], geom_col='geometry')
+        with self.assertWarns(GeometryScaleWarning):
+            df.lr.generate_linear_events(scale=1.0, decimals=2)
+
+
+class TestDissolveZeroLengthWarning(unittest.TestCase):
+    """Test the zero-length event warning in dissolve."""
+
+    def test_zero_length_event_warns(self):
+        """Dissolving events that include a zero-length event warns."""
+        df = pd.DataFrame({
+            'route': ['A', 'A', 'A'],
+            'beg': [0.0, 1.0, 1.0],
+            'end': [1.0, 1.0, 2.0],
+            'attr': ['x', 'x', 'x'],
+        }).lr.set_lrs(key_col=['route'], beg_col='beg', end_col='end', closed='right')
+        with self.assertWarns(GeometryScaleWarning):
+            df.lr.dissolve(retain=['attr'])
 
 
 class TestDistanceToNext(unittest.TestCase):

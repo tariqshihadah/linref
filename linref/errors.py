@@ -22,6 +22,14 @@ class GeometrySyncWarning(Warning):
 class GeometryMeasureError(LinrefError):
     """Exception raised for errors related to M-enabled geometries."""
 
+class GeometryScaleError(LinrefError):
+    """Exception raised for an invalid geometry scale, i.e., a mismatch between
+    an event's measure length and its geometry length."""
+
+class GeometryScaleWarning(Warning):
+    """Warning raised for an invalid geometry scale, i.e., a mismatch between an
+    event's measure length and its geometry length."""
+
 class LinrefDeprecationWarning(FutureWarning):
     """Warning for deprecated linref features (shown by default)."""
 
