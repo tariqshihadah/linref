@@ -1568,8 +1568,9 @@ class LRS_Accessor(object):
         # Warn if any events collapsed to a zero measure length (scale of zero)
         if (df.lr.geometry_scale == 0).any():
             warnings.warn(
-                "Zero-length events were generated, likely due to the "
-                "`decimals` rounding parameter.",
+                "Zero-length events were generated for non-zero-length "
+                "geometries due to the `decimals` rounding parameter. "
+                "Increase the `decimals` parameter to avoid rounding errors.",
                 GeometryScaleWarning
             )
 
@@ -2017,9 +2018,8 @@ class LRS_Accessor(object):
         # identical bounds and dissolve into unexpected merges
         if (self.event_lengths == 0).any():
             warnings.warn(
-                "Zero-length events were found in the input. Dissolving these "
-                "may produce unexpected results, such as merging non-adjacent "
-                "events.",
+                "Zero-length events were found in the input dataframe. "
+                "Dissolving these may produce errors or unexpected results.",
                 GeometryScaleWarning
             )
         # Dissolve events
