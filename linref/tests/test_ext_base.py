@@ -1699,6 +1699,14 @@ class TestAccessorStatePersistence(unittest.TestCase):
         # Returned df should have the LRS
         self.assertEqual(df_with_lrs.lr.lrs, self.lrs)
 
+    def test_attrs_are_json_serializable(self):
+        """Stored LRS attrs are JSON-safe (required by to_parquet/to_feather),
+        and round-trip through the accessor without losing information."""
+        import json
+        df = self.df.lr.set_lrs(self.lrs, inplace=False)
+        json.dumps(df.attrs)
+        self.assertEqual(df.lr.lrs, self.lrs)
+
 
 class TestChainCol(unittest.TestCase):
     """Test chain_col as a first-class LRS parameter."""

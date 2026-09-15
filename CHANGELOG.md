@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 * Improved handling of null-group events in relation operations: events with null group keys are now excluded from grouped relate operations (producing empty rows/columns), null masks are computed robustly for both plain and structured/record key arrays, and mixed-type group keys now raise a clear `TypeError` at the sort boundary.
 * `DataFrame.lr.generate_linear_events()` now rejects zero-length geometries up front with a clear `GeometryTopologyError`, and warns with a `GeometryScaleWarning` when the `decimals` rounding parameter collapses one or more events to a zero measure length. Collapsed events previously propagated silently and could cause `DataFrame.lr.dissolve()` to merge geometrically disjoint segments.
 * `DataFrame.lr.dissolve()` now warns with a `GeometryScaleWarning` when the input contains zero-length events, which can group non-adjacent segments together and produce unexpected merge results.
+* Fixed `DataFrame.attrs` no longer being JSON-serializable once an LRS was set, which caused `DataFrame.to_parquet()` to fail with a `TypeError`. The accessor now stores the LRS as a plain params dict in `attrs` and reconstructs the `LRS` object from it on access.
 
 ## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 

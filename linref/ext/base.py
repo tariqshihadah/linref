@@ -167,16 +167,19 @@ class LRS_Accessor(object):
     @property
     def lrs(self) -> LRS:
         """
-        The LRS object currently set for the DataFrame.
-        State is stored in df.attrs for pandas >= 3.0 compatibility.
+        The LRS object currently set for the DataFrame. Stored in df.attrs as
+        a JSON-safe params dict and reconstructed into an `LRS` instance here.
         """
-        return self._df.attrs.get(_LINREF_LRS_KEY)
+        stored = self._df.attrs.get(_LINREF_LRS_KEY)
+        if stored is None:
+            return None
+        return LRS(**stored)
     
     @lrs.setter
     def lrs(self, lrs) -> None:
         if lrs is not None and not isinstance(lrs, LRS):
             raise ValueError("Input LRS object must be of type `LRS`.")
-        self._df.attrs[_LINREF_LRS_KEY] = lrs
+        self._df.attrs[_LINREF_LRS_KEY] = None if lrs is None else lrs.params
 
     @property
     def is_lrs_set(self) -> bool:
