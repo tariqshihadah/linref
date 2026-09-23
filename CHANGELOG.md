@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 
 **Bug Fixes:**
 
+* Fixed `DataFrame.lr.clip()` to decide membership by geometric overlay against the mask (`intersection` for `keep='inside'`, `difference` for `keep='outside'`) instead of filtering split segments with an exact spatial predicate. Splitting places segment endpoints on the mask boundary, where floating point cannot represent them exactly, so `covered_by` rejected segments which were geometrically inside the mask: `keep='inside'` dropped them and `keep='outside'` returned every segment. Clipped geometries are now the overlay geometries themselves, so the two results tile the input events exactly.
+* Fixed `DataFrame.lr.clip()` raising a `KeyError` when called with `cut_geom=False`, since the predicate filter required the geometry column which the underlying `split()` call had already dropped. The result now drops the geometry and M-enabled geometry columns and returns the clipped measures.
+* `DataFrame.lr.clip()` now returns a result which carries the LRS settings of the input DataFrame, so its output can be chained with further `.lr` methods without re-applying the LRS.
 * Fixed internal method decorators to preserve wrapped function metadata via `functools.wraps`, so decorated methods now render with proper signatures and docstrings in the API documentation.
 * Fixed `LineStringM.cut()` to pin the terminal M values of the cut geometry to the exact requested begin/end measures instead of re-interpolating them. Re-interpolation could introduce sub-ULP drift between adjacent segments' shared borders during the dissolve → resegment workflow, causing `DataFrame.lr.dissolve()` to incorrectly report contiguous geometries as disjointed. Also removed a now-unreachable M/coordinate length-reconciliation branch, since `substring_m_coords()` always returns equal-length arrays.
 * `DataFrame.lr.dissolve()` now validates that its key columns (LRS key columns and any `retain` columns) contain no null values, raising a clear `ValueError` naming the offending column(s) instead of failing later with an opaque sort `TypeError`.
@@ -23,6 +26,10 @@ All notable changes to this project will be documented in this file.
 * `DataFrame.lr.generate_linear_events()` now rejects zero-length geometries up front with a clear `GeometryTopologyError`, and warns with a `GeometryScaleWarning` when the `decimals` rounding parameter collapses one or more events to a zero measure length. Collapsed events previously propagated silently and could cause `DataFrame.lr.dissolve()` to merge geometrically disjoint segments.
 * `DataFrame.lr.dissolve()` now warns with a `GeometryScaleWarning` when the input contains zero-length events, which can group non-adjacent segments together and produce unexpected merge results.
 * Fixed `DataFrame.attrs` no longer being JSON-serializable once an LRS was set, which caused `DataFrame.to_parquet()` to fail with a `TypeError`. The accessor now stores the LRS as a plain params dict in `attrs` and reconstructs the `LRS` object from it on access.
+
+**Deprecations:**
+
+* The `predicate` parameter of `DataFrame.lr.clip()` is deprecated and no longer has any effect. Membership is now determined by geometric overlay against the mask, so no spatial predicate is consulted. Passing the parameter emits a `LinrefDeprecationWarning`.
 
 ## 1.0.0 (2026-07-10) - Major Architectural Overhaul
 
