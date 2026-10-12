@@ -4,6 +4,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import LineString, Point
 import linref
+from linref.errors import LRSConfigurationError
 from linref.ext.spatial import generate_intersection_pairs, generate_intersection_nodes
 
 
@@ -511,7 +512,9 @@ class TestLRSAccessorParallelProjectHausdorff(unittest.TestCase):
             key_col='route_id', beg_col='beg', end_col='end',
             geom_col='geometry', inplace=True,
         )
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(
+            LRSConfigurationError,
+            'parallel_project_hausdorff.*M-enabled geometries'):
             gdf.lr.parallel_project_hausdorff(self.projected, buffer=2)
 
 
