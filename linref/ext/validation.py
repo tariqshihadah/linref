@@ -1,10 +1,59 @@
 from __future__ import annotations
 import functools
 import warnings
-import numpy as np
-import pandas as pd
-import geopandas as gpd
-from linref.errors import GeometrySyncWarning, GeometrySyncError
+from linref.errors import GeometrySyncWarning, GeometrySyncError, LinrefError
+
+
+def _validate_lrs(*components: str):
+    """Validate LRS components before executing an accessor method.
+
+    Each component name is resolved to a corresponding ``validate_<name>()``
+    method on the accessor. Validation uses each method's default options and
+    raises the same Linref exception type with additional context naming the
+    decorated method and its requirements when validation fails.
+
+    Parameters
+    ----------
+    *components : str
+        Names of accessor validation methods without the ``validate_`` prefix,
+        such as ``'linear'`` or ``'spatial_m'``.
+
+    Returns
+    -------
+    callable
+        A decorator that validates the requested components before calling the
+        wrapped method.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            labels = {
+                'grouped': 'grouped data',
+                'located': 'location measures',
+                'point': 'point-event data',
+                'linear': 'linear-event data',
+                'spatial': 'Shapely geometries',
+                'spatial_m': 'M-enabled geometries',
+                'chained': 'chain data',
+            }
+            requirements = [labels.get(name, name) for name in components]
+            if len(requirements) == 1:
+                required = requirements[0]
+            elif len(requirements) == 2:
+                required = ' and '.join(requirements)
+            else:
+                required = ', '.join(requirements[:-1]) + ', and ' + requirements[-1]
+            for component in components:
+                try:
+                    getattr(self, f'validate_{component}')()
+                except LinrefError as error:
+                    raise type(error)(
+                        f"The `{func.__name__}` method requires valid "
+                        f"{required}. Validation failed: {error}"
+                    ) from error
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def _method_deprecates_geometry(func) -> callable:
