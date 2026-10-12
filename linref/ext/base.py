@@ -995,7 +995,8 @@ class LRS_Accessor(object):
         check_type : bool, default True
             If True, require every value to be a parsed ``LineStringM`` with
             M values. If False, only configuration and column presence are
-            checked, plus any requested checks that can be performed safely.
+            checked unless ``bounds`` or ``geometry`` is requested; those
+            comparisons require parsed ``LineStringM`` values.
         errors : {'raise', 'ignore'}, default 'raise'
             Whether invalid data raises an LRS validation error or returns
             ``False``.
@@ -1039,6 +1040,9 @@ class LRS_Accessor(object):
         if complete and len(values) == 0:
             return self._validation_error(
                 f"LRS M-geometry column '{self.geom_m_col}' is empty.", errors)
+        if (bounds or geometry) and not check_type:
+            if not self.validate_spatial_m(check_type=True, errors=errors):
+                return False
         if bounds:
             if not self.validate_linear(
                     complete=complete, check_type=check_type, errors=errors):
@@ -1090,9 +1094,9 @@ class LRS_Accessor(object):
         complete : bool, default False
             If True, also require the chain column to contain no null values.
         check_type : bool, default True
-            If True, require a numeric pandas dtype. Boolean columns are not
-            accepted. If False, only configuration and column presence are
-            checked, plus ``complete`` when requested.
+            Included for consistency with the other component validators.
+            Chain values act as grouping identifiers, so no specific dtype is
+            required. This option does not change the check.
         errors : {'raise', 'ignore'}, default 'raise'
             Whether invalid data raises ``LRSConfigurationError`` or returns
             ``False``.
@@ -1107,8 +1111,7 @@ class LRS_Accessor(object):
         ------
         LRSConfigurationError
             If chaining is not configured, the chain column is missing,
-            non-numeric, or incomplete under the requested checks and
-            ``errors='raise'``.
+            or incomplete under the requested checks and ``errors='raise'``.
         ValueError
             If ``errors`` is not ``'raise'`` or ``'ignore'``.
         """
@@ -1119,14 +1122,6 @@ class LRS_Accessor(object):
         if column not in self.df:
             return self._validation_error(
                 f"LRS chain column '{column}' is missing.", errors)
-        dtype = self.df[column].dtype
-        if (check_type
-                and (not pd.api.types.is_numeric_dtype(dtype)
-                     or pd.api.types.is_bool_dtype(dtype))):
-            return self._validation_error(
-                f"LRS chain column '{column}' must have a numeric dtype; "
-                f"received {dtype}.", errors,
-            )
         if complete and self.df[column].isna().any():
             return self._validation_error(
                 f"LRS chain column '{column}' contains null values.", errors)

@@ -22,7 +22,7 @@ from linref.options import options, set_default_lrs
 from linref.ext.base import check_compatibility
 from linref.errors import (
     LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError,
-    GeometryScaleWarning,
+    GeometryMeasureError, GeometryScaleWarning,
 )
 from linref.geometry import LineStringM
 
@@ -448,6 +448,147 @@ class TestLRSAccessorProperties(unittest.TestCase):
         self.assertIn('LRS_Accessor', accessor_str)
         self.assertIn('GR', accessor_str)  # Grouped
         self.assertIn('LN', accessor_str)  # Linear
+
+
+class TestLRSValidation(unittest.TestCase):
+    """Test LRS component validators and their method guards."""
+
+    def test_validate_grouped(self):
+        df = pd.DataFrame({'route': ['A', None]}).lr.set_lrs(
+            key_col=['route'])
+
+        self.assertTrue(df.lr.validate_grouped())
+        self.assertFalse(df.lr.validate_grouped(complete=True, errors='ignore'))
+        with self.assertRaisesRegex(LRSConfigurationError, 'null values'):
+            df.lr.validate_grouped(complete=True)
+
+        missing = pd.DataFrame({'other': ['A']}).lr.set_lrs(key_col=['route'])
+        self.assertFalse(missing.lr.is_grouped)
+        with self.assertRaisesRegex(LRSConfigurationError, 'missing'):
+            missing.lr.validate_grouped()
+
+    def test_validate_located_and_point(self):
+        point_df = pd.DataFrame({'loc': [0, 1]}).lr.set_lrs(loc_col='loc')
+        self.assertTrue(point_df.lr.validate_located())
+        self.assertTrue(point_df.lr.validate_point())
+        self.assertTrue(point_df.lr.is_point)
+
+        text_df = pd.DataFrame({'loc': ['0', '1']}).lr.set_lrs(loc_col='loc')
+        self.assertFalse(text_df.lr.is_located)
+        self.assertFalse(text_df.lr.validate_located(errors='ignore'))
+        with self.assertRaisesRegex(LRSConfigurationError, 'numeric dtype'):
+            text_df.lr.validate_point()
+
+        bool_df = pd.DataFrame({'loc': [True, False]}).lr.set_lrs(loc_col='loc')
+        self.assertFalse(bool_df.lr.validate_located(errors='ignore'))
+
+    def test_validate_linear_dtype_and_completeness(self):
+        df = pd.DataFrame({
+            'beg': [0.0, np.nan],
+            'end': [1.0, 2.0],
+        }).lr.set_lrs(beg_col='beg', end_col='end', closed='right')
+
+        self.assertTrue(df.lr.validate_linear())
+        self.assertTrue(df.lr.is_linear)
+        self.assertFalse(df.lr.validate_linear(complete=True, errors='ignore'))
+        with self.assertRaisesRegex(LRSConfigurationError, 'null values'):
+            df.lr.validate_linear(complete=True)
+
+        text_df = pd.DataFrame({'beg': ['0'], 'end': ['1']}).lr.set_lrs(
+            beg_col='beg', end_col='end', closed='right')
+        self.assertFalse(text_df.lr.is_linear)
+        self.assertFalse(text_df.lr.validate_linear(errors='ignore'))
+        with self.assertRaisesRegex(LRSConfigurationError, 'numeric dtypes'):
+            text_df.lr.dissolve()
+
+    def test_validate_spatial_type_and_completeness(self):
+        df = pd.DataFrame({
+            'geometry': [LineString([(0, 0), (1, 1)])],
+        }).lr.set_lrs(geom_col='geometry')
+        self.assertTrue(df.lr.validate_spatial())
+        self.assertTrue(df.lr.is_spatial)
+
+        text_df = pd.DataFrame({'geometry': ['LINESTRING (0 0, 1 1)']}).lr.set_lrs(
+            geom_col='geometry')
+        self.assertFalse(text_df.lr.is_spatial)
+        self.assertFalse(text_df.lr.validate_spatial(errors='ignore'))
+
+        empty_df = pd.DataFrame({'geometry': [LineString()]}).lr.set_lrs(
+            geom_col='geometry')
+        self.assertTrue(empty_df.lr.validate_spatial())
+        self.assertFalse(
+            empty_df.lr.validate_spatial(complete=True, errors='ignore'))
+
+    def test_validate_spatial_m_type(self):
+        geom_m = LineStringM(
+            LineString([(0, 0), (1, 1)]), m=[0.0, 1.0])
+        df = pd.DataFrame({'geometry_m': [geom_m]}).lr.set_lrs(
+            geom_m_col='geometry_m')
+        self.assertTrue(df.lr.validate_spatial_m())
+        self.assertTrue(df.lr.is_spatial_m)
+
+        wkt_df = pd.DataFrame({
+            'geometry_m': ['LINESTRING M (0 0 0, 1 1 1)'],
+        }).lr.set_lrs(geom_m_col='geometry_m')
+        self.assertFalse(wkt_df.lr.is_spatial_m)
+        with self.assertRaisesRegex(LRSConfigurationError, 'parse_geom_m_wkt'):
+            wkt_df.lr.validate_spatial_m()
+
+        no_m_df = pd.DataFrame({
+            'geometry_m': [LineStringM(LineString([(0, 0), (1, 1)]))],
+        }).lr.set_lrs(geom_m_col='geometry_m')
+        self.assertFalse(no_m_df.lr.validate_spatial_m(errors='ignore'))
+
+    def test_validate_spatial_m_consistency(self):
+        geom = LineString([(0, 0), (1, 1)])
+        geom_m = LineStringM(geom, m=[0.0, 1.0])
+        matching = pd.DataFrame({
+            'beg': [0.0],
+            'end': [1.0],
+            'geometry': [geom],
+            'geometry_m': [geom_m],
+        }).lr.set_lrs(
+            beg_col='beg', end_col='end', geom_col='geometry',
+            geom_m_col='geometry_m', closed='right')
+        self.assertTrue(matching.lr.validate_spatial_m(bounds=True, geometry=True))
+
+        bad_bounds = matching.copy()
+        bad_bounds['end'] = [2.0]
+        with self.assertRaises(GeometryMeasureError):
+            bad_bounds.lr.validate_spatial_m(bounds=True)
+
+        bad_geometry = matching.copy()
+        bad_geometry['geometry'] = [LineString([(0, 0), (2, 2)])]
+        with self.assertRaises(GeometryMeasureError):
+            bad_geometry.lr.validate_spatial_m(geometry=True)
+
+        unparsed = matching.copy()
+        unparsed['geometry_m'] = ['LINESTRING M (0 0 0, 1 1 1)']
+        with self.assertRaisesRegex(LRSConfigurationError, 'LineStringM'):
+            unparsed.lr.validate_spatial_m(check_type=False, bounds=True)
+
+    def test_validate_optional_chaining(self):
+        unchained = pd.DataFrame({'route': ['A']}).lr.set_lrs(
+            key_col=['route'])
+        self.assertFalse(unchained.lr.is_chained)
+        self.assertFalse(unchained.lr.validate_chained(errors='ignore'))
+
+        chained = pd.DataFrame({'route': ['A'], 'chain': [0]}).lr.set_lrs(
+            key_col=['route'], chain_col='chain')
+        self.assertTrue(chained.lr.is_chained)
+        self.assertTrue(chained.lr.validate_chained())
+
+    def test_validation_decorator_adds_method_context(self):
+        df = pd.DataFrame({'route': ['A']}).lr.set_lrs(
+            key_col=['route'], beg_col='beg', end_col='end', closed='right')
+
+        with self.assertRaises(LRSConfigurationError) as error:
+            df.lr.dissolve()
+
+        self.assertIn('dissolve', str(error.exception))
+        self.assertIn('linear-event data', str(error.exception))
+        self.assertIn("['beg', 'end']", str(error.exception))
+        self.assertIsInstance(error.exception.__cause__, LRSConfigurationError)
 
 
 class TestLRSAccessorMethods(unittest.TestCase):
