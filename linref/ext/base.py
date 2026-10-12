@@ -13,11 +13,10 @@ from scipy import sparse as sp
 from scipy.sparse.csgraph import connected_components as _connected_components
 from linref.utility.utility import label_list_or_none
 from linref.events.base import EventsData
-from linref.events.utility import _method_require
 from linref.events import modify, relate, integration
 from linref import geometry
 from linref.errors import LRSConfigurationError, LRSCompatibilityError, GeometryTopologyError, GeometryMeasureError, GeometryScaleWarning
-from linref.ext.validation import _method_deprecates_geometry
+from linref.ext.validation import _method_deprecates_geometry, _validate_lrs
 from linref.ext.lrs import LRS
 from linref.options import options, set_default_lrs
 
@@ -416,14 +415,9 @@ class LRS_Accessor(object):
     @property
     def is_grouped(self) -> bool:
         """
-        Return whether the active LRS is grouped and the key columns are 
-        present in the dataframe.
+        Return whether the active LRS has valid group columns.
         """
-        if len(self.key_col) == 0:
-            return False
-        else:
-            # Check for presence of key columns in the dataframe
-            return all([key in self._df.columns for key in self.key_col])
+        return self.validate_grouped(errors='ignore')
     
     @property
     def missing_key_cols(self) -> list[str]:
@@ -439,61 +433,37 @@ class LRS_Accessor(object):
     @property
     def is_linear(self) -> bool:
         """
-        Return whether the active LRS is linear and the begin and end columns
-        are present in the dataframe.
+        Return whether the active LRS has valid linear measure columns.
         """
-        if not self.lrs.is_linear:
-            return False
-        else:
-            # Check for presence of begin and end columns in the dataframe
-            return all([col in self._df.columns for col in [self.beg_col, self.end_col]])
+        return self.validate_linear(errors='ignore')
     
     @property
     def is_point(self) -> bool:
         """
-        Return whether the active LRS is point-based and the location column is
-        present in the dataframe.
+        Return whether the active LRS has valid point event data.
         """
-        if self.is_linear or not self.lrs.is_located:
-            return False
-        # Check for presence of location column in the dataframe
-        return self.loc_col in self._df.columns
+        return self.validate_point(errors='ignore')
     
     @property
     def is_located(self) -> bool:
         """
-        Return whether the active LRS is located and the location column is 
-        present in the dataframe.
+        Return whether the active LRS has a valid location measure column.
         """
-        if not self.lrs.is_located:
-            return False
-        else:
-            # Check for presence of location column in the dataframe
-            return self.loc_col in self._df.columns
+        return self.validate_located(errors='ignore')
     
     @property
     def is_spatial(self) -> bool:
         """
-        Return whether the active LRS is spatial and the geometry column is 
-        present in the dataframe.
+        Return whether the active LRS has valid Shapely geometry data.
         """
-        if not self.lrs.is_spatial:
-            return False
-        else:
-            # Check for presence of geometry column in the dataframe
-            return self.geom_col in self._df.columns
+        return self.validate_spatial(errors='ignore')
         
     @property
     def is_spatial_m(self) -> bool:
         """
-        Return whether the active LRS is spatial and the geometry column is 
-        present in the dataframe.
+        Return whether the active LRS has valid M-enabled geometry data.
         """
-        if not self.lrs.is_spatial_m:
-            return False
-        else:
-            # Check for presence of geometry column in the dataframe
-            return self.geom_m_col in self._df.columns
+        return self.validate_spatial_m(errors='ignore')
         
     @property
     def is_lrs_grouped(self) -> bool:
@@ -554,12 +524,9 @@ class LRS_Accessor(object):
     @property
     def is_chained(self) -> bool:
         """
-        Return whether the active LRS has a chain column defined and the 
-        chain column is present in the dataframe.
+        Return whether the optional configured chain column is valid.
         """
-        if not self.lrs.is_chained:
-            return False
-        return self.lrs.chain_col in self._df.columns
+        return self.validate_chained(errors='ignore')
 
     @property
     def is_geometrically_contiguous(self) -> bool:
@@ -676,6 +643,489 @@ class LRS_Accessor(object):
         Evaluate which LRS properties are satisfied by the dataframe.
         """
         return self.lrs.study(self._df)
+
+    @staticmethod
+    def _validation_error(
+        message: str,
+        errors: str,
+        error_type: type[Exception] = LRSConfigurationError,
+    ) -> bool:
+        """Apply the requested failure behavior for a validation check.
+
+        Parameters
+        ----------
+        message : str
+            Description of the failed validation check.
+        errors : {'raise', 'ignore'}
+            Whether to raise ``error_type`` or return ``False`` when the check
+            fails.
+        error_type : type[Exception], default LRSConfigurationError
+            Exception class to raise when ``errors='raise'``.
+
+        Returns
+        -------
+        bool
+            ``False`` when ``errors='ignore'`` and validation fails.
+
+        Raises
+        ------
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        Exception
+            The supplied ``error_type`` when ``errors='raise'``.
+        """
+        if errors not in {'raise', 'ignore'}:
+            raise ValueError("`errors` must be either 'raise' or 'ignore'.")
+        if errors == 'raise':
+            raise error_type(message)
+        return False
+
+    def validate_grouped(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the group columns configured by the LRS.
+
+        All configured key columns must exist in the DataFrame. Group column
+        dtypes are not restricted because valid keys may be strings, numbers,
+        categoricals, dates, or other scalar values supported by downstream
+        grouping operations.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, also require every configured group column to be free of
+            null values.
+        check_type : bool, default True
+            Included for consistency with the other component validators. No
+            group dtype is enforced, so this option does not change the check.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If group columns are not configured, are missing, or fail the
+            requested completeness check and ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_grouped:
+            return self._validation_error(
+                "Group columns are not configured in the LRS.", errors)
+        missing = [column for column in self.key_col if column not in self.df]
+        if missing:
+            return self._validation_error(
+                f"LRS group columns are missing: {missing}.", errors)
+        if complete:
+            null_columns = [
+                column for column in self.key_col
+                if self.df[column].isna().any()
+            ]
+            if null_columns:
+                return self._validation_error(
+                    f"LRS group columns contain null values: {null_columns}.",
+                    errors,
+                )
+        return True
+
+    def validate_located(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the configured location measure column.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, also require the location column to contain no null
+            values.
+        check_type : bool, default True
+            If True, require a numeric pandas dtype. Boolean columns are not
+            accepted as numeric measures. If False, only configuration and
+            column presence are checked, plus ``complete`` when requested.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If the location measure is unconfigured, missing, non-numeric, or
+            incomplete and ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_located:
+            return self._validation_error(
+                "A location measure column is not configured in the LRS.", errors)
+        if self.loc_col not in self.df:
+            return self._validation_error(
+                f"LRS location measure column '{self.loc_col}' is missing.", errors)
+        dtype = self.df[self.loc_col].dtype
+        if (check_type
+                and (not pd.api.types.is_numeric_dtype(dtype)
+                     or pd.api.types.is_bool_dtype(dtype))):
+            return self._validation_error(
+                f"LRS location measure column '{self.loc_col}' must have a "
+                f"numeric dtype; received {dtype}.", errors,
+            )
+        if complete and self.df[self.loc_col].isna().any():
+            return self._validation_error(
+                f"LRS location measure column '{self.loc_col}' contains null values.",
+                errors,
+            )
+        return True
+
+    def validate_point(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate a point-event LRS and its location measure.
+
+        This requires the LRS to define a location column without begin/end
+        columns, then applies the same presence, dtype, and optional
+        completeness checks as :meth:`validate_located`.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, require all location values to be non-null.
+        check_type : bool, default True
+            If True, require a numeric, non-Boolean location dtype.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If point events are not configured or the location column fails
+            validation and ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_point:
+            return self._validation_error(
+                "Point events are not configured in the LRS.", errors)
+        return self.validate_located(
+            complete=complete, check_type=check_type, errors=errors)
+
+    def validate_linear(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the configured begin and end measure columns.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, also require both measure columns to contain no null
+            values. This does not check ordering or finite values.
+        check_type : bool, default True
+            If True, require both columns to have numeric pandas dtypes.
+            Boolean columns are not accepted as numeric measures. If False,
+            only configuration and column presence are checked, plus
+            ``complete`` when requested.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If begin/end measures are unconfigured, missing, non-numeric, or
+            incomplete and ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_linear:
+            return self._validation_error(
+                "Begin and end measure columns are not configured in the LRS.",
+                errors,
+            )
+        columns = [self.beg_col, self.end_col]
+        missing = [column for column in columns if column not in self.df]
+        if missing:
+            return self._validation_error(
+                f"LRS linear measure columns are missing: {missing}.", errors)
+        invalid = [
+            column for column in columns
+            if (not pd.api.types.is_numeric_dtype(self.df[column].dtype)
+                or pd.api.types.is_bool_dtype(self.df[column].dtype))
+        ] if check_type else []
+        if invalid:
+            dtypes = {column: str(self.df[column].dtype) for column in invalid}
+            return self._validation_error(
+                f"LRS linear measure columns must have numeric dtypes: {dtypes}.",
+                errors,
+            )
+        if complete and self.df[columns].isna().any().any():
+            return self._validation_error(
+                "LRS linear measure columns contain null values.", errors)
+        return True
+
+    def validate_spatial(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the configured Shapely geometry column.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, also reject empty geometries. Missing or non-Shapely
+            values fail the type check when ``check_type=True``.
+        check_type : bool, default True
+            If True, require every value to be a Shapely geometry. If False,
+            only configuration and column presence are checked, plus
+            ``complete`` when requested.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If the geometry is unconfigured, missing, contains non-Shapely
+            values or empty geometries under the requested checks, and
+            ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_spatial:
+            return self._validation_error(
+                "A geometry column is not configured in the LRS.", errors)
+        if self.geom_col not in self.df:
+            return self._validation_error(
+                f"LRS geometry column '{self.geom_col}' is missing.", errors)
+        values = self.df[self.geom_col].to_numpy()
+        if check_type:
+            invalid = ~shapely.is_geometry(values)
+            if invalid.any():
+                return self._validation_error(
+                    f"LRS geometry column '{self.geom_col}' contains "
+                    f"{int(invalid.sum())} non-Shapely value(s).", errors,
+                )
+        if complete and shapely.is_empty(values).any():
+            return self._validation_error(
+                f"LRS geometry column '{self.geom_col}' contains empty geometries.",
+                errors,
+            )
+        return True
+
+    def validate_spatial_m(
+        self,
+        complete: bool = False,
+        bounds: bool = False,
+        geometry: bool = False,
+        rtol: float = 1e-5,
+        atol: float = 1e-8,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the configured M-geometry column.
+
+        Every value must be a :class:`~linref.geometry.LineStringM` with M
+        values when ``check_type=True``. Optional checks can compare each
+        object's M bounds with the LRS begin/end measures and compare its
+        underlying Shapely geometry with the configured geometry column.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, require at least one M-geometry value and apply the
+            completeness checks of any components requested by ``bounds`` or
+            ``geometry``. M-geometry values themselves must always be parsed
+            and contain M values when ``check_type=True``.
+        bounds : bool, default False
+            If True, require linear measures and compare each M-geometry's
+            begin/end M values to the DataFrame's begin/end columns using
+            ``numpy.isclose``.
+        geometry : bool, default False
+            If True, require a Shapely geometry column and compare its values
+            with the reduced geometries from the M objects using exact
+            coordinate equality within ``atol``.
+        rtol : float, default 1e-5
+            Relative tolerance for the M-bound comparisons. Only used when
+            ``bounds=True``.
+        atol : float, default 1e-8
+            Absolute tolerance for M-bound comparisons and geometry equality.
+        check_type : bool, default True
+            If True, require every value to be a parsed ``LineStringM`` with
+            M values. If False, only configuration and column presence are
+            checked unless ``bounds`` or ``geometry`` is requested; those
+            comparisons require parsed ``LineStringM`` values.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises an LRS validation error or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If the M-geometry component or any required dependent component is
+            unconfigured, missing, or invalid, and ``errors='raise'``.
+        GeometryMeasureError
+            If requested M bounds or underlying geometries do not match.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_spatial_m:
+            return self._validation_error(
+                "An M-geometry column is not configured in the LRS.", errors)
+        if self.geom_m_col not in self.df:
+            return self._validation_error(
+                f"LRS M-geometry column '{self.geom_m_col}' is missing.", errors)
+        values = self.df[self.geom_m_col].to_numpy()
+        if check_type:
+            from linref.geometry import LineStringM
+            invalid = np.array([
+                not isinstance(value, LineStringM) or value.m is None
+                for value in values
+            ])
+            if invalid.any():
+                return self._validation_error(
+                    f"LRS M-geometry column '{self.geom_m_col}' contains "
+                    f"{int(invalid.sum())} value(s) that are not parsed "
+                    "LineStringM objects with M values. Use `parse_geom_m_wkt()` "
+                    "for WKT strings.", errors,
+                )
+        if complete and len(values) == 0:
+            return self._validation_error(
+                f"LRS M-geometry column '{self.geom_m_col}' is empty.", errors)
+        if (bounds or geometry) and not check_type:
+            if not self.validate_spatial_m(check_type=True, errors=errors):
+                return False
+        if bounds:
+            if not self.validate_linear(
+                    complete=complete, check_type=check_type, errors=errors):
+                return False
+            matches = (
+                np.isclose(
+                    [value.beg_m for value in values], self.begs,
+                    rtol=rtol, atol=atol,
+                )
+                & np.isclose(
+                    [value.end_m for value in values], self.ends,
+                    rtol=rtol, atol=atol,
+                )
+            )
+            if not matches.all():
+                return self._validation_error(
+                    "M-geometry bounds do not match LRS begin/end measures "
+                    f"for {int((~matches).sum())} row(s).", errors,
+                    GeometryMeasureError,
+                )
+        if geometry:
+            if not self.validate_spatial(
+                    complete=complete, check_type=check_type, errors=errors):
+                return False
+            matches = shapely.equals_exact(
+                self.geoms, self.geoms_m_reduced, tolerance=atol)
+            if not matches.all():
+                return self._validation_error(
+                    "M-geometries do not match LRS geometry values for "
+                    f"{int((~matches).sum())} row(s).", errors,
+                    GeometryMeasureError,
+                )
+        return True
+
+    def validate_chained(
+        self,
+        complete: bool = False,
+        check_type: bool = True,
+        errors: str = 'raise',
+    ) -> bool:
+        """Validate the optional chain column configured by the LRS.
+
+        Chaining is optional. This validator is only applicable when the LRS
+        defines ``chain_col``; it is not required for ordinary grouped or
+        linear operations.
+
+        Parameters
+        ----------
+        complete : bool, default False
+            If True, also require the chain column to contain no null values.
+        check_type : bool, default True
+            Included for consistency with the other component validators.
+            Chain values act as grouping identifiers, so no specific dtype is
+            required. This option does not change the check.
+        errors : {'raise', 'ignore'}, default 'raise'
+            Whether invalid data raises ``LRSConfigurationError`` or returns
+            ``False``.
+
+        Returns
+        -------
+        bool
+            True when all requested checks pass; otherwise False when
+            ``errors='ignore'``.
+
+        Raises
+        ------
+        LRSConfigurationError
+            If chaining is not configured, the chain column is missing,
+            or incomplete under the requested checks and ``errors='raise'``.
+        ValueError
+            If ``errors`` is not ``'raise'`` or ``'ignore'``.
+        """
+        if not self.lrs.is_chained:
+            return self._validation_error(
+                "A chain column is not configured in the LRS.", errors)
+        column = self.lrs.chain_col
+        if column not in self.df:
+            return self._validation_error(
+                f"LRS chain column '{column}' is missing.", errors)
+        if complete and self.df[column].isna().any():
+            return self._validation_error(
+                f"LRS chain column '{column}' contains null values.", errors)
+        return True
 
     @property
     def events(self) -> EventsData:
@@ -962,7 +1412,7 @@ class LRS_Accessor(object):
         df.lr.lrs = LRS()
         return None if inplace else df
     
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def set_monotonic(self, reverse_geom: bool = True, inplace: bool = False) -> pd.DataFrame | None:
         """
         Ensure that linear events in the DataFrame are monotonic according to
@@ -1069,7 +1519,7 @@ class LRS_Accessor(object):
             df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
 
-    @_method_require(is_grouped=True)
+    @_validate_lrs('grouped')
     def iter_groups(self) -> Iterator[tuple]:
         """
         Iterate over unique event groups in the dataframe based on the 
@@ -1084,7 +1534,7 @@ class LRS_Accessor(object):
         for group, index in self.events.iter_group_indices():
             yield group, self.df.loc[index]
 
-    @_method_require(is_grouped=True)
+    @_validate_lrs('grouped')
     def group_counts(self) -> pd.Series:
         """
         Return a Series of counts of events per group in the dataframe based
@@ -1173,7 +1623,7 @@ class LRS_Accessor(object):
         else:
             return (df, sorter) if return_index else df
         
-    @_method_require(is_grouped=True)
+    @_validate_lrs('grouped')
     def get_group(self, group: str | list) -> pd.DataFrame:
         """
         Retrieve a subset of the dataframe corresponding to a specific group
@@ -1197,7 +1647,7 @@ class LRS_Accessor(object):
         # Return subset of dataframe
         return self.df.loc[index]
         
-    @_method_require(is_linear=True, is_spatial=True)
+    @_validate_lrs('linear', 'spatial')
     def get_chains(self, name: str | None = None, enforce_m: bool = True, include_chain: bool = False) -> pd.Series:
         """
         Identify the chain indices for each event in the dataframe based on 
@@ -1273,7 +1723,7 @@ class LRS_Accessor(object):
         )
         return chains.reindex_like(self.df)
     
-    @_method_require(is_linear=True, is_spatial=True)
+    @_validate_lrs('linear', 'spatial')
     def add_chaining(self, name: str | None = None, inplace: bool = False, replace: bool = False, enforce_m: bool = True) -> pd.DataFrame | None:
         """
         Add chain indices to the dataframe based on contiguous linear 
@@ -1322,7 +1772,7 @@ class LRS_Accessor(object):
             df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
-    @_method_require(is_point=True)
+    @_validate_lrs('point')
     def point_to_linear(
         self,
         beg_col: str | None = None,
@@ -1392,7 +1842,7 @@ class LRS_Accessor(object):
             df.lr.set_lrs(new_lrs, inplace=True)
         return None if inplace else df
     
-    @_method_require(is_spatial=True)
+    @_validate_lrs('spatial')
     def generate_linear_events(
         self,
         beg_col: str | None = None,
@@ -1687,7 +2137,7 @@ class LRS_Accessor(object):
             obj.ends = events.ends
         return None if inplace else obj.df
     
-    @_method_require(is_grouped=True)
+    @_validate_lrs('grouped')
     def impute_keys(
         self,
         other: pd.DataFrame,
@@ -1775,7 +2225,7 @@ class LRS_Accessor(object):
         df.lr.set_lrs(self.lrs, inplace=True)
         return df
     
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def resegment(
         self,
         length: float = 1,
@@ -1903,7 +2353,7 @@ class LRS_Accessor(object):
         # Return results
         return (df, relation) if return_relation else df
     
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def separate(
         self,
         anchor: str = 'centers',
@@ -1949,7 +2399,7 @@ class LRS_Accessor(object):
         df[self.end_col] = events.ends
         return None if inplace else df
 
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def dissolve(
         self, 
         retain: list[str] = [], 
@@ -2100,7 +2550,7 @@ class LRS_Accessor(object):
         # Return results
         return (df, relation) if return_relation else df
     
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def constrain_to(
         self,
         other: pd.DataFrame,
@@ -2208,7 +2658,7 @@ class LRS_Accessor(object):
         
         return constrained
 
-    @_method_require(is_linear=True, is_spatial=True, is_spatial_m=True)
+    @_validate_lrs('linear', 'spatial', 'spatial_m')
     def split(
         self,
         mask,
@@ -2333,7 +2783,7 @@ class LRS_Accessor(object):
         )
         return integrated_df.reset_index(drop=True)
 
-    @_method_require(is_linear=True, is_spatial=True, is_spatial_m=True)
+    @_validate_lrs('linear', 'spatial', 'spatial_m')
     def clip(
         self,
         mask,
@@ -2427,7 +2877,7 @@ class LRS_Accessor(object):
 
         return result
 
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def integrate(
         self,
         objs: pd.DataFrame | list[pd.DataFrame],
@@ -2479,7 +2929,7 @@ class LRS_Accessor(object):
             index_adjustment=1
         )
     
-    @_method_require(is_linear=True)
+    @_validate_lrs('linear')
     def cut_from(
         self,
         other: gpd.GeoDataFrame,
@@ -2569,7 +3019,7 @@ class LRS_Accessor(object):
             df.lr.set_lrs(lrs, inplace=True)
         return None if inplace else df
     
-    @_method_require(is_located=True)
+    @_validate_lrs('located')
     def interpolate_from(
         self,
         other: pd.DataFrame,
@@ -2794,6 +3244,7 @@ class LRS_Accessor(object):
         )
         return None if inplace else df
 
+    @_validate_lrs('spatial_m')
     def extract_m_values(
         self,
         beg_col: str | None = None,
@@ -3090,7 +3541,7 @@ class LRS_Accessor(object):
         df[name] = labels
         return None if inplace else df
 
-    @_method_require(is_spatial=True)
+    @_validate_lrs('spatial')
     def generate_intersections(
         self,
         exclude_groups: bool | str | list[str] = True,
@@ -3186,7 +3637,7 @@ class LRS_Accessor(object):
             )
         return result
 
-    @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
+    @_validate_lrs('spatial', 'spatial_m', 'linear')
     def project(
         self,
         other: gpd.GeoDataFrame,
@@ -3380,7 +3831,7 @@ class LRS_Accessor(object):
         # Return projected dataframe
         return joined.drop(columns=[self.geom_m_col]).lr.lrs_like(self)
 
-    @_method_require(is_spatial=True, is_spatial_m=True, is_linear=True)
+    @_validate_lrs('spatial', 'spatial_m', 'linear')
     def parallel_project_hausdorff(
         self,
         other: gpd.GeoDataFrame,
